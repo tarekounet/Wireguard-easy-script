@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.0.1"
 REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/ton-utilisateur/ton-depot/main/version.txt)
 UPDATE_URL="https://raw.githubusercontent.com/ton-utilisateur/ton-depot/main/config_wg.sh"
 
@@ -148,12 +148,12 @@ EOF
     CURRENT_EXTERNAL_UDP_PORT=${CURRENT_EXTERNAL_UDP_PORT:-51820}
     CURRENT_EXTERNAL_TCP_PORT=${CURRENT_EXTERNAL_TCP_PORT:-51821}
 
-    read -p $'\e[0;32mVoulez-vous modifier le port UDP ? (o/N, Échap pour annuler) : \e[0m' MODIFY_UDP_PORT
+    read -p $'\e[0;32mVoulez-vous modifier le port pour la liaison VPN ? (o/N, Échap pour annuler) : \e[0m' MODIFY_UDP_PORT
     if [[ $MODIFY_UDP_PORT == $'\e' ]]; then cancel_config; fi
     if [[ "$MODIFY_UDP_PORT" == "o" || "$MODIFY_UDP_PORT" == "O" ]]; then
-        echo -e "\e[0;36mPort externe actuel pour UDP : \e[0;33m$CURRENT_EXTERNAL_UDP_PORT\e[0m"
+        echo -e "\e[0;36mPort externe actuel : \e[0;33m$CURRENT_EXTERNAL_UDP_PORT\e[0m"
         while true; do
-            read -p $'Entrez le nouveau port externe pour UDP (1-65535, par défaut : '"$CURRENT_EXTERNAL_UDP_PORT"', Échap pour annuler) : ' NEW_EXTERNAL_UDP_PORT
+            read -p $'Entrez le nouveau port externe (1-65535, par défaut : '"$CURRENT_EXTERNAL_UDP_PORT"', Échap pour annuler) : ' NEW_EXTERNAL_UDP_PORT
             if [[ $NEW_EXTERNAL_UDP_PORT == $'\e' ]]; then cancel_config; fi
             NEW_EXTERNAL_UDP_PORT=${NEW_EXTERNAL_UDP_PORT:-$CURRENT_EXTERNAL_UDP_PORT}
             if [[ "$NEW_EXTERNAL_UDP_PORT" =~ ^[0-9]+$ ]] && (( NEW_EXTERNAL_UDP_PORT >= 1 && NEW_EXTERNAL_UDP_PORT <= 65535 )); then
@@ -166,12 +166,12 @@ EOF
         NEW_EXTERNAL_UDP_PORT="$CURRENT_EXTERNAL_UDP_PORT"
     fi
 
-    read -p $'\e[0;32mVoulez-vous modifier le port TCP ? (o/N, Échap pour annuler) : \e[0m' MODIFY_TCP_PORT
+    read -p $'\e[0;32mVoulez-vous modifier le port de l\'interface web ? (o/N, Échap pour annuler) : \e[0m' MODIFY_TCP_PORT
     if [[ $MODIFY_TCP_PORT == $'\e' ]]; then cancel_config; fi
     if [[ "$MODIFY_TCP_PORT" == "o" || "$MODIFY_TCP_PORT" == "O" ]]; then
-        echo -e "\e[0;36mPort externe actuel pour TCP : \e[0;33m$CURRENT_EXTERNAL_TCP_PORT\e[0m"
+        echo -e "\e[0;36mPort externe actuel pour l\'interface web : \e[0;33m$CURRENT_EXTERNAL_TCP_PORT\e[0m"
         while true; do
-            read -p $'Entrez le nouveau port externe pour TCP (1-65535, par défaut : '"$CURRENT_EXTERNAL_TCP_PORT"', Échap pour annuler) : ' NEW_EXTERNAL_TCP_PORT
+            read -p $'Entrez le nouveau port externe pour l\'interface web (1-65535, par défaut : '"$CURRENT_EXTERNAL_TCP_PORT"', Échap pour annuler) : ' NEW_EXTERNAL_TCP_PORT
             if [[ $NEW_EXTERNAL_TCP_PORT == $'\e' ]]; then cancel_config; fi
             NEW_EXTERNAL_TCP_PORT=${NEW_EXTERNAL_TCP_PORT:-$CURRENT_EXTERNAL_TCP_PORT}
             if [[ "$NEW_EXTERNAL_TCP_PORT" =~ ^[0-9]+$ ]] && (( NEW_EXTERNAL_TCP_PORT >= 1 && NEW_EXTERNAL_TCP_PORT <= 65535 )); then
@@ -316,7 +316,7 @@ while true; do
         echo -e "\e[0;36m+--------------------------+--------------------------------------+\e[0m"
         printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
         printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
-        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Port externe UDP" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
+        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Port externe " "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
         printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
         PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
         if [[ -n "$PASSWORD_HASH" ]]; then
@@ -367,7 +367,7 @@ while true; do
             2)
                 PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
                 if [[ -z "$PASSWORD_HASH" ]]; then
-                    echo -e "\e[1;31m❌ Le mot de passe n'est pas défini dans le fichier docker-compose.yml. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+                    echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
                 else
                     echo "Démarrage de Wireguard..."
                     docker compose -f "$DOCKER_COMPOSE_FILE" up -d
