@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SCRIPT_VERSION="1.0.1"
-REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/ton-utilisateur/ton-depot/main/version.txt)
-UPDATE_URL="https://raw.githubusercontent.com/ton-utilisateur/ton-depot/main/config_wg.sh"
+REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+UPDATE_URL="https://github.com/tarekounet/Wireguard-easy-script/blob/main/config_wg.sh"
 
 # Définir le chemin absolu du fichier docker-compose
 # Créer le dossier /mnt/wireguard s'il n'existe pas
