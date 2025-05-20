@@ -1,3 +1,6 @@
+V1.0.2:
+correctif
+
 V1.0.1:
 Changement de quelques textes.
 
