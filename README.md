@@ -1,9 +1,5 @@
 # Wireguard-easy-script
 
-Voici une explication détaillée de ton script config_wg.sh avec des icônes pour chaque section importante :
-
----
-
 ## 📝 **Présentation générale**
 Ce script Bash permet de gérer facilement l’installation, la configuration, la mise à jour et la gestion du service **Wireguard** via Docker Compose.  
 Il propose un menu interactif en couleur, gère la création et la modification du fichier `docker-compose.yml`, et offre des options avancées comme la réinitialisation ou la mise à jour automatique du script.
