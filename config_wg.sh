@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.0.1"
+SCRIPT_VERSION="1.0.2"
 REMOTE_VERSION=$(curl -s https://github.com/tarekounet/Wireguard-easy-script/blob/main/version.txt)
 UPDATE_URL="https://github.com/tarekounet/Wireguard-easy-script/blob/main/config_wg.sh"
 
@@ -325,7 +325,6 @@ while true; do
         else
             printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[1;31m%-36s\e[0;36m |\e[0m\n" "Mot de passe" "Non défini"
             PASSWORD_DEFINED=0
-        fi
         fi
         echo -e "\e[0;36m+--------------------------+--------------------------------------+\e[0m"
     else
