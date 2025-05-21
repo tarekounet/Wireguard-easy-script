@@ -257,7 +257,6 @@ while true; do
     clear
 
     # Afficher un message d'accueil avant le menu
-    SCRIPT_VERSION="1.1.0"
     echo -e "\e[1;34mBienvenue dans le gestionnaire Wireguard !\e[0m"
     echo -e "\e[1;36mVersion locale : \e[0;35m$SCRIPT_VERSION\e[0m"
     if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
