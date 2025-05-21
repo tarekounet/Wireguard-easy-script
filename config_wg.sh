@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.0.2"
+SCRIPT_VERSION="1.0.3"
 REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
 UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 
@@ -338,13 +338,13 @@ while true; do
         echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
         echo -e "\e[1;32m5) \e[0m\e[0;37m⬆️  Mettre à jour\e[0m"
         echo -e "\e[1;32m6) \e[0m\e[0;37m♻️  Réinitialiser\e[0m"
-        echo -e "\e[1;32m8) \e[0m\e[0;37m⬆️  Mettre à jour le script\e[0m"
-        echo -e "\n\e[1;32m7) \e[0m\e[0;37m❌ Quitter le script\e[0m"
+        echo -e "\e[1;32m7) \e[0m\e[0;37m⬆️  Mettre à jour le script\e[0m"
+        echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
         MENU_MAX=8
     else
         echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️  Créer la configuration\e[0m"
-        echo -e "\e[1;32m8) \e[0m\e[0;37m⬆️  Mettre à jour le script\e[0m"
-        echo -e "\n\e[1;32m7) \e[0m\e[0;37m❌ Quitter le script\e[0m"
+        echo -e "\e[1;32m2) \e[0m\e[0;37m⬆️  Mettre à jour le script\e[0m"
+        echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
         MENU_MAX=3
     fi
 
@@ -425,22 +425,27 @@ while true; do
                     fi
                 done
                 ;;
+
             7)
+                if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+                    echo -e "\e[1;33mTéléchargement de la dernière version du script...\e[0m"
+                    curl -s -o config_wg.sh.new "$UPDATE_URL"
+                    if [[ -s config_wg.sh.new ]]; then
+                        mv config_wg.sh.new "$0"
+                        chmod +x "$0"
+                        echo -e "\e[1;32mMise à jour terminée. Veuillez relancer le script.\e[0m"
+                        exit 0
+                    else
+                        echo -e "\e[1;31mErreur lors du téléchargement de la mise à jour.\e[0m"
+                        rm -f config_wg.sh.new
+                    fi
+                else
+                    echo -e "\e[1;33mAucune mise à jour disponible.\e[0m"
+                fi
+                ;;
+            0)
                 echo -e "\e[1;32mAu revoir ! 👋\e[0m"
                 exit 0
-                ;;
-            8)
-                echo -e "\e[1;33mTéléchargement de la dernière version du script...\e[0m"
-                curl -s -o config_wg.sh.new "$UPDATE_URL"
-                if [[ -s config_wg.sh.new ]]; then
-                    mv config_wg.sh.new "$0"
-                    chmod +x "$0"
-                    echo -e "\e[1;32mMise à jour terminée. Veuillez relancer le script.\e[0m"
-                    exit 0
-                else
-                    echo -e "\e[1;31mErreur lors du téléchargement de la mise à jour.\e[0m"
-                    rm -f config_wg.sh.new
-                fi
                 ;;
             *)
                 echo -e "\e[1;31mChoix invalide. Veuillez entrer un nombre entre 1 et 8.\e[0m"
@@ -453,10 +458,6 @@ while true; do
                 configure_values
                 ;;
             2)
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                exit 0
-                ;;
-            8)
                 echo -e "\e[1;33mTéléchargement de la dernière version du script...\e[0m"
                 curl -s -o config_wg.sh.new "$UPDATE_URL"
                 if [[ -s config_wg.sh.new ]]; then
@@ -469,7 +470,7 @@ while true; do
                     rm -f config_wg.sh.new
                 fi
                 ;;
-            7)
+            0)
                 echo -e "\e[1;32mAu revoir ! 👋\e[0m"
                 exit 0
                 ;;
