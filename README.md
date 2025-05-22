@@ -1,115 +1,87 @@
-# Wireguard-easy-script
+📌 Présentation générale
+Ce script Bash permet de gérer un serveur WireGuard à l’aide de Docker Compose, avec plusieurs fonctionnalités :
+- Création et modification du fichier docker-compose.yml
+- Configuration des ports, de l’adresse publique, et du mot de passe
+- Démarrage, arrêt et mise à jour du service WireGuard
+- Interface utilisateur en ligne de commande avec des couleurs et emojis
 
-## 📝 **Présentation générale**
-Ce script Bash permet de gérer facilement l’installation, la configuration, la mise à jour et la gestion du service **Wireguard** via Docker Compose.  
-Il propose un menu interactif en couleur, gère la création et la modification du fichier `docker-compose.yml`, et offre des options avancées comme la réinitialisation ou la mise à jour automatique du script.
+🏗️ Structure principale
+Voici les éléments clés :
+1️⃣ Définition des constantes
+SCRIPT_VERSION="1.0.0"
+REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 
----
+
+- Définit la version actuelle du script
+- Vérifie la dernière version disponible sur GitHub
+- Stocke l’URL pour les mises à jour du script
 
-## 🏁 **Initialisation**
-- **Détection de la version locale et distante**  
-  ```bash
-  SCRIPT_VERSION="1.0.1"
-  REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-  ```
-  🔎 Vérifie si une nouvelle version du script est disponible sur GitHub.
+2️⃣ Gestion du dossier de configuration
+if [[ ! -d "/mnt/wireguard" ]]; then
+    mkdir -p "/mnt/wireguard"
+fi
+DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
 
-- **Définition du chemin de configuration**  
-  ```bash
-  if [[ ! -d "/mnt/wireguard" ]]; then
-      mkdir -p "/mnt/wireguard"
-  fi
-  DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
-  ```
-  📁 Crée le dossier de configuration si besoin.
 
----
+- Vérifie si le dossier /mnt/wireguard existe, sinon il le crée
+- Définit le chemin du fichier docker-compose.yml
 
-## ⚙️ **Fonction principale : `configure_values`**
-- **Gestion de l’annulation**  
-  ⛔️ Permet d’annuler la configuration à tout moment (Ctrl+C ou Échap), restaure l’état précédent si besoin.
+3️⃣ Fonction configure_values()
+Permet de modifier ou créer la configuration WireGuard.
+✅ Gestion des interruptions (Ctrl+C)
+trap cancel_config SIGINT
 
-- **Sauvegarde et création du fichier de configuration**  
-  💾 Sauvegarde le fichier existant, ou crée un nouveau fichier `docker-compose.yml` avec les paramètres par défaut si absent.
 
-- **Modification interactive des paramètres**  
-  - 🌐 **Adresse publique** : Détection automatique de l’IP publique, possibilité de la modifier.
-  - 🔌 **Ports** : Modification des ports UDP (VPN) et TCP (interface web).
-  - 🔒 **Mot de passe** : Saisie et confirmation du mot de passe d’administration, hashé via le conteneur Docker.
+Si l’utilisateur interrompt le script (Ctrl+C), la fonction cancel_config est appelée pour restaurer les modifications et afficher un message.
+✅ Vérification et sauvegarde du fichier docker-compose.yml
+if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+    cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak"
+fi
 
-- **Application des modifications**  
-  🛠️ Utilise `sed` pour remplacer les valeurs dans le fichier `docker-compose.yml`.
 
-- **Nettoyage**  
-  🧹 Supprime la sauvegarde après modification réussie.
+Si le fichier existe déjà, il est sauvegardé pour permettre une restauration en cas d’annulation.
+✅ Création du fichier docker-compose.yml
+Si le fichier n’existe pas, le script crée une configuration WireGuard avec :
+- Le conteneur Docker wg-easy
+- L’adresse IP publique détectée automatiquement (api.ipify.org)
+- Les ports 51820 et 51821
+- Des variables pour configurer les statistiques et le tri des clients
 
----
+4️⃣ Modification des valeurs de configuration
+Le script interagit avec l’utilisateur pour ajuster :
+- L’adresse publique (WG_HOST)
+- Les ports UDP et TCP
+- Le mot de passe pour l’interface web
+✅ Détection automatique de l’IP publique :
+AUTO_WG_HOST=$(curl -s https://api.ipify.org)
 
-## 🖥️ **Menu principal interactif**
-- **Affichage dynamique**  
-  - 🎉 Message d’accueil, version du script, état du conteneur Wireguard (en cours, arrêté, créé, erreur…)
-  - 📄 Affiche les informations actuelles de la configuration (adresse IP, ports, mot de passe défini ou non).
 
-- **Choix utilisateur**  
-  Propose différentes actions selon la présence du fichier de configuration :
-  1. 🛠️ Modifier la configuration
-  2. 🚀 Lancer le service
-  3. 🛑 Arrêter le service
-  4. 🔄 Redémarrer le service
-  5. ⬆️ Mettre à jour Wireguard (image Docker)
-  6. ♻️ Réinitialiser (avec mot de passe technique)
-  7. ❌ Quitter le script
-  8. ⬆️ Mettre à jour le script lui-même
+L’utilisateur peut choisir de l’utiliser ou d’entrer un domaine personnalisé.
+✅ Modification des ports :
+read -p "Voulez-vous modifier le port VPN ? (o/N) : " MODIFY_UDP_PORT
 
----
 
-## 🔄 **Gestion des actions**
-- **Modification** : Relance la fonction de configuration.
-- **Démarrage/Arrêt/Redémarrage** : Utilise `docker compose` pour gérer le conteneur.
-- **Mise à jour** : Met à jour l’image Docker et relance le service.
-- **Réinitialisation** : Demande un mot de passe technique, supprime la config et le conteneur.
-- **Mise à jour du script** : Télécharge la dernière version depuis GitHub et remplace le script courant.
+L’utilisateur peut ajuster les ports UDP et TCP utilisés par le serveur.
+✅ Gestion du mot de passe :
+- Demande un mot de passe utilisateur sécurisé
+- Génère un hash sécurisé via docker run pour stockage dans docker-compose.yml
 
----
+5️⃣ Menu interactif
+Le script affiche un menu coloré avec des emojis pour choisir une action :
+echo -e "\e[1;32m1) \e[0m\e[0;37m🛠️  Modifier la configuration\e[0m"
+echo -e "\e[1;32m2) \e[0m\e[0;37m🚀 Lancer le service\e[0m"
+echo -e "\e[1;32m3) \e[0m\e[0;37m🛑 Arrêter le service\e[0m"
+echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
 
-## 🛡️ **Sécurité**
-- **Mot de passe technique** pour la réinitialisation (hashé SHA-512).
-- **Gestion des erreurs et annulation** à chaque étape critique.
 
----
+Il permet à l’utilisateur :
+- Démarrer ou arrêter WireGuard
+- Modifier la configuration
+- Mettre à jour WireGuard et le script lui-même
 
-## 🧑‍💻 **Expérience utilisateur**
-- **Interface colorée et claire** avec des icônes pour chaque action.
-- **Messages explicites** pour guider l’utilisateur à chaque étape.
-- **Pause** après chaque action pour permettre la lecture des messages.
-
----
-
-### Résumé visuel
-
-| Icône | Fonction                                 |
-|-------|------------------------------------------|
-| 📝    | Présentation générale                    |
-| 🏁    | Initialisation                           |
-| ⚙️    | Configuration interactive                |
-| 🖥️    | Menu principal                           |
-| 🚀    | Lancer le service                        |
-| 🛑    | Arrêter le service                       |
-| 🔄    | Redémarrer le service                    |
-| ⬆️    | Mettre à jour Wireguard ou le script     |
-| ♻️    | Réinitialiser                            |
-| ❌    | Quitter                                  |
-| 🔒    | Gestion du mot de passe                  |
-| 🛡️    | Sécurité et annulation                   |
-
----
-
-N’hésite pas à demander une explication détaillée d’une section précise ou un schéma !
-## Utilisation
-Exemple de commandes ou d’utilisation.
-
-## Contribuer
-Tarekounet
-
-## Licence
-GPL-3.0 license
+🧐 Résumé
+Ce script facilite la gestion de WireGuard via Docker, tout en offrant une interface intuitive et interactive. Il inclut :
+- Sécurité : gestion du mot de passe, backup avant modifications
+- Ergonomie : messages colorés et emojis pour une meilleure lisibilité
+- Automatisation : détection automatique de l’IP publique et gestion simplifiée de Docker
