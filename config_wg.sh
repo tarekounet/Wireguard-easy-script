@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.0.4_beta"
+SCRIPT_VERSION="1.0_beta-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
 UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
 
