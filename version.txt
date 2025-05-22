@@ -1,1 +1,1 @@
-1.0_beta-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+1.0-beta.1
