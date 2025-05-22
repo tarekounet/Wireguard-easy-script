@@ -229,18 +229,18 @@ EOF
     fi
 
     if [[ -n "$PASSWORD" ]]; then
-        PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "$PASSWORD" | grep -oP "'\K[^']+" | sed 's/\$/\$\$/g')
-        ESCAPED_PASSWORD_HASH=$(echo "$PASSWORD_HASH" | sed 's/[\/&]/\\&/g')
+        PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "$PASSWORD" | grep -oP "'\K[^']+")
+        ESCAPED_PASSWORD_HASH=$(printf '%s' "$PASSWORD_HASH" | sed -e ':a;N;$!ba;s/\n//g' -e 's/[\/&$]/\\&/g')
     else
         ESCAPED_PASSWORD_HASH="$CURRENT_PASSWORD_HASH"
     fi
 
     # Appliquer les modifications dans le fichier docker-compose.yml
-    sed -i "s/WG_HOST=.*/WG_HOST=$NEW_WG_HOST/" "$DOCKER_COMPOSE_FILE"
-    sed -i "s/WG_PORT=.*/WG_PORT=$NEW_EXTERNAL_UDP_PORT/" "$DOCKER_COMPOSE_FILE"
-    sed -i "s/$CURRENT_EXTERNAL_UDP_PORT:51820\/udp/$NEW_EXTERNAL_UDP_PORT:51820\/udp/" "$DOCKER_COMPOSE_FILE"
-    sed -i "s/$CURRENT_EXTERNAL_TCP_PORT:51821\/tcp/$NEW_EXTERNAL_TCP_PORT:51821\/tcp/" "$DOCKER_COMPOSE_FILE"
-    sed -i "s/PASSWORD_HASH=.*/PASSWORD_HASH=$ESCAPED_PASSWORD_HASH/" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#WG_HOST=.*#WG_HOST=$NEW_WG_HOST#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#WG_PORT=.*#WG_PORT=$NEW_EXTERNAL_UDP_PORT#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#${CURRENT_EXTERNAL_UDP_PORT}:51820/udp#${NEW_EXTERNAL_UDP_PORT}:51820/udp#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#${CURRENT_EXTERNAL_TCP_PORT}:51821/tcp#${NEW_EXTERNAL_TCP_PORT}:51821/tcp#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#PASSWORD_HASH=.*#PASSWORD_HASH=$ESCAPED_PASSWORD_HASH#" "$DOCKER_COMPOSE_FILE"
 
     # Suppression de la sauvegarde après modification réussie
     if [[ -f "$DOCKER_COMPOSE_FILE.bak" ]]; then
@@ -259,16 +259,16 @@ while true; do
     clear
 
     # Afficher un message d'accueil avant le menu
-    echo -e "\e[1;36m"
+    echo -e "\e[1;31m"
     echo "        .__                                             .___"
     echo "__  _  _|__|______   ____   ____  __ _______ _______  __| _/"
     echo "\ \/ \/ /  \_  __ \_/ __ \ / ___\|  |  \__  \\_  __  \/ __ | "
     echo " \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ | "
     echo "  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ | "
     echo "                        \/_____/            \/           \/"
-    echo -e "\e[1;35m             Wireguard Easy Script Manager\e[0m"
+    echo -e "\e[0;32mV$SCRIPT_VERSION                    \e[1;0mWireguard Easy Script Manager\e[0m"
     echo
-    echo -e "\e[1;37mVersion du script : \e[0;32m$SCRIPT_VERSION\e[0m"
+
     if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
         echo -e "\e[1;33mUne nouvelle version est disponible : $REMOTE_VERSION\e[0m"
     fi
@@ -319,28 +319,32 @@ while true; do
             fi
         fi
     fi
-    echo -e "\e[1;35m🌐 Que souhaitez-vous faire ?\e[0m"
+
     # Afficher les informations du fichier de configuration
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\e[0;35m📄 Informations actuelles du fichier de configuration :\e[0m"
-        echo -e "\e[0;36m+--------------------------+--------------------------------------+\e[0m"
-        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
-        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
-        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Port externe " "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
-        printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;33m%-36s\e[0;36m |\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
+        echo -e "\n\e[1;32m📄 Informations actuelles du fichier de configuration :\e[0m\n"
+        echo -e "\e[1;36m------------------------------\e[0m"
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port externe" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
         PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
         if [[ -n "$PASSWORD_HASH" ]]; then
-            printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[0;32m%-36s\e[0;36m |\e[0m\n" "Mot de passe" "Configuré"
-            PASSWORD_DEFINED=1
+            printf "\e[1;36m%-22s : \e[0;32m%s\e[0m\n" "Mot de passe" "Configuré"
         else
-            printf "\e[0;36m| \e[0;32m%-24s\e[0;36m | \e[1;31m%-36s\e[0;36m |\e[0m\n" "Mot de passe" "Non défini"
-            PASSWORD_DEFINED=0
+            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Mot de passe" "Non défini"
         fi
-        echo -e "\e[0;36m+--------------------------+--------------------------------------+\e[0m"
+        WG_EASY_VERSION=$(grep 'image:' "$DOCKER_COMPOSE_FILE" | grep 'ghcr.io/wg-easy/wg-easy' | sed -E 's/.*wg-easy:([0-9a-zA-Z._-]+).*/\1/')
+        if [[ -n "$WG_EASY_VERSION" ]]; then
+            printf "\e[1;36m%-22s : \e[0;35m%s\e[0m\n" "Version wg-easy" "$WG_EASY_VERSION"
+        else
+            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Version wg-easy" "Non définie"
+        fi
+        echo -e "\e[1;36m------------------------------\e[0m\n"
     else
         echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m"
     fi
-
+    echo -e "\e[1;35m🌐 Que souhaitez-vous faire ?\e[0m"
     # Afficher le menu selon la présence du fichier docker-compose.yml
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️  Modifier la configuration\e[0m"
