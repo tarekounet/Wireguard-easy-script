@@ -266,7 +266,7 @@ while true; do
     echo " \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ | "
     echo "  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ | "
     echo "                        \/_____/            \/           \/"
-    echo -e "\e[0;32mV$SCRIPT_VERSION                    \e[1;0mWireguard Easy Script Manager\e[0m"
+    echo -e "\e[0;32mV$SCRIPT_VERSION              \e[1;0mWireguard Easy Script Manager\e[0m"
     echo
 
     if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
@@ -325,8 +325,22 @@ while true; do
         echo -e "\n\e[1;32m📄 Informations actuelles du fichier de configuration :\e[0m\n"
         echo -e "\e[1;36m------------------------------\e[0m"
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
+
+        # Détection DHCP ou statique
+        INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
+        DHCP_STATE="Inconnu"
+        if [[ -n "$INTERFACE" ]]; then
+            if grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null; then
+                DHCP_STATE="DHCP"
+            elif nmcli device show "$INTERFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
+                DHCP_STATE="DHCP"
+            else
+                DHCP_STATE="Statique"
+            fi
+        fi
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP config." "$DHCP_STATE"
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port externe" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
+        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port VPN externe" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
         PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
         if [[ -n "$PASSWORD_HASH" ]]; then
@@ -342,7 +356,7 @@ while true; do
         fi
         echo -e "\e[1;36m------------------------------\e[0m\n"
     else
-        echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m"
+        echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
     fi
     echo -e "\e[1;35m🌐 Que souhaitez-vous faire ?\e[0m"
     # Afficher le menu selon la présence du fichier docker-compose.yml
