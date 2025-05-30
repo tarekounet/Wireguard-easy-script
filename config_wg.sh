@@ -1,15 +1,16 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.1.1"
+SCRIPT_VERSION="1.2.0"
 REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
 UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 
 # Définir le chemin absolu du fichier docker-compose
-# Créer le dossier /mnt/wireguard s'il n'existe pas
 if [[ ! -d "/mnt/wireguard" ]]; then
     mkdir -p "/mnt/wireguard"
 fi
 DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
+
+# --- FONCTIONS PRINCIPALES ---
 
 configure_values() {
     # Fonction pour gérer l'annulation par Ctrl+C
@@ -254,76 +255,198 @@ EOF
     return
 }
 
-# Ajouter un menu pour choisir l'action à effectuer avec des couleurs et des icônes
+# Fonction pour le sous-menu Debian
+debian_tools_menu() {
+    while true; do
+        clear
+        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "\n\e[1;32m1) \e[0m\e[0;37m📦 Afficher la version de Debian\e[0m"
+        echo -e "\e[1;32m2) \e[0m\e[0;37m💾 Afficher l'espace disque\e[0m"
+        echo -e "\e[1;32m3) \e[0m\e[0;37m🔄 Mettre à jour le système (apt update & upgrade)\e[0m"
+        echo -e "\e[1;32m4) \e[0m\e[0;37m🌐 Réseau : Modifier l'adresse IP du serveur\e[0m"
+        echo -e "\e[1;32m5) \e[0m\e[0;37m🖥️ Système : Modifier le nom de la VM\e[0m"
+        echo -e "\e[1;32m6) \e[0m\e[0;37m🔐 Sécurité : Modifier le port SSH\e[0m"
+        echo -e "\e[1;32m7) \e[0m\e[0;37m🐳 Afficher l'état du service Docker\e[0m"
+        echo -e "\e[1;32m8) \e[0m\e[0;37m📊 Moniteur système : Afficher les performances (btop)\e[0m"
+        echo -e "\e[1;32m9) \e[0m\e[0;37m💻 Console : Ouvrir une session bash\e[0m"
+        echo -e "\e[1;32m0) \e[0m\e[0;37m❌ Retour au menu principal\e[0m"
+        echo
+        read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
+        clear
+        case $DEBIAN_ACTION in
+            1)
+                if [[ -f /etc/debian_version ]]; then
+                    echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
+                else
+                    echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
+                fi
+                ;;
+            2)
+                df -h
+                ;;
+            3)
+                echo -e "\e[1;33mMise à jour du système...\e[0m"
+                sudo apt update && sudo apt upgrade -y
+                ;;
+            4)
+                echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
+                ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
+                read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
+                if [[ -z "$IFACE_NUM" ]]; then
+                    echo -e "\e[1;33mModification annulée.\e[0m"
+                    break
+                fi
+                IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
+                if [[ -z "$IFACE" ]]; then
+                    echo -e "\e[1;31mInterface invalide.\e[0m"
+                    break
+                fi
+                CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
+                echo -e "\e[1;33mAdresse IP actuelle de $IFACE :\e[0m $CUR_IP"
+                read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
+                if [[ -z "$NEW_IP" ]]; then
+                    echo -e "\e[1;33mModification annulée.\e[0m"
+                    break
+                fi
+                read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 24 pour /24, laisser vide pour 24) : \e[0m' NEW_MASK
+                NEW_MASK=${NEW_MASK:-24}
+                read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
+                read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
+
+                sudo ip addr flush dev "$IFACE"
+                sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
+                if [[ -n "$NEW_GW" ]]; then
+                    sudo ip route replace default via "$NEW_GW" dev "$IFACE"
+                fi
+                if [[ -n "$NEW_DNS" ]]; then
+                    echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
+                fi
+                sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
+                echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
+                ;;
+            5)
+                echo -e "\n\e[1;36m------ Modifier le nom de la VM ------\e[0m"
+                read -p $'\e[1;33mNouveau nom de la VM (hostname, laisser vide pour aucune modification) : \e[0m' NEW_HOSTNAME
+                if [[ -n "$NEW_HOSTNAME" ]]; then
+                    echo -e "\e[1;32mChangement du nom de la VM en : $NEW_HOSTNAME\e[0m"
+                    sudo hostnamectl set-hostname "$NEW_HOSTNAME"
+                fi
+                ;;
+            6)
+                echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
+                CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
+                CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
+                echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
+                read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
+                if [[ -n "$NEW_SSH_PORT" ]]; then
+                    if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
+                        sudo sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
+                        sudo systemctl restart sshd
+                        echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
+                    else
+                        echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
+                    fi
+                fi
+                ;;
+            7)
+                systemctl status docker --no-pager
+                ;;
+            8)
+                if command -v btop >/dev/null 2>&1; then
+                    btop
+                else
+                    echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
+                    sudo apt update && sudo apt install -y btop
+                    btop
+                fi
+                continue
+                ;;
+            9)
+                echo -e "\e[1;33mVous pouvez maintenant exécuter des commandes dans la console.\e[0m"
+                echo -e "\e[1;33mTaper exit pour revenir au menu principal.\e[0m"
+                trap 'echo -e "\n\e[1;33mRetour au menu principal...\e[0m"; break' SIGINT
+                bash --norc --noprofile
+                continue
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "\e[1;31mChoix invalide.\e[0m"
+                ;;
+        esac
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+    done
+}
+
+# --- MENU PRINCIPAL ---
 while true; do
     # Effacer la console
     clear
 
     # Afficher un message d'accueil avant le menu
-    echo -e "\e[1;31m"
+    echo -e "\e[90m=============================================================\e[0m"
+    echo -e "\e[0;31m"
     echo "        .__                                             .___"
     echo "__  _  _|__|______   ____   ____  __ _______ _______  __| _/"
     echo "\ \/ \/ /  \_  __ \_/ __ \ / ___\|  |  \__  \\_  __  \/ __ | "
     echo " \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ | "
     echo "  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ | "
     echo "                        \/_____/            \/           \/"
-    echo -e "\e[0;32mV$SCRIPT_VERSION              \e[1;0mWireguard Easy Script Manager\e[0m"
+    echo -e "\e[0m"
+    echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
+    echo -e "\e[2;32mv$SCRIPT_VERSION\e[0m"
     echo
+    echo -e "\e[0;34m📜 Voir les modifications du script en appuyant sur \e[0m'\e[0;32mh\e[0m'\e[0m\n"
 
     if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
-        echo -e "\e[1;33mUne nouvelle version est disponible : $REMOTE_VERSION\e[0m"
-    fi
-    # Afficher le système d'exploitation et vérifier les mises à jour
-    echo -e "\e[1;36m------------------------------\e[0m"
-    if [[ -f /etc/os-release ]]; then
-        OS_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
-        echo -e "\e[1;36mSystème d'exploitation : \e[0;33m$OS_NAME\e[0m"
-    else
-        echo -e "\e[1;36mSystème d'exploitation : \e[0;33mInconnu\e[0m"
+        echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
     if command -v apt >/dev/null 2>&1; then
         UPDATES=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;33m$UPDATES paquet(s)\e[0m"
-        else
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;32mAucune\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
+            echo -e "\e[36mMises à jour système : \e[33m$UPDATES paquet(s)\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
         fi
     elif command -v dnf >/dev/null 2>&1; then
         UPDATES=$(dnf check-update --refresh 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;33mOui ($UPDATES)\e[0m"
-        else
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;32mAucune\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
+            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
         fi
     elif command -v yum >/dev/null 2>&1; then
         UPDATES=$(yum check-update 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;33mOui ($UPDATES)\e[0m"
-        else
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;32mAucune\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
+            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
+            echo -e "\e[36m------------------------------\e[0m"
         fi
     elif command -v pacman >/dev/null 2>&1; then
         UPDATES=$(checkupdates 2>/dev/null | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;33mOui ($UPDATES)\e[0m"
-        else
-            echo -e "\e[1;36mMises à jour disponibles : \e[1;32mAucune\e[0m"
+            echo -e "\e[35m------------------------------\e[0m"
+            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
+            echo -e "\e[35m------------------------------\e[0m"
         fi
     else
-        echo -e "\e[1;36mGestionnaire de paquets non détecté, impossible de vérifier les mises à jour.\e[0m"
+        echo -e "\e[36mGestionnaire de paquets non détecté, impossible de vérifier les mises à jour.\e[0m"
     fi
-    echo -e "\e[1;36m------------------------------\e[0m"
     # Afficher l'état du conteneur Wireguard uniquement si le fichier docker-compose existe
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\n\e[0;35m🔎 Etat du conteneur Wireguard :\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "\e[2;36m🔎 Etat de Wireguard :\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
         CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wireguard 2>/dev/null)
         if [[ "$CONTAINER_STATUS" == "running" ]]; then
             STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wireguard)
-            UPTIME=$(date -d "$STARTED_AT" '+%d/%m/%Y %H:%M:%S')
             SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
-            # Formatage en jours, heures, minutes, secondes
             DAYS=$((SECONDS_UP/86400))
             HOURS=$(( (SECONDS_UP%86400)/3600 ))
             MINUTES=$(( (SECONDS_UP%3600)/60 ))
@@ -337,35 +460,33 @@ while true; do
             else
                 UPTIME_STR="${SECONDS}s"
             fi
-            echo -e "\e[0;32m✅ Wireguard est \e[1men cours d'exécution\e[0m\e[0;32m.\e[0m"
-            echo -e "\e[0;32m⏱️  Durée : $UPTIME_STR\e[0m\n"
+            echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
+            echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
         elif [[ "$CONTAINER_STATUS" == "exited" ]]; then
-            echo -e "\e[0;33m⏸️  Wireguard est arrêté (exited)\e[0m"
+            echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
         elif [[ "$CONTAINER_STATUS" == "created" ]]; then
-            echo -e "\e[0;33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
+            echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
         else
-            # Vérifier si le conteneur existe mais n'est pas démarré
             if docker ps -a --format '{{.Names}}' | grep -qw wireguard; then
-                # Afficher les derniers logs pour aider au diagnostic
-                echo -e "\e[0;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
-                echo -e "\e[1;33mDerniers logs du conteneur Wireguard :\e[0m"
+                echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
+                echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
                 docker logs --tail 10 wireguard 2>&1
-                # Vérifier si le dernier démarrage a échoué
                 LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wireguard 2>/dev/null)
                 if [[ "$LAST_EXIT_CODE" != "0" ]]; then
-                    echo -e "\e[1;31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
+                    echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
                 fi
                 echo
             else
-                echo -e "\e[0;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
+                echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
             fi
         fi
     fi
 
     # Afficher les informations du fichier de configuration
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\n\e[1;32m📄 Informations actuelles du fichier de configuration :\e[0m\n"
-        echo -e "\e[1;36m------------------------------\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
 
         # Détection DHCP ou statique
@@ -386,75 +507,95 @@ while true; do
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
         PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
         if [[ -n "$PASSWORD_HASH" ]]; then
-            printf "\e[1;36m%-22s : \e[0;32m%s\e[0m\n" "Mot de passe" "Configuré"
+            printf "\e[1;36m%-22s : \e[0;32m%s\e[0m\n" "Mot de passe" "🔐 OK"
         else
-            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Mot de passe" "Non défini"
+            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Mot de passe" "❌ Non défini"
         fi
         WG_EASY_VERSION=$(grep 'image:' "$DOCKER_COMPOSE_FILE" | grep 'ghcr.io/wg-easy/wg-easy' | sed -E 's/.*wg-easy:([0-9a-zA-Z._-]+).*/\1/')
         if [[ -n "$WG_EASY_VERSION" ]]; then
-            printf "\e[1;36m%-22s : \e[0;35m%s\e[0m\n" "Version wg-easy" "$WG_EASY_VERSION"
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Version wg-easy" "$WG_EASY_VERSION"
         else
-            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Version wg-easy" "Non définie"
+            printf "\e[1;36m%-22s : \e[1;33m%s\e[0m\n" "Version wg-easy" "Non définie"
         fi
-        echo -e "\e[1;36m------------------------------\e[0m\n"
     else
-        echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
+        echo -e "\e[5;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
+        echo -e "\e[1;33m         Veuillez configurer pour continuer.\e[0m\n"
     fi
-    echo -e "\e[1;35m🌐 Que souhaitez-vous faire ?\e[0m"
+    echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
+    echo -e "🌍\e[2;36m MENU PRINCIPAL :\e[0m"
+    echo -e "\e[2;35m--------------------------------------------------\e[0m"
     # Afficher le menu selon la présence du fichier docker-compose.yml
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️  Modifier la configuration\e[0m"
-        echo -e "\e[1;32m2) \e[0m\e[0;37m🚀 Lancer le service\e[0m"
-        echo -e "\e[1;32m3) \e[0m\e[0;37m🛑 Arrêter le service\e[0m"
-        echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
+        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️ Modifier la configuration\e[0m"
+        if [[ "$CONTAINER_STATUS" == "running" ]]; then
+            echo -e "\e[1;90m2) 🚀 Lancer le service (déjà lancé)\e[0m"
+            echo -e "\e[1;32m3) \e[0m\e[0;37m🛑 Arrêter le service\e[0m"
+            echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
+        else
+            echo -e "\e[1;32m2) \e[0m\e[0;37m🚀 Lancer le service\e[0m"
+            echo -e "\e[1;90m3) 🛑 Arrêter le service (déjà arrêté)\e[0m"
+            echo -e "\e[1;90m4) 🔄 Redémarrer le service (service arrêté)\e[0m"
+        fi
         echo -e "\e[1;32m5) \e[0m\e[0;37m🐳 Mise à jour du container\e[0m"
-        echo -e "\e[1;32m6) \e[0m\e[0;37m♻️  Réinitialiser\e[0m"
-        echo -e "\e[1;32md) \e[0m\e[0;37m🐧  Menu spécial Debian\e[0m"
-        echo -e "\e[1;32mu) \e[0m\e[0;37m🔼  Mettre à jour le script\e[0m"
+        echo -e "\e[1;32m6) \e[0m\e[0;37m♻️ Réinitialiser\e[0m"
+        echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
+        if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼  Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
+        fi
+        echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
-        # MENU_MAX=9
     else
-        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️  Créer la configuration\e[0m"
-        echo -e "\e[1;32md) \e[0m\e[0;37m🐧  Menu spécial pour les fonctionnalités Debian\e[0m"
-        echo -e "\e[1;32mu) \e[0m\e[0;37m🔼  Mettre à jour le script\e[0m"
+        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️ Créer la configuration\e[0m"
+        echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
+        if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
+        fi
+        echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
-        # MENU_MAX=4
     fi
 
-    # Ajouter un espace avant la saisie
-    echo
     # Demander le choix de l'utilisateur
+    echo
     read -p $'\e[1;33mEntrez votre choix : \e[0m' ACTION
-
-    # Effacer la console avant d'exécuter l'action
     clear
+
+    SKIP_PAUSE=0
 
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         case $ACTION in
-            1)
-                echo -e "\e[1;33m⚙️  Configuration de Wireguard...\e[0m"
-                configure_values
-                ;;
+            1) configure_values ;;
             2)
-                PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-                if [[ -z "$PASSWORD_HASH" ]]; then
-                    echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+                if [[ "$CONTAINER_STATUS" == "running" ]]; then
+                    echo -e "\e[1;90mLe service Wireguard est déjà lancé.\e[0m"
                 else
-                    echo "Démarrage de Wireguard..."
-                    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                    echo "Wireguard démarré avec succès ! 🚀"
+                    PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+                    if [[ -z "$PASSWORD_HASH" ]]; then
+                        echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+                    else
+                        echo "Démarrage de Wireguard..."
+                        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                        echo "Wireguard démarré avec succès ! 🚀"
+                    fi
                 fi
                 ;;
             3)
-                echo "Arrêt de Wireguard..."
-                docker compose -f "$DOCKER_COMPOSE_FILE" down
-                echo "Wireguard arrêté avec succès ! 🛑"
+                if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                    echo -e "\e[1;90mLe service Wireguard est déjà arrêté.\e[0m"
+                else
+                    echo "Arrêt de Wireguard..."
+                    docker compose -f "$DOCKER_COMPOSE_FILE" down
+                    echo "Wireguard arrêté avec succès ! 🛑"
+                fi
                 ;;
             4)
-                echo "Redémarrage de Wireguard..."
-                docker compose -f "$DOCKER_COMPOSE_FILE" down
-                docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                echo "Wireguard redémarré avec succès ! 🔄"
+                if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                    echo -e "\e[1;90mImpossible de redémarrer : le service est arrêté.\e[0m"
+                else
+                    echo "Redémarrage de Wireguard..."
+                    docker compose -f "$DOCKER_COMPOSE_FILE" down
+                    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                    echo "Wireguard redémarré avec succès ! 🔄"
+                fi
                 ;;
             5)
                 echo "Mise à jour de Wireguard..."
@@ -500,263 +641,99 @@ while true; do
                 ;;
 
             d|D)
-                # Menu spécial Debian
-                echo -e "\e[1;34m🐧  Menu spécial pour les fonctionnalités Debian\e[0m"
-                while true; do
-                    echo -e "1) \e[0;37mMettre à jour le système (apt update & upgrade)\e[0m"
-                    echo -e "2) \e[0;37mAfficher la version de Debian\e[0m"
-                    echo -e "3) \e[0;37mAfficher l'espace disque\e[0m"
-                    echo -e "4) \e[0;37mAfficher l'état du service Docker\e[0m"
-                    echo -e "5) \e[0;37mModifier l'adresse IP du serveur\e[0m"
-                    echo -e "6) \e[0;37mModifier le nom de la VM\e[0m"
-                    echo -e "7) \e[0;37mModifier le port SSH\e[0m"
-                    echo -e "8) \e[0;37mAfficher les infos système (screenfetch)\e[0m"
-                    echo -e "0) \e[0;37mRetour au menu principal\e[0m"
-                    echo
-                    read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
-                    case $DEBIAN_ACTION in
-                        1)
-                            echo -e "\e[1;33mMise à jour du système...\e[0m"
-                            sudo apt update && sudo apt upgrade -y
-                            ;;
-                        2)
-                            if [[ -f /etc/debian_version ]]; then
-                                echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
-                            else
-                                echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
-                            fi
-                            ;;
-                        3)
-                            df -h
-                            ;;
-                        4)
-                            systemctl status docker --no-pager
-                            ;;
-                        5)
-                            echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
-                            ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
-                            read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
-                            if [[ -z "$IFACE_NUM" ]]; then
-                                echo -e "\e[1;33mModification annulée.\e[0m"
-                                break
-                            fi
-                            IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
-                            if [[ -z "$IFACE" ]]; then
-                                echo -e "\e[1;31mInterface invalide.\e[0m"
-                                break
-                            fi
-                            CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
-                            echo -e "\e[1;33mAdresse IP actuelle de $IFACE :\e[0m $CUR_IP"
-                            read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
-                            if [[ -z "$NEW_IP" ]]; then
-                                echo -e "\e[1;33mModification annulée.\e[0m"
-                                break
-                            fi
-                            read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 24 pour /24, laisser vide pour 24) : \e[0m' NEW_MASK
-                            NEW_MASK=${NEW_MASK:-24}
-                            read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
-                            read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
-
-                            sudo ip addr flush dev "$IFACE"
-                            sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
-                            if [[ -n "$NEW_GW" ]]; then
-                                sudo ip route replace default via "$NEW_GW" dev "$IFACE"
-                            fi
-                            if [[ -n "$NEW_DNS" ]]; then
-                                echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
-                            fi
-                            sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
-                            echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
-                            ;;
-                        6)
-                            echo -e "\n\e[1;36m------ Modifier le nom de la VM ------\e[0m"
-                            read -p $'\e[1;33mNouveau nom de la VM (hostname, laisser vide pour aucune modification) : \e[0m' NEW_HOSTNAME
-                            if [[ -n "$NEW_HOSTNAME" ]]; then
-                                echo -e "\e[1;32mChangement du nom de la VM en : $NEW_HOSTNAME\e[0m"
-                                sudo hostnamectl set-hostname "$NEW_HOSTNAME"
-                            fi
-                            ;;
-                        7)
-                            echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
-                            CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
-                            CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
-                            echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
-                            read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
-                            if [[ -n "$NEW_SSH_PORT" ]]; then
-                                if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
-                                    sudo sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
-                                    sudo systemctl restart sshd
-                                    echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
-                                else
-                                    echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
-                                fi
-                            fi
-                            ;;
-                        8)
-                            if command -v screenfetch >/dev/null 2>&1; then
-                                screenfetch
-                            else
-                                echo -e "\e[1;31mscreenfetch n'est pas installé. Installation...\e[0m"
-                                sudo apt update && sudo apt install -y screenfetch
-                                screenfetch
-                            fi
-                            ;;
-                        0)
-                            break
-                            ;;
-                        *)
-                            echo -e "\e[1;31mChoix invalide.\e[0m"
-                            ;;
-                    esac
-                    echo -e "\nAppuyez sur une touche pour continuer..."
-                    read -n 1 -s
-                done
+                debian_tools_menu
+                ;;
+            h|H)
+                clear
+                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                if [[ -f CHANGELOG.md ]]; then
+                    cat CHANGELOG.md
+                else
+                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
+                fi
+                SKIP_PAUSE=1
                 ;;
             u|U)
-                if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
-                    echo -e "\e[1;33mTéléchargement de la dernière version du script...\e[0m"
-                    curl -s -o config_wg.sh.new "$UPDATE_URL"
-                    if [[ -s config_wg.sh.new ]]; then
-                        mv config_wg.sh.new "$0"
-                        chmod +x "$0"
-                        echo -e "\e[1;32mMise à jour terminée. Veuillez relancer le script.\e[0m"
-                        exec "$0" "$@"
-                    else
-                        echo -e "\e[1;31mErreur lors du téléchargement de la mise à jour.\e[0m"
-                        rm -f config_wg.sh.new
-                    fi
+                clear
+                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                # Récupérer le changelog depuis GitHub et remplacer le fichier local
+                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
+                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
                 else
-                    echo -e "\e[1;33mAucune mise à jour disponible.\e[0m"
+                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
                 fi
+                # Mettre à jour le script
+                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                    echo -e "\nAppuyez sur une touche pour relancer le script..."
+                    read -n 1 -s
+                    exec "$0"
+                else
+                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+                fi
+                SKIP_PAUSE=1
                 ;;
             0)
+                clear
                 echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                pkill -KILL -u "system"
+                SKIP_PAUSE=1
+                exit 0
                 ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez entrer un nombre entre 0 et 7.\e[0m"
+                echo -e "\e[1;31mChoix invalide.\e[0m"
                 ;;
         esac
     else
         case $ACTION in
-            1)
-                echo -e "\e[1;33m⚙️  Création de la configuration \e[0m\n"
-                configure_values
+            1) configure_values ;;
+            d|D) debian_tools_menu ;;
+            h|H)
+                clear
+                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                if [[ -f CHANGELOG.md ]]; then
+                    cat CHANGELOG.md
+                else
+                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
+                fi
+                SKIP_PAUSE=1
                 ;;
-            d|D)
-                # Menu spécial Debian
-                echo -e "\e[1;34m🐧  Menu spécial pour les fonctionnalités Debian\e[0m"
-                while true; do
-                    echo -e "\n\e[1;36m------ Menu Debian ------\e[0m"
-                    echo -e "1) \e[0;37mMettre à jour le système (apt update & upgrade)\e[0m"
-                    echo -e "2) \e[0;37mAfficher la version de Debian\e[0m"
-                    echo -e "3) \e[0;37mAfficher l'espace disque\e[0m"
-                    echo -e "4) \e[0;37mAfficher l'état du service Docker\e[0m"
-                    echo -e "5) \e[0;37mModifier l'adresse IP du serveur\e[0m"
-                    echo -e "6) \e[0;37mModifier le nom de la VM et le port SSH\e[0m"
-                    echo -e "0) \e[0;37mRetour au menu principal\e[0m"
-                    echo
-                    read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
-                    case $DEBIAN_ACTION in
-                        1)
-                            echo -e "\e[1;33mMise à jour du système...\e[0m"
-                            sudo apt update && sudo apt upgrade -y
-                            ;;
-                        2)
-                            if [[ -f /etc/debian_version ]]; then
-                                echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
-                            else
-                                echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
-                            fi
-                            ;;
-                        3)
-                            df -h
-                            ;;
-                        4)
-                            systemctl status docker --no-pager
-                            ;;
-                        5)
-                            echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
-                            ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
-                            read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
-                            if [[ -z "$IFACE_NUM" ]]; then
-                                echo -e "\e[1;33mModification annulée.\e[0m"
-                                break
-                            fi
-                            IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
-                            if [[ -z "$IFACE" ]]; then
-                                echo -e "\e[1;31mInterface invalide.\e[0m"
-                                break
-                            fi
-                            CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
-                            echo -e "\e[1;33mAdresse IP actuelle de $IFACE :\e[0m $CUR_IP"
-                            read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
-                            if [[ -z "$NEW_IP" ]]; then
-                                echo -e "\e[1;33mModification annulée.\e[0m"
-                                break
-                            fi
-                            read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 24 pour /24, laisser vide pour 24) : \e[0m' NEW_MASK
-                            NEW_MASK=${NEW_MASK:-24}
-                            read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
-                            read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
-
-                            sudo ip addr flush dev "$IFACE"
-                            sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
-                            if [[ -n "$NEW_GW" ]]; then
-                                sudo ip route replace default via "$NEW_GW" dev "$IFACE"
-                            fi
-                            if [[ -n "$NEW_DNS" ]]; then
-                                echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
-                            fi
-                            sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
-                            echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
-                            ;;
-                        6)
-                            # Sous-menu pour hostname et port SSH
-                            echo -e "\n\e[1;36m------ Modifier le nom de la VM et le port SSH ------\e[0m"
-                            read -p $'\e[1;33mNouveau nom de la VM (hostname, laisser vide pour aucune modification) : \e[0m' NEW_HOSTNAME
-                            if [[ -n "$NEW_HOSTNAME" ]]; then
-                                echo -e "\e[1;32mChangement du nom de la VM en : $NEW_HOSTNAME\e[0m"
-                                sudo hostnamectl set-hostname "$NEW_HOSTNAME"
-                            fi
-                            echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
-                            CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
-                            CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
-                            echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
-                            read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
-                            if [[ -n "$NEW_SSH_PORT" ]]; then
-                                if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
-                                    sudo sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
-                                    sudo systemctl restart sshd
-                                    echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
-                                else
-                                    echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
-                                fi
-                            fi
-                            ;;
-                        0)
-                            break
-                            ;;
-                        *)
-                            echo -e "\e[1;31mChoix invalide.\e[0m"
-                            ;;
-                    esac
-                    echo -e "\nAppuyez sur une touche pour continuer..."
+            u|U)
+                clear
+                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
+                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
+                else
+                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
+                fi
+                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                    echo -e "\nAppuyez sur une touche pour relancer le script..."
                     read -n 1 -s
-                done
+                    exec "$0"
+                else
+                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+                fi
+                SKIP_PAUSE=1
                 ;;
             0)
+                clear
                 echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                pkill -KILL -u "system"
+                SKIP_PAUSE=1
+                exit 0
                 ;;
-            
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez entrer 1, 2 ou 0.\e[0m"
+                echo -e "\e[1;31mChoix invalide.\e[0m"
                 ;;
         esac
     fi
 
-    # Pause avant de retourner au menu
-    echo -e "\nAppuyez sur une touche pour revenir au menu..."
-    read -n 1 -s
+    # Pause avant de retourner au menu (sauf pour changelog, update, quitter)
+    if [[ "$SKIP_PAUSE" != "1" ]]; then
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+    fi
 done
