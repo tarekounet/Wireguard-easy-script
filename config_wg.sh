@@ -1,7 +1,5 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.3"
-
 # --- Gestion du canal (stable/beta) ---
 SCRIPT_CHANNEL="stable"
 if [[ "$1" == "--beta" ]]; then
