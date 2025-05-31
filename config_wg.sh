@@ -3,14 +3,14 @@
 CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
 SCRIPT_BASE_VERSION_INIT="1.3.0"
-SCRIPT_CANAL="beta"
+SCRIPT_CANAL="stable"
 # Création/Mise à jour du fichier de conf si besoin
 if [[ ! -f "$CONF_FILE" ]]; then
     cat > "$CONF_FILE" <<EOF
 SCRIPT_CHANNEL="$SCRIPT_CANAL"
 SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
 EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-BETA_CONFIRMED="1"
+BETA_CONFIRMED="0"
 EOF
 else
     # Update only modified values
