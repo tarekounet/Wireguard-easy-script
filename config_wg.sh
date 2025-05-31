@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.3"
+SCRIPT_VERSION="1.4"
 
 # --- Gestion du canal (stable/beta) ---
 SCRIPT_CHANNEL="stable"
