@@ -429,6 +429,14 @@ while true; do
     echo
     echo -e "\e[0;34m📜 Voir les modifications du script en appuyant sur \e[0m'\e[0;32mh\e[0m'\e[0m\n"
 
+    # Afficher le canal actuel et le bouton de switch
+    echo -e "\e[1;36mCanal actuel du script :\e[0m \e[1;33m$SCRIPT_CHANNEL\e[0m"
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;35mbeta\e[0m"
+    else
+        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;32mstable\e[0m"
+    fi
+
     if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
         echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
     fi
@@ -588,179 +596,19 @@ while true; do
 
     SKIP_PAUSE=0
 
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        case $ACTION in
-            1) configure_values ;;
-            2)
-                if [[ "$CONTAINER_STATUS" == "running" ]]; then
-                    echo -e "\e[1;90mLe service Wireguard est déjà lancé.\e[0m"
-                else
-                    PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-                    if [[ -z "$PASSWORD_HASH" ]]; then
-                        echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
-                    else
-                        echo "Démarrage de Wireguard..."
-                        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                        echo "Wireguard démarré avec succès ! 🚀"
-                    fi
-                fi
-                ;;
-            3)
-                if [[ "$CONTAINER_STATUS" != "running" ]]; then
-                    echo -e "\e[1;90mLe service Wireguard est déjà arrêté.\e[0m"
-                else
-                    echo "Arrêt de Wireguard..."
-                    docker compose -f "$DOCKER_COMPOSE_FILE" down
-                    echo "Wireguard arrêté avec succès ! 🛑"
-                fi
-                ;;
-            4)
-                if [[ "$CONTAINER_STATUS" != "running" ]]; then
-                    echo -e "\e[1;90mImpossible de redémarrer : le service est arrêté.\e[0m"
-                else
-                    echo "Redémarrage de Wireguard..."
-                    docker compose -f "$DOCKER_COMPOSE_FILE" down
-                    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                    echo "Wireguard redémarré avec succès ! 🔄"
-                fi
-                ;;
-            5)
-                echo "Mise à jour de Wireguard..."
-                docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
-                docker compose -f "$DOCKER_COMPOSE_FILE" pull
-                docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                echo "Wireguard mis à jour et purgé avec succès ! ⬆️"
-                ;;
-            6)
-                echo "Réinitialisation de Wireguard..."
-                # Confirmation par mot de passe technique (hashé en SHA-512)
-                EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-                ATTEMPTS=0
-                MAX_ATTEMPTS=3
-                while (( ATTEMPTS < MAX_ATTEMPTS )); do
-                    read -sp "Entrez le mot de passe technique pour confirmer la réinitialisation (ctrl+c pour annuler) : " RESET_PASSWORD
-                    echo
-                    if [[ "$RESET_PASSWORD" == $'\e' ]]; then
-                        echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
-                        break
-                    fi
-                    ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$RESET_PASSWORD")
-                    if [[ "$ENTERED_HASH" == "$EXPECTED_HASH" ]]; then
-                        echo -e "\e[1;32mMot de passe correct.\e[0m"
-                        read -p $'\e[1;33mÊtes-vous sûr de vouloir réinitialiser Wireguard ? Cette action est irréversible. (o/N) : \e[0m' CONFIRM_RESET
-                        if [[ "$CONFIRM_RESET" == "o" || "$CONFIRM_RESET" == "O" ]]; then
-                            docker compose -f "$DOCKER_COMPOSE_FILE" down
-                            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
-                            echo "Wireguard réinitialisé avec succès ! ♻️"
-                        else
-                            echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
-                        fi
-                        break
-                    else
-                        ((ATTEMPTS++))
-                        if (( ATTEMPTS < MAX_ATTEMPTS )); then
-                            echo -e "\e[1;31mMot de passe incorrect. Nouvelle tentative ($ATTEMPTS/$MAX_ATTEMPTS).\e[0m"
-                        else
-                            echo -e "\e[1;31mMot de passe incorrect. Réinitialisation annulée.\e[0m\n"
-                        fi
-                    fi
-                done
-                ;;
-
-            d|D)
-                debian_tools_menu
-                ;;
-            h|H)
-                clear
-                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
-                if [[ -f CHANGELOG.md ]]; then
-                    cat CHANGELOG.md
-                else
-                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            u|U)
-                clear
-                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-                # Récupérer le changelog depuis GitHub et remplacer le fichier local
-                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
-                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
-                else
-                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
-                fi
-                # Mettre à jour le script
-                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                    echo -e "\nAppuyez sur une touche pour relancer le script..."
-                    read -n 1 -s
-                    exec "$0"
-                else
-                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            0)
-                clear
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                SKIP_PAUSE=1
-                exit 0
-                ;;
-            *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                ;;
-        esac
-    else
-        case $ACTION in
-            1) configure_values ;;
-            d|D) debian_tools_menu ;;
-            h|H)
-                clear
-                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
-                if [[ -f CHANGELOG.md ]]; then
-                    cat CHANGELOG.md
-                else
-                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            u|U)
-                clear
-                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
-                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
-                else
-                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
-                fi
-                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                    echo -e "\nAppuyez sur une touche pour relancer le script..."
-                    read -n 1 -s
-                    exec "$0"
-                else
-                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            0)
-                clear
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                SKIP_PAUSE=1
-                exit 0
-                ;;
-            *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                ;;
-        esac
+    # Ajout du switch de canal
+    if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+        if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+            echo "beta" > .channel
+            echo -e "\e[1;35mLe script va passer en mode beta au prochain lancement.\e[0m"
+        else
+            echo "stable" > .channel
+            echo -e "\e[1;32mLe script va passer en mode stable au prochain lancement.\e[0m"
+        fi
+        echo -e "\e[1;33mRedémarrage du script...\e[0m"
+        sleep 1
+        exec "$0"
+        exit 0
     fi
 
-    # Pause avant de retourner au menu (sauf pour changelog, update, quitter)
-    if [[ "$SKIP_PAUSE" != "1" ]]; then
-        echo -e "\nAppuyez sur une touche pour revenir au menu..."
-        read -n 1 -s
-    fi
-done
+    # ...reste du code...
