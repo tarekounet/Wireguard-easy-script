@@ -1,21 +1,35 @@
 #!/bin/bash
 
 SCRIPT_VERSION="1.2"
+
+# Mode du script : stable ou beta (par défaut : stable)
+SCRIPT_CHANNEL="stable"
+if [[ "$1" == "--beta" ]]; then
+    SCRIPT_CHANNEL="beta"
+elif [[ "$1" == "--stable" ]]; then
+    SCRIPT_CHANNEL="stable"
+elif [[ -f ".channel" ]]; then
+    # Permet de forcer le canal via un fichier .channel (optionnel)
+    SCRIPT_CHANNEL=$(cat .channel)
+fi
+
 # Ajout du numéro de commit court à la version et mise à jour de version.txt
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
     if [[ -n "$GIT_COMMIT" ]]; then
         SCRIPT_VERSION="${SCRIPT_VERSION}-${GIT_COMMIT}"
-        echo "$SCRIPT_VERSION" > version.txt
-    else
-        echo "$SCRIPT_VERSION" > version.txt
     fi
-else
-    echo "$SCRIPT_VERSION" > version.txt
 fi
-# Vérification de la version du script
-REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+echo "$SCRIPT_VERSION" > version.txt
+
+# Sélection de la source selon le canal
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
+    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
+else
+    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+fi
 
 # Définir le chemin absolu du fichier docker-compose
 if [[ ! -d "/mnt/wireguard" ]]; then
