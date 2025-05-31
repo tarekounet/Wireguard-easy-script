@@ -25,10 +25,6 @@ if [[ -n "$GIT_COMMIT" ]]; then
 else
     SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
 fi
-
-# --- Écriture de la version dans version.txt ---
-echo "$SCRIPT_VERSION" > version.txt
-
 # --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
