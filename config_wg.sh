@@ -2,7 +2,7 @@
 
 CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
-SCRIPT_BASE_VERSION_INIT="1.3.0"
+SCRIPT_BASE_VERSION_INIT="1.3.1"
 SCRIPT_CANAL="stable"
 
 # Vérifier et créer le fichier de conf AVANT toute autre action
@@ -17,6 +17,13 @@ fi
 
 # --- Chargement de la configuration ---
 source "$CONF_FILE"
+
+# Fonction de sauvegarde du script
+backup_script() {
+    local backup_file="${SCRIPT_BACKUP:-config_wg.sh.bak}"
+    cp "$0" "$backup_file"
+    echo -e "\e[1;36mSauvegarde du script effectuée : $backup_file\e[0m"
+}
 
 # --- Fonctions utilitaires pour lire/écrire dans wg-easy.conf ---
 set_conf_value() {
@@ -39,69 +46,43 @@ if [[ "$1" == "--beta" ]]; then
     SCRIPT_CHANNEL="beta"
 elif [[ "$1" == "--stable" ]]; then
     SCRIPT_CHANNEL="stable"
+else
+    SCRIPT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
 fi
 
-# --- Récupération et mise à jour des versions distantes ---
+# --- Récupération des versions distantes ---
 VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
 VERSION_BETA=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
-if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-    VERSION_LOCAL="$VERSION_BETA"
-else
-    VERSION_LOCAL="$VERSION_STABLE"
+
+# --- Mise à jour du fichier de conf si besoin ---
+MODIFIED=0
+if [[ "$(get_conf_value "SCRIPT_CHANNEL")" != "$SCRIPT_CHANNEL" ]]; then
+    set_conf_value "SCRIPT_CHANNEL" "$SCRIPT_CHANNEL"
+    MODIFIED=1
 fi
-
-# --- Mise à jour du fichier de conf ---
-sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"$SCRIPT_CHANNEL\"/" "$CONF_FILE"
-
+if [[ "$(get_conf_value "SCRIPT_BASE_VERSION")" != "$SCRIPT_BASE_VERSION_INIT" ]]; then
+    set_conf_value "SCRIPT_BASE_VERSION" "$SCRIPT_BASE_VERSION_INIT"
+    MODIFIED=1
+fi
+if [[ "$(get_conf_value "VERSION_STABLE")" != "$VERSION_STABLE" ]]; then
+    set_conf_value "VERSION_STABLE" "$VERSION_STABLE"
+    MODIFIED=1
+fi
+if [[ "$(get_conf_value "VERSION_BETA")" != "$VERSION_BETA" ]]; then
+    set_conf_value "VERSION_BETA" "$VERSION_BETA"
+    MODIFIED=1
+fi
 
 # --- Utilisation dans le script ---
+VERSION_LOCAL=$(get_conf_value "SCRIPT_BASE_VERSION")
+VERSION_STABLE_CONF=$(get_conf_value "VERSION_STABLE")
+VERSION_BETA_CONF=$(get_conf_value "VERSION_BETA")
+SCRIPT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
+
+# --- Affichage des informations ---
 echo -e "\e[2;32mWireguard Easy Script - v$VERSION_LOCAL ($SCRIPT_CHANNEL)\e[0m"
-
-
-
-# --- Gestion du canal (stable/beta) optimisée ---
-SCRIPT_CHANNEL="beta"
-
-# 1. Argument en priorité
-if [[ "$1" == "--beta" ]]; then
-    SCRIPT_CHANNEL="beta"
-elif [[ "$1" == "--stable" ]]; then
-    SCRIPT_CHANNEL="stable"
-# 2. Fichier .channel si présent
-elif [[ -f ".channel" ]]; then
-    CHANNEL_FILE=$(cat .channel 2>/dev/null)
-    if [[ "$CHANNEL_FILE" == "beta" || "$CHANNEL_FILE" == "stable" ]]; then
-        SCRIPT_CHANNEL="$CHANNEL_FILE"
-    fi
-fi
-
-# --- Définition des URLs selon le canal ---
-if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
-    REMOTE_VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
-else
-    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
-fi
-
-# --- Affichage version dans le menu principal ---
-if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
-    # Si la version stable distante > version beta locale
-    if [[ "$(printf '%s\n' "$REMOTE_VERSION_STABLE" "$SCRIPT_BASE_VERSION" | sort -V | tail -n1)" == "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$SCRIPT_BASE_VERSION" ]]; then
-        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION_STABLE (stable)\e[0m"
-    elif [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_BETA" ]]; then
-        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION_BETA (beta)\e[0m"
-    else
-        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION (beta)\e[0m"
-    fi
-else
-    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
-        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION ($SCRIPT_CHANNEL)\e[0m"
-    else
-        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION ($SCRIPT_CHANNEL)\e[0m"
-    fi
-fi
+echo -e "\e[2;34mVersion stable distante : $VERSION_STABLE_CONF\e[0m"
+echo -e "\e[2;34mVersion beta distante : $VERSION_BETA_CONF\e[0m"
 
 # --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
@@ -502,27 +483,40 @@ debian_tools_menu() {
 # --- Gestion du switch de canal ---
 if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
     if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta ? (o/N) : \e[0m' CONFIRM_BETA
-        if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
-            # Télécharger le script beta et relancer
-            if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
-                mv "$0.new" "$0"
-                chmod +x "$0"
-                echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
-                sleep 1
-                exec "$0"
-                exit 0
-            else
-                echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
-                sleep 2
-            fi
+        # Demande du mot de passe technique avant de passer en beta
+        EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+        read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+        if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+            echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
+            sleep 2
         else
-            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
-            sleep 1
+            echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+            read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+            if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+                set_conf_value "SCRIPT_CHANNEL" "beta"
+                set_conf_value "BETA_CONFIRMED" "1"   # <-- Stocke la validation du risque dans le fichier de conf
+                if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+                    sleep 1
+                    exec "$0"
+                    exit 0
+                else
+                    echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
+                    sleep 2
+                fi
+            else
+                set_conf_value "BETA_CONFIRMED" "0"
+                echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+                sleep 1
+            fi
         fi
     else
-        # Passage beta -> stable sans confirmation
+        set_conf_value "SCRIPT_CHANNEL" "stable"
+        set_conf_value "BETA_CONFIRMED" "0"
         if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh" -o "$0.new"; then
             mv "$0.new" "$0"
             chmod +x "$0"
@@ -758,27 +752,40 @@ while true; do
     # --- Gestion du switch de canal ---
     if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
         if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-            echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-            read -p $'\e[1;33mConfirmez-vous vouloir passer en beta ? (o/N) : \e[0m' CONFIRM_BETA
-            if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
-                # Télécharger le script beta et relancer
-                if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
-                    sleep 1
-                    exec "$0"
-                    exit 0
-                else
-                    echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
-                    sleep 2
-                fi
+            # Demande du mot de passe technique avant de passer en beta
+            EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+            read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
+            echo
+            ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+            if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+                echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
+                sleep 2
             else
-                echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
-                sleep 1
+                echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+                read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+                if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+                    set_conf_value "SCRIPT_CHANNEL" "beta"
+                    set_conf_value "BETA_CONFIRMED" "1"   # <-- Stocke la validation du risque dans le fichier de conf
+                    if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
+                        mv "$0.new" "$0"
+                        chmod +x "$0"
+                        echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+                        sleep 1
+                        exec "$0"
+                        exit 0
+                    else
+                        echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
+                        sleep 2
+                    fi
+                else
+                    set_conf_value "BETA_CONFIRMED" "0"
+                    echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+                    sleep 1
+                fi
             fi
         else
-            # Passage beta -> stable sans confirmation
+            set_conf_value "SCRIPT_CHANNEL" "stable"
+            set_conf_value "BETA_CONFIRMED" "0"
             if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh" -o "$0.new"; then
                 mv "$0.new" "$0"
                 chmod +x "$0"
@@ -903,20 +910,35 @@ while true; do
             u|U)
                 clear
                 echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                # Déterminer l'URL de mise à jour selon le canal courant
+                CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
+                if [[ "$CURRENT_CHANNEL" == "beta" ]]; then
+                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
+                else
+                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+                fi
+
                 # Récupérer le changelog depuis GitHub et remplacer le fichier local
                 if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
                     echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
                 else
                     echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
                 fi
-                # Mettre à jour le script
+
+                # Vérifier si une mise à jour est disponible avant backup et remplacement
                 if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                    echo -e "\nAppuyez sur une touche pour relancer le script..."
-                    read -n 1 -s
-                    exec "$0"
+                    if ! cmp -s "$0" "$0.new"; then
+                        backup_script
+                        mv "$0.new" "$0"
+                        chmod +x "$0"
+                        echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                        echo -e "\nAppuyez sur une touche pour relancer le script..."
+                        read -n 1 -s
+                        exec "$0"
+                    else
+                        rm "$0.new"
+                        echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+                    fi
                 else
                     echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
                 fi
@@ -963,18 +985,35 @@ while true; do
             u|U)
                 clear
                 echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                # Déterminer l'URL de mise à jour selon le canal courant
+                CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
+                if [[ "$CURRENT_CHANNEL" == "beta" ]]; then
+                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
+                else
+                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+                fi
+
+                # Récupérer le changelog depuis GitHub et remplacer le fichier local
                 if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
                     echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
                 else
                     echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
                 fi
+
+                # Vérifier si une mise à jour est disponible avant backup et remplacement
                 if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                    echo -e "\nAppuyez sur une touche pour relancer le script..."
-                    read -n 1 -s
-                    exec "$0"
+                    if ! cmp -s "$0" "$0.new"; then
+                        backup_script
+                        mv "$0.new" "$0"
+                        chmod +x "$0"
+                        echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                        echo -e "\nAppuyez sur une touche pour relancer le script..."
+                        read -n 1 -s
+                        exec "$0"
+                    else
+                        rm "$0.new"
+                        echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+                    fi
                 else
                     echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
                 fi
@@ -998,22 +1037,3 @@ while true; do
         read -n 1 -s
     fi
 done
-
-# --- Fonctions utilitaires et annexes (si besoin) ---
-restore_script() {
-    if [[ -f "$SCRIPT_BACKUP" ]]; then
-        echo -e "\e[33mUne sauvegarde du script est disponible.\e[0m"
-        read -p $'\e[1;33mVoulez-vous restaurer la version précédente du script ? (o/N) : \e[0m' RESTORE_CHOICE
-        if [[ "$RESTORE_CHOICE" == "o" || "$RESTORE_CHOICE" == "O" ]]; then
-            cp "$SCRIPT_BACKUP" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript restauré depuis la sauvegarde locale ($SCRIPT_BACKUP).\e[0m"
-            echo -e "\e[1;33mRedémarrage du script...\e[0m"
-            sleep 1
-            exec "$0"
-            exit 0
-        else
-            echo -e "\e[1;33mRestauration annulée.\e[0m"
-        fi
-    fi
-}
