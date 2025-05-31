@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.2"
+SCRIPT_VERSION="1.3"
 
 # Mode du script : stable ou beta (par défaut : stable)
 SCRIPT_CHANNEL="stable"
@@ -13,13 +13,15 @@ elif [[ -f ".channel" ]]; then
     SCRIPT_CHANNEL=$(cat .channel)
 fi
 
-# Ajout du numéro de commit court à la version et mise à jour de version.txt
+# Ajout du numéro de commit court à la version
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
     if [[ -n "$GIT_COMMIT" ]]; then
         SCRIPT_VERSION="${SCRIPT_VERSION}-${GIT_COMMIT}"
     fi
 fi
+
+# Écriture de la version complète dans version.txt (toujours après le switch éventuel)
 echo "$SCRIPT_VERSION" > version.txt
 
 # Sélection de la source selon le canal
