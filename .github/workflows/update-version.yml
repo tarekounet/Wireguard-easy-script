@@ -1,0 +1,30 @@
+name: Update version.txt with commit
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version and commit
+        run: |
+          VERSION=$(grep '^SCRIPT_VERSION=' config_wg.sh | head -n1 | cut -d'"' -f2)
+          [[ -z "$VERSION" ]] && VERSION="1.0.0"
+          CHANNEL=$(grep '^SCRIPT_CHANNEL=' config_wg.sh | head -n1 | cut -d'"' -f2)
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "${VERSION}-${CHANNEL}-${COMMIT}" > version.txt
+
+      - name: Commit and push version.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.txt
+          git commit -m "Mise à jour version.txt [auto]" || exit 0
+          git push
