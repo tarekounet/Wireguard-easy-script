@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Définir la version de base du script ---
-SCRIPT_BASE_VERSION="1.3"
+SCRIPT_BASE_VERSION="1.3.0"
 
 # --- Gestion du canal (stable/beta) optimisée ---
 SCRIPT_CHANNEL="stable"
@@ -21,6 +21,7 @@ fi
 
 # --- Construction de la version ---
 SCRIPT_VERSION_SHORT="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
+# Ne pas utiliser de commit ou de hash dans la version affichée
 
 # --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
@@ -56,7 +57,7 @@ if [[ "$show_update" == "1" ]]; then
 fi
 
 # --- Affichage version dans le menu principal ---
-echo -e "\e[2;32mv$SCRIPT_VERSION_SHORT\e[0m"
+echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
 
 # --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
@@ -452,7 +453,7 @@ while true; do
     echo "                        \/_____/            \/           \/"
     echo -e "\e[0m"
     echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
-    echo -e "\e[2;32mv$SCRIPT_VERSION_SHORT\e[0m"
+    echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
     echo
     echo -e "\e[0;34m📜 Voir les modifications du script en appuyant sur \e[0m'\e[0;32mh\e[0m'\e[0m\n"
 
