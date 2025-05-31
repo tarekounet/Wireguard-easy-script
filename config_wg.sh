@@ -175,6 +175,113 @@ EOF
     fi
 
     # Ports
+    CURRENT_EXTERNAL_UDP_PORT=$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")
+    CURRENT_EXTERNAL_TCP_PORT=$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")
+    CURRENT_EXTERNAL_UDP_PORT=${CURRENT_EXTERNAL_UDP_PORT:-51820}
+    CURRENT_EXTERNAL_TCP_PORT=${CURRENT_EXTERNAL_TCP_PORT:-51821}
+
+    read -p $'\e[0;32mVoulez-vous modifier le port pour la liaison VPN ? (o/N, ctrl+c pour annuler) : \e[0m' MODIFY_UDP_PORT
+    if [[ $MODIFY_UDP_PORT == $'\e' ]]; then cancel_config; fi
+    if [[ "$MODIFY_UDP_PORT" == "o" || "$MODIFY_UDP_PORT" == "O" ]]; then
+        echo -e "\e[0;36mPort externe actuel : \e[0;33m$CURRENT_EXTERNAL_UDP_PORT\e[0m"
+        while true; do
+            read -p $'Entrez le nouveau port externe (1-65535, par défaut : '"$CURRENT_EXTERNAL_UDP_PORT"', ctrl+c pour annuler) : ' NEW_EXTERNAL_UDP_PORT
+            if [[ $NEW_EXTERNAL_UDP_PORT == $'\e' ]]; then cancel_config; fi
+            NEW_EXTERNAL_UDP_PORT=${NEW_EXTERNAL_UDP_PORT:-$CURRENT_EXTERNAL_UDP_PORT}
+            if [[ "$NEW_EXTERNAL_UDP_PORT" =~ ^[0-9]+$ ]] && (( NEW_EXTERNAL_UDP_PORT >= 1 && NEW_EXTERNAL_UDP_PORT <= 65535 )); then
+                break
+            else
+                echo -e "\e[0;31mVeuillez entrer un nombre entre 1 et 65535.\e[0m"
+            fi
+        done
+    else
+        NEW_EXTERNAL_UDP_PORT="$CURRENT_EXTERNAL_UDP_PORT"
+    fi
+
+    read -p $'\e[0;32mVoulez-vous modifier le port de l\'interface web ? (o/N, ctrl+c pour annuler) : \e[0m' MODIFY_TCP_PORT
+    if [[ $MODIFY_TCP_PORT == $'\e' ]]; then cancel_config; fi
+    if [[ "$MODIFY_TCP_PORT" == "o" || "$MODIFY_TCP_PORT" == "O" ]]; then
+        echo -e "\e[0;36mPort externe actuel pour l\'interface web : \e[0;33m$CURRENT_EXTERNAL_TCP_PORT\e[0m"
+        while true; do
+            read -p $'Entrez le nouveau port externe pour l\'interface web (1-65535, par défaut : '"$CURRENT_EXTERNAL_TCP_PORT"', ctrl+c pour annuler) : ' NEW_EXTERNAL_TCP_PORT
+            if [[ $NEW_EXTERNAL_TCP_PORT == $'\e' ]]; then cancel_config; fi
+            NEW_EXTERNAL_TCP_PORT=${NEW_EXTERNAL_TCP_PORT:-$CURRENT_EXTERNAL_TCP_PORT}
+            if [[ "$NEW_EXTERNAL_TCP_PORT" =~ ^[0-9]+$ ]] && (( NEW_EXTERNAL_TCP_PORT >= 1 && NEW_EXTERNAL_TCP_PORT <= 65535 )); then
+                break
+            else
+                echo -e "\e[0;31mVeuillez entrer un nombre entre 1 et 65535.\e[0m"
+            fi
+        done
+    else
+        NEW_EXTERNAL_TCP_PORT="$CURRENT_EXTERNAL_TCP_PORT"
+    fi
+
+    # Mot de passe
+    CURRENT_PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+    if [[ -z "$CURRENT_PASSWORD_HASH" ]]; then
+        while true; do
+            read -sp "Entrez le mot de passe pour la console web (ctrl+c pour annuler) : " PASSWORD
+            if [[ $PASSWORD == $'\e' ]]; then cancel_config; fi
+            echo
+            read -sp "Confirmez le mot de passe (ctrl+c pour annuler) : " PASSWORD_CONFIRM
+            if [[ $PASSWORD_CONFIRM == $'\e' ]]; then cancel_config; fi
+            echo
+            if [[ -z "$PASSWORD" ]]; then
+                echo "Le mot de passe ne peut pas être vide. Veuillez entrer une valeur."
+            elif [[ "$PASSWORD" != "$PASSWORD_CONFIRM" ]]; then
+                echo "Les mots de passe ne correspondent pas. Veuillez réessayer."
+            else
+                break
+            fi
+        done
+    else
+        read -p "Voulez-vous modifier le mot de passe ? (o/N, ctrl+c pour annuler) : " MODIFY_PASSWORD
+        if [[ $MODIFY_PASSWORD == $'\e' ]]; then cancel_config; fi
+        if [[ "$MODIFY_PASSWORD" == "o" || "$MODIFY_PASSWORD" == "O" ]]; then
+            while true; do
+                read -sp "Entrez le nouveau mot de passe (ctrl+c pour annuler) : " PASSWORD
+                if [[ $PASSWORD == $'\e' ]]; then cancel_config; fi
+                echo
+                read -sp "Confirmez le nouveau mot de passe (ctrl+c pour annuler) : " PASSWORD_CONFIRM
+                if [[ $PASSWORD_CONFIRM == $'\e' ]]; then cancel_config; fi
+                echo
+                if [[ -z "$PASSWORD" ]]; then
+                    echo "Le mot de passe ne peut pas être vide. Veuillez entrer une valeur."
+                elif [[ "$PASSWORD" != "$PASSWORD_CONFIRM" ]]; then
+                    echo "Les mots de passe ne correspondent pas. Veuillez réessayer."
+                else
+                    break
+                fi
+            done
+        else
+            PASSWORD=""
+        fi
+    fi
+
+    if [[ -n "$PASSWORD" ]]; then
+        PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "$PASSWORD" | grep -oP "'\K[^']+")
+        # Doubler les $ dans le hash avant l'intégration dans le docker-compose
+        ESCAPED_PASSWORD_HASH=$(printf '%s' "$PASSWORD_HASH" | sed -e 's/\$/\$\$/g')
+    else
+        ESCAPED_PASSWORD_HASH="$CURRENT_PASSWORD_HASH"
+    fi
+
+    # Appliquer les modifications dans le fichier docker-compose.yml
+    sed -i "s#WG_HOST=.*#WG_HOST=$NEW_WG_HOST#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#WG_PORT=.*#WG_PORT=$NEW_EXTERNAL_UDP_PORT#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#${CURRENT_EXTERNAL_UDP_PORT}:51820/udp#${NEW_EXTERNAL_UDP_PORT}:51820/udp#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#${CURRENT_EXTERNAL_TCP_PORT}:51821/tcp#${NEW_EXTERNAL_TCP_PORT}:51821/tcp#" "$DOCKER_COMPOSE_FILE"
+    sed -i "s#PASSWORD_HASH=.*#PASSWORD_HASH=$ESCAPED_PASSWORD_HASH#" "$DOCKER_COMPOSE_FILE"
+
+    # Suppression de la sauvegarde après modification réussie
+    if [[ -f "$DOCKER_COMPOSE_FILE.bak" ]]; then
+        rm -f "$DOCKER_COMPOSE_FILE.bak"
+    fi
+
+    echo -e "\e[1;32mLes modifications ont été appliquées avec succès.\e[0m"
+
+    trap - SIGINT
+    return
 }
 
 # Fonction pour le sous-menu Debian
@@ -480,7 +587,6 @@ while true; do
         if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
             echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
         fi
-        echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
     fi
 
@@ -491,19 +597,179 @@ while true; do
 
     SKIP_PAUSE=0
 
-    # Ajout du switch de canal
-    if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
-        if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-            echo "beta" > .channel
-            echo -e "\e[1;35mLe script va passer en mode beta au prochain lancement.\e[0m"
-        else
-            echo "stable" > .channel
-            echo -e "\e[1;32mLe script va passer en mode stable au prochain lancement.\e[0m"
-        fi
-        echo -e "\e[1;33mRedémarrage du script...\e[0m"
-        sleep 1
-        exec "$0"
-        exit 0
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        case $ACTION in
+            1) configure_values ;;
+            2)
+                if [[ "$CONTAINER_STATUS" == "running" ]]; then
+                    echo -e "\e[1;90mLe service Wireguard est déjà lancé.\e[0m"
+                else
+                    PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+                    if [[ -z "$PASSWORD_HASH" ]]; then
+                        echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+                    else
+                        echo "Démarrage de Wireguard..."
+                        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                        echo "Wireguard démarré avec succès ! 🚀"
+                    fi
+                fi
+                ;;
+            3)
+                if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                    echo -e "\e[1;90mLe service Wireguard est déjà arrêté.\e[0m"
+                else
+                    echo "Arrêt de Wireguard..."
+                    docker compose -f "$DOCKER_COMPOSE_FILE" down
+                    echo "Wireguard arrêté avec succès ! 🛑"
+                fi
+                ;;
+            4)
+                if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                    echo -e "\e[1;90mImpossible de redémarrer : le service est arrêté.\e[0m"
+                else
+                    echo "Redémarrage de Wireguard..."
+                    docker compose -f "$DOCKER_COMPOSE_FILE" down
+                    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                    echo "Wireguard redémarré avec succès ! 🔄"
+                fi
+                ;;
+            5)
+                echo "Mise à jour de Wireguard..."
+                docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
+                docker compose -f "$DOCKER_COMPOSE_FILE" pull
+                docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                echo "Wireguard mis à jour et purgé avec succès ! ⬆️"
+                ;;
+            6)
+                echo "Réinitialisation de Wireguard..."
+                # Confirmation par mot de passe technique (hashé en SHA-512)
+                EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+                ATTEMPTS=0
+                MAX_ATTEMPTS=3
+                while (( ATTEMPTS < MAX_ATTEMPTS )); do
+                    read -sp "Entrez le mot de passe technique pour confirmer la réinitialisation (ctrl+c pour annuler) : " RESET_PASSWORD
+                    echo
+                    if [[ "$RESET_PASSWORD" == $'\e' ]]; then
+                        echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
+                        break
+                    fi
+                    ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$RESET_PASSWORD")
+                    if [[ "$ENTERED_HASH" == "$EXPECTED_HASH" ]]; then
+                        echo -e "\e[1;32mMot de passe correct.\e[0m"
+                        read -p $'\e[1;33mÊtes-vous sûr de vouloir réinitialiser Wireguard ? Cette action est irréversible. (o/N) : \e[0m' CONFIRM_RESET
+                        if [[ "$CONFIRM_RESET" == "o" || "$CONFIRM_RESET" == "O" ]]; then
+                            docker compose -f "$DOCKER_COMPOSE_FILE" down
+                            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
+                            echo "Wireguard réinitialisé avec succès ! ♻️"
+                        else
+                            echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
+                        fi
+                        break
+                    else
+                        ((ATTEMPTS++))
+                        if (( ATTEMPTS < MAX_ATTEMPTS )); then
+                            echo -e "\e[1;31mMot de passe incorrect. Nouvelle tentative ($ATTEMPTS/$MAX_ATTEMPTS).\e[0m"
+                        else
+                            echo -e "\e[1;31mMot de passe incorrect. Réinitialisation annulée.\e[0m\n"
+                        fi
+                    fi
+                done
+                ;;
+
+            d|D)
+                debian_tools_menu
+                ;;
+            h|H)
+                clear
+                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                if [[ -f CHANGELOG.md ]]; then
+                    cat CHANGELOG.md
+                else
+                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
+                fi
+                SKIP_PAUSE=1
+                ;;
+            u|U)
+                clear
+                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                # Récupérer le changelog depuis GitHub et remplacer le fichier local
+                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
+                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
+                else
+                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
+                fi
+                # Mettre à jour le script
+                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                    echo -e "\nAppuyez sur une touche pour relancer le script..."
+                    read -n 1 -s
+                    exec "$0"
+                else
+                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+                fi
+                SKIP_PAUSE=1
+                ;;
+            0)
+                clear
+                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+                SKIP_PAUSE=1
+                exit 0
+                ;;
+            *)
+                echo -e "\e[1;31mChoix invalide.\e[0m"
+                ;;
+        esac
+    else
+        case $ACTION in
+            1) configure_values ;;
+            d|D) debian_tools_menu ;;
+            h|H)
+                clear
+                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                if [[ -f CHANGELOG.md ]]; then
+                    cat CHANGELOG.md
+                else
+                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
+                fi
+                SKIP_PAUSE=1
+                ;;
+            u|U)
+                clear
+                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
+                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
+                else
+                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
+                fi
+                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+                    echo -e "\nAppuyez sur une touche pour relancer le script..."
+                    read -n 1 -s
+                    exec "$0"
+                else
+                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+                fi
+                SKIP_PAUSE=1
+                ;;
+            0)
+                clear
+                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+                SKIP_PAUSE=1
+                exit 0
+                ;;
+            *)
+                echo -e "\e[1;31mChoix invalide.\e[0m"
+                ;;
+        esac
     fi
 
-    # ...reste du code...
+    # Pause avant de retourner au menu (sauf pour changelog, update, quitter)
+    if [[ "$SKIP_PAUSE" != "1" ]]; then
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+    fi
+done
