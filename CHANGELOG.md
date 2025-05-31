@@ -1,7 +1,7 @@
 # Changelog
 Toutes les modifications notables de ce projet seront documentées ici.
 
-## [1.3.0] - 2025-05-31
+## [1.3.2] - 2025-05-31
 ### Ajouté
 - Ajout de la possibilité de switcher entre une version stable ou beta du script
 

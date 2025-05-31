@@ -2,7 +2,7 @@
 
 CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
-SCRIPT_BASE_VERSION_INIT="1.3.1"
+SCRIPT_BASE_VERSION_INIT="1.3.2"
 SCRIPT_CANAL="stable"
 
 # Vérifier et créer le fichier de conf AVANT toute autre action
@@ -592,86 +592,86 @@ while true; do
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
+    UPDATES_AVAILABLE=0
     if command -v apt >/dev/null 2>&1; then
         UPDATES=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[36m------------------------------\e[0m"
-            echo -e "\e[36mMises à jour système : \e[33m$UPDATES paquet(s)\e[0m"
-            echo -e "\e[36m------------------------------\e[0m"
+            UPDATES_AVAILABLE=1
         fi
     elif command -v dnf >/dev/null 2>&1; then
         UPDATES=$(dnf check-update --refresh 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[36m------------------------------\e[0m"
-            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
-            echo -e "\e[36m------------------------------\e[0m"
+            UPDATES_AVAILABLE=1
         fi
     elif command -v yum >/dev/null 2>&1; then
         UPDATES=$(yum check-update 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[36m------------------------------\e[0m"
-            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
-            echo -e "\e[36m------------------------------\e[0m"
+            UPDATES_AVAILABLE=1
         fi
     elif command -v pacman >/dev/null 2>&1; then
         UPDATES=$(checkupdates 2>/dev/null | wc -l)
         if (( UPDATES > 0 )); then
-            echo -e "\e[35m------------------------------\e[0m"
-            echo -e "\e[36mMises à jour système : \e[33mOui ($UPDATES)\e[0m"
-            echo -e "\e[35m------------------------------\e[0m"
+            UPDATES_AVAILABLE=1
         fi
+    fi
+
+    # Clignoter le menu outils système Linux si des mises à jour sont disponibles
+    if (( UPDATES_AVAILABLE == 1 )); then
+        MENU_TOOLS_LINUX="\e[5;33md) 🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
     else
-        echo -e "\e[36mGestionnaire de paquets non détecté, impossible de vérifier les mises à jour.\e[0m"
+        MENU_TOOLS_LINUX="\e[1;32md) 🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
     fi
     # Afficher l'état du conteneur Wireguard uniquement si le fichier docker-compose existe
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         echo -e "\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "\e[2;36m🔎 Etat de Wireguard :\e[0m"
+        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
         echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
         CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wireguard 2>/dev/null)
-        if [[ "$CONTAINER_STATUS" == "running" ]]; then
-            STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wireguard)
-            SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
-            DAYS=$((SECONDS_UP/86400))
-            HOURS=$(( (SECONDS_UP%86400)/3600 ))
-            MINUTES=$(( (SECONDS_UP%3600)/60 ))
-            SECONDS=$((SECONDS_UP%60))
-            if (( DAYS > 0 )); then
-                UPTIME_STR="${DAYS}j ${HOURS}h ${MINUTES}m ${SECONDS}s"
-            elif (( HOURS > 0 )); then
-                UPTIME_STR="${HOURS}h ${MINUTES}m ${SECONDS}s"
-            elif (( MINUTES > 0 )); then
-                UPTIME_STR="${MINUTES}m ${SECONDS}s"
-            else
-                UPTIME_STR="${SECONDS}s"
-            fi
-            echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
-            echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
-        elif [[ "$CONTAINER_STATUS" == "exited" ]]; then
-            echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
-        elif [[ "$CONTAINER_STATUS" == "created" ]]; then
-            echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
-        else
-            if docker ps -a --format '{{.Names}}' | grep -qw wireguard; then
-                echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
-                echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
-                docker logs --tail 10 wireguard 2>&1
-                LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wireguard 2>/dev/null)
-                if [[ "$LAST_EXIT_CODE" != "0" ]]; then
-                    echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
+        case "$CONTAINER_STATUS" in
+            running)
+                STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wireguard)
+                SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
+                DAYS=$((SECONDS_UP/86400))
+                HOURS=$(( (SECONDS_UP%86400)/3600 ))
+                MINUTES=$(( (SECONDS_UP%3600)/60 ))
+                SECONDS=$((SECONDS_UP%60))
+                if (( DAYS > 0 )); then
+                    UPTIME_STR="${DAYS}j ${HOURS}h ${MINUTES}m ${SECONDS}s"
+                elif (( HOURS > 0 )); then
+                    UPTIME_STR="${HOURS}h ${MINUTES}m ${SECONDS}s"
+                elif (( MINUTES > 0 )); then
+                    UPTIME_STR="${MINUTES}m ${SECONDS}s"
+                else
+                    UPTIME_STR="${SECONDS}s"
                 fi
-                echo
-            else
-                echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
-            fi
-        fi
+                echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
+                echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
+                ;;
+            exited)
+                echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
+                ;;
+            created)
+                echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
+                ;;
+            *)
+                if docker ps -a --format '{{.Names}}' | grep -qw wireguard; then
+                    echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
+                    echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
+                    docker logs --tail 10 wireguard 2>&1
+                    LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wireguard 2>/dev/null)
+                    if [[ "$LAST_EXIT_CODE" != "0" ]]; then
+                        echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
+                    fi
+                    echo
+                else
+                    echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
+                fi
+                ;;
+        esac
     fi
 
     # Afficher les informations du fichier de configuration
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
         printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
 
         # Détection DHCP ou statique
