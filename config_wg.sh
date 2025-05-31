@@ -2,7 +2,7 @@
 
 CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
-SCRIPT_BASE_VERSION_INIT="1.3.2"
+SCRIPT_BASE_VERSION_INIT="1.3.3"
 SCRIPT_CANAL="stable"
 
 # Vérifier et créer le fichier de conf AVANT toute autre action
@@ -541,13 +541,8 @@ if [[ "$SCRIPT_CHANNEL" == "beta" && "$BETA_CONFIRMED" != "1" ]]; then
         set_conf_value "BETA_CONFIRMED" "1"
         echo -e "\e[1;32mConfirmation enregistrée. Vous ne verrez plus cet avertissement.\e[0m"
     else
-        sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"stable\"/" "$CONF_FILE"
-        set_conf_value "BETA_CONFIRMED" "0"
-        echo -e "\e[1;32mRetour au canal stable au prochain lancement.\e[0m"
-        echo -e "\e[1;33mRedémarrage du script...\e[0m"
-        sleep 1
-        exec "$0"
-        exit 0
+        echo -e "\e[1;33mAnnulation du passage au canal stable. Vous restez dans le canal actuel.\e[0m"
+        set_conf_value "BETA_CONFIRMED" "1"
     fi
 fi
 
@@ -577,18 +572,33 @@ while true; do
     CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
     if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
         echo -e "Canal : \e[32mSTABLE 🟢 \e[0m \e[35mBETA ⚪\e[0m "
-        echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
-    else
+        if [[ -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
+            echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
+        else
+            echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
+        fi
+    elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
         echo -e "Canal : \e[32mSTABLE ⚪ \e[0m \e[35mBETA 🟢\e[0m "
         echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
     fi
 
-    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
-        if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
-            echo -e "\e[33mUne nouvelle version stable ($REMOTE_VERSION_STABLE) est disponible, supérieure à la version beta actuelle ($REMOTE_VERSION_BETA).\e[0m"
+        # Ajouter un bouton pour mettre à jour le script avec une icône
+        echo -e "\e[2;33m🔼 Appuyez sur 'u' pour mettre à jour le script vers la dernière version.\e[0m"
+    # Vérification des mises à jour disponibles pour chaque canal
+    if [[ -n "$VERSION_STABLE_CONF" && "$VERSION_LOCAL" != "$VERSION_STABLE_CONF" ]]; then
+        echo -e "\e[33mUne nouvelle version STABLE est disponible : $VERSION_STABLE_CONF (actuelle : $VERSION_LOCAL)\e[0m"
+        if [[ -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
+            echo -e "\e[33mLa version STABLE est plus récente que la version BETA. Passage au canal STABLE.\e[0m"
+            set_conf_value "SCRIPT_CHANNEL" "stable"
+            set_conf_value "SCRIPT_BASE_VERSION" "$VERSION_STABLE_CONF"
+            echo -e "\e[33mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
         else
-            echo -e "\e[33mUne nouvelle version du script, est disponible : $REMOTE_VERSION\e[0m"
+            echo -e "\e[33mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
         fi
+    fi
+    if [[ -n "$VERSION_BETA_CONF" && "$VERSION_LOCAL" != "$VERSION_BETA_CONF" ]]; then
+        echo -e "\e[35mUne nouvelle version BETA est disponible : $VERSION_BETA_CONF (actuelle : $VERSION_LOCAL)\e[0m"
+        echo -e "\e[35mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
