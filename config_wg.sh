@@ -2,18 +2,17 @@
 
 SCRIPT_VERSION="1.3"
 
-# Mode du script : stable ou beta (par défaut : stable)
+# --- Gestion du canal (stable/beta) ---
 SCRIPT_CHANNEL="stable"
 if [[ "$1" == "--beta" ]]; then
     SCRIPT_CHANNEL="beta"
 elif [[ "$1" == "--stable" ]]; then
     SCRIPT_CHANNEL="stable"
 elif [[ -f ".channel" ]]; then
-    # Permet de forcer le canal via un fichier .channel (optionnel)
     SCRIPT_CHANNEL=$(cat .channel)
 fi
 
-# Ajout du numéro de commit court à la version
+# --- Ajout du commit à la version ---
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
     if [[ -n "$GIT_COMMIT" ]]; then
@@ -21,10 +20,10 @@ if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     fi
 fi
 
-# Écriture de la version complète dans version.txt (toujours après le switch éventuel)
+# --- Écriture de la version dans version.txt ---
 echo "$SCRIPT_VERSION" > version.txt
 
-# Sélection de la source selon le canal
+# --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
@@ -33,13 +32,13 @@ else
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 fi
 
-# Définir le chemin absolu du fichier docker-compose
+# --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
     mkdir -p "/mnt/wireguard"
 fi
 DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
 
-# --- FONCTIONS PRINCIPALES ---
+# --- Fonctions principales ---
 
 configure_values() {
     # Fonction pour gérer l'annulation par Ctrl+C
@@ -597,6 +596,22 @@ while true; do
 
     SKIP_PAUSE=0
 
+    # --- Gestion du switch de canal ---
+    if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+        if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+            echo "beta" > .channel
+            echo -e "\e[1;35mLe script va passer en mode beta au prochain lancement.\e[0m"
+        else
+            echo "stable" > .channel
+            echo -e "\e[1;32mLe script va passer en mode stable au prochain lancement.\e[0m"
+        fi
+        echo -e "\e[1;33mRedémarrage du script...\e[0m"
+        sleep 1
+        exec "$0"
+        exit 0
+    fi
+
+    # --- Actions principales ---
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         case $ACTION in
             1) configure_values ;;
@@ -767,7 +782,7 @@ while true; do
         esac
     fi
 
-    # Pause avant de retourner au menu (sauf pour changelog, update, quitter)
+    # --- Pause avant retour menu ---
     if [[ "$SKIP_PAUSE" != "1" ]]; then
         echo -e "\nAppuyez sur une touche pour revenir au menu..."
         read -n 1 -s
