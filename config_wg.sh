@@ -25,6 +25,10 @@ if [[ -n "$GIT_COMMIT" ]]; then
 else
     SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
 fi
+
+# Pour la comparaison, extraire la partie sans le hash
+SCRIPT_VERSION_SHORT="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
+
 # --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
@@ -35,7 +39,7 @@ else
 fi
 
 # --- Vérification de la version distante ---
-if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
     echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
 fi
 
