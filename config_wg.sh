@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# --- Définir la version de base du script ---
+SCRIPT_BASE_VERSION="1.3"
+
 # --- Gestion du canal (stable/beta) ---
 SCRIPT_CHANNEL="stable"
 if [[ "$1" == "--beta" ]]; then
@@ -10,15 +13,17 @@ elif [[ -f ".channel" ]]; then
     SCRIPT_CHANNEL=$(cat .channel)
 fi
 
-# Ajouter le canal à la version
-SCRIPT_VERSION="${SCRIPT_VERSION}-${SCRIPT_CHANNEL}"
-
 # --- Ajout du commit à la version ---
+GIT_COMMIT=""
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
-    if [[ -n "$GIT_COMMIT" ]]; then
-        SCRIPT_VERSION="${SCRIPT_VERSION}-${GIT_COMMIT}"
-    fi
+fi
+
+# --- Construction de la version complète ---
+if [[ -n "$GIT_COMMIT" ]]; then
+    SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}-${GIT_COMMIT}"
+else
+    SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
 fi
 
 # --- Écriture de la version dans version.txt ---
@@ -31,6 +36,11 @@ if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
 else
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+fi
+
+# --- Vérification de la version distante ---
+if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+    echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
 fi
 
 # --- Préparation du dossier de configuration ---
