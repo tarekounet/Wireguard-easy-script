@@ -12,6 +12,9 @@ elif [[ -f ".channel" ]]; then
     SCRIPT_CHANNEL=$(cat .channel)
 fi
 
+# Ajouter le canal à la version
+SCRIPT_VERSION="${SCRIPT_VERSION}-${SCRIPT_CHANNEL}"
+
 # --- Ajout du commit à la version ---
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
