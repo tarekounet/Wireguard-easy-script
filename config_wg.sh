@@ -11,53 +11,52 @@ if [[ "$1" == "--beta" ]]; then
     SCRIPT_CHANNEL="beta"
 elif [[ "$1" == "--stable" ]]; then
     SCRIPT_CHANNEL="stable"
-
 # 2. Fichier .channel si présent
 elif [[ -f ".channel" ]]; then
     CHANNEL_FILE=$(cat .channel 2>/dev/null)
     if [[ "$CHANNEL_FILE" == "beta" || "$CHANNEL_FILE" == "stable" ]]; then
         SCRIPT_CHANNEL="$CHANNEL_FILE"
     fi
-
-# 3. Détection branche git si possible
-elif command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
-    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if [[ "$BRANCH" == "beta" ]]; then
-        SCRIPT_CHANNEL="beta"
-    elif [[ "$BRANCH" == "main" ]]; then
-        SCRIPT_CHANNEL="stable"
-    fi
 fi
 
-# --- Ajout du commit à la version ---
-GIT_COMMIT=""
-if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
-    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
-fi
-
-# --- Construction de la version complète ---
-if [[ -n "$GIT_COMMIT" ]]; then
-    SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}-${GIT_COMMIT}"
-else
-    SCRIPT_VERSION="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
-fi
-
-# Pour la comparaison, extraire la partie sans le hash
+# --- Construction de la version ---
 SCRIPT_VERSION_SHORT="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
 
 # --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
+    REMOTE_VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
 else
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 fi
 
-# --- Comparaison version locale / distante (sans commit) ---
-if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
-    echo -e "\e[33mUne nouvelle version du script ($SCRIPT_CHANNEL) est disponible : $REMOTE_VERSION\e[0m"
+# --- Comparaison version locale / distante (canal sélectionné uniquement) ---
+show_update=0
+if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && -n "$REMOTE_VERSION" ]]; then
+    # Si la version stable > version beta, proposer la stable même en beta
+    if [[ "$(printf '%s\n' "$REMOTE_VERSION_STABLE" "$REMOTE_VERSION" | sort -V | tail -n1)" == "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION" ]]; then
+        show_update=1
+        update_channel="stable"
+        update_version="$REMOTE_VERSION_STABLE"
+    elif [[ "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
+        show_update=1
+        update_channel="beta"
+        update_version="$REMOTE_VERSION"
+    fi
+elif [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
+    show_update=1
+    update_channel="$SCRIPT_CHANNEL"
+    update_version="$REMOTE_VERSION"
 fi
+
+if [[ "$show_update" == "1" ]]; then
+    echo -e "\e[33mUne nouvelle version du script ($update_channel) est disponible : $update_version\e[0m"
+fi
+
+# --- Affichage version dans le menu principal ---
+echo -e "\e[2;32mv$SCRIPT_VERSION_SHORT\e[0m"
 
 # --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
