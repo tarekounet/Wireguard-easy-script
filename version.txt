@@ -1,1 +1,1 @@
-1.3-beta-d7bd1fa
+1.3-stable-1be5d51
