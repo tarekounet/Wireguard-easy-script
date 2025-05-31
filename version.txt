@@ -1,1 +1,1 @@
--beta-64eae24
+1.3-stable-d24978a
