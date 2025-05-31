@@ -1,7 +1,18 @@
 # Changelog
 Toutes les modifications notables de ce projet seront documentées ici.
 
-## [1.2.0] - 2025-06-01
+## [1.3.0] - 2025-05-31
+### Ajouté
+- Ajout de la possibilité de switcher entre une version stable ou beta du script
+
+### Modifié
+- Modification visuelle du script général
+- Optimisastion du script
+
+### Corrigé
+- correction sur la remonté du fichier "CHANGELOG"
+
+## [1.2.0] - 2025-05-30
 ### Ajouté
 - Ajout dans menu pour gérer la vm debian :
     - affichage de la taille du disque de la vm utilisé

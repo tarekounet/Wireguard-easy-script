@@ -1,7 +1,74 @@
 #!/bin/bash
 
-# --- Définir la version de base du script ---
-SCRIPT_BASE_VERSION="1.3.0"
+CONF_FILE="wg-easy.conf"
+SCRIPT_BACKUP="config_wg.sh.bak"
+SCRIPT_BASE_VERSION_INIT="1.3.0"
+SCRIPT_CANAL="beta"
+# Création/Mise à jour du fichier de conf si besoin
+if [[ ! -f "$CONF_FILE" ]]; then
+    cat > "$CONF_FILE" <<EOF
+SCRIPT_CHANNEL="$SCRIPT_CANAL"
+SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
+EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+BETA_CONFIRMED="1"
+EOF
+else
+    # Update only modified values
+    sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"$SCRIPT_CANAL\"/" "$CONF_FILE"
+    sed -i "s/^SCRIPT_BASE_VERSION=.*/SCRIPT_BASE_VERSION=\"$SCRIPT_BASE_VERSION_INIT\"/" "$CONF_FILE"
+    if ! grep -q "^EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'$" "$CONF_FILE"; then
+        sed -i "/^EXPECTED_HASH=/d" "$CONF_FILE"
+        echo "EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'" >> "$CONF_FILE"
+    fi
+    if ! grep -q "^BETA_CONFIRMED=\"0\"$" "$CONF_FILE"; then
+        sed -i "/^BETA_CONFIRMED=/d" "$CONF_FILE"
+        echo "BETA_CONFIRMED=\"0\"" >> "$CONF_FILE"
+    fi
+fi
+
+# Charger la configuration principale
+source "$CONF_FILE"
+
+# Fonctions utilitaires pour lire/écrire dans wg-easy.conf
+set_conf_value() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^${key}=" "$CONF_FILE"; then
+        sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$CONF_FILE"
+    else
+        echo "${key}=\"${value}\"" >> "$CONF_FILE"
+    fi
+}
+
+get_conf_value() {
+    local key="$1"
+    grep "^${key}=" "$CONF_FILE" | cut -d '=' -f2- | tr -d '"'
+}
+
+# --- Gestion du canal via argument ---
+if [[ "$1" == "--beta" ]]; then
+    SCRIPT_CHANNEL="beta"
+elif [[ "$1" == "--stable" ]]; then
+    SCRIPT_CHANNEL="stable"
+fi
+
+# --- Récupération et mise à jour des versions distantes ---
+VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+VERSION_BETA=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    VERSION_LOCAL="$VERSION_BETA"
+else
+    VERSION_LOCAL="$VERSION_STABLE"
+fi
+
+# --- Mise à jour du fichier de conf ---
+sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"$SCRIPT_CHANNEL\"/" "$CONF_FILE"
+
+
+# --- Utilisation dans le script ---
+echo -e "\e[2;32mWireguard Easy Script - v$VERSION_LOCAL ($SCRIPT_CHANNEL)\e[0m"
+
+
 
 # --- Gestion du canal (stable/beta) optimisée ---
 SCRIPT_CHANNEL="beta"
@@ -19,10 +86,6 @@ elif [[ -f ".channel" ]]; then
     fi
 fi
 
-# --- Construction de la version ---
-SCRIPT_VERSION_SHORT="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
-# Ne pas utiliser de commit ou de hash dans la version affichée
-
 # --- Définition des URLs selon le canal ---
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
@@ -33,85 +96,29 @@ else
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 fi
 
-# --- Comparaison version locale / distante (canal sélectionné uniquement) ---
-show_update=0
-force_switch_to_stable=0
-
-if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && -n "$REMOTE_VERSION" ]]; then
-    # Si la version stable > version beta, proposer la stable même en beta
-    if [[ "$(printf '%s\n' "$REMOTE_VERSION_STABLE" "$REMOTE_VERSION_BETA" | sort -V | tail -n1)" == "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
-        if [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_STABLE" ]]; then
-            show_update=1
-            update_channel="stable"
-            update_version="$REMOTE_VERSION_STABLE"
-            force_switch_to_stable=1
-        fi
-    else
-        if [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_BETA" ]]; then
-            show_update=1
-            update_channel="beta"
-            update_version="$REMOTE_VERSION_BETA"
-        fi
-    fi
-elif [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
-    show_update=1
-    update_channel="$SCRIPT_CHANNEL"
-    update_version="$REMOTE_VERSION"
-fi
-
-if [[ "$show_update" == "1" ]]; then
-    echo -e "\e[33mUne nouvelle version du script ($update_channel) est disponible : $update_version\e[0m"
-    read -p $'\e[1;33mVoulez-vous mettre à jour le script ? (o/N) : \e[0m' DO_UPDATE
-    if [[ "$DO_UPDATE" == "o" || "$DO_UPDATE" == "O" ]]; then
-        if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-            mv "$0.new" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-            # Si la stable > beta, repasser automatiquement en canal stable
-            if [[ "$force_switch_to_stable" == "1" ]]; then
-                echo "stable" > .channel
-                echo -e "\e[1;32mLe canal a été repassé automatiquement en stable car la version stable est supérieure à la beta.\e[0m"
-            fi
-            echo -e "\nAppuyez sur une touche pour relancer le script..."
-            read -n 1 -s
-            exec "$0"
-        else
-            echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-        fi
-    fi
-fi
-
 # --- Affichage version dans le menu principal ---
-echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
+if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
+    # Si la version stable distante > version beta locale
+    if [[ "$(printf '%s\n' "$REMOTE_VERSION_STABLE" "$SCRIPT_BASE_VERSION" | sort -V | tail -n1)" == "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$SCRIPT_BASE_VERSION" ]]; then
+        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION_STABLE (stable)\e[0m"
+    elif [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_BETA" ]]; then
+        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION_BETA (beta)\e[0m"
+    else
+        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION (beta)\e[0m"
+    fi
+else
+    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
+        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION \e[33m→ v$REMOTE_VERSION ($SCRIPT_CHANNEL)\e[0m"
+    else
+        echo -e "\e[2;32mv$SCRIPT_BASE_VERSION ($SCRIPT_CHANNEL)\e[0m"
+    fi
+fi
 
 # --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
     mkdir -p "/mnt/wireguard"
 fi
 DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
-
-# --- Gestion du fichier version.conf ---
-VERSION_CONF="version.conf"
-if [[ ! -f "$VERSION_CONF" ]]; then
-    # Récupérer les versions distantes
-    VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-    VERSION_BETA=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
-    # Détecter la version locale selon le canal
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        VERSION_LOCAL="$VERSION_BETA"
-    else
-        VERSION_LOCAL="$VERSION_STABLE"
-    fi
-    # Créer le fichier version.conf
-    cat > "$VERSION_CONF" <<EOF
-stable=$VERSION_STABLE
-beta=$VERSION_BETA
-local=$VERSION_LOCAL
-EOF
-fi
-
-# Charger les variables depuis version.conf
-source "$VERSION_CONF"
 
 # --- Fonctions principales ---
 
@@ -199,6 +206,7 @@ EOF
     CURRENT_WG_PORT=$(grep 'WG_PORT=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
 
     # Adresse publique
+    CURRENT_WG_HOST=$(get_conf_value "WG_HOST")
     if [[ -z "$CURRENT_WG_HOST" ]]; then
         echo -e "\e[0;36mDétection automatique de l'adresse publique...\e[0m"
         AUTO_WG_HOST=$(curl -s https://api.ipify.org)
@@ -247,10 +255,11 @@ EOF
             NEW_WG_HOST="$CURRENT_WG_HOST"
         fi
     fi
+    set_conf_value "WG_HOST" "$NEW_WG_HOST"
 
     # Ports
-    CURRENT_EXTERNAL_UDP_PORT=$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")
-    CURRENT_EXTERNAL_TCP_PORT=$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")
+    CURRENT_EXTERNAL_UDP_PORT=$(get_conf_value "EXTERNAL_UDP_PORT")
+    CURRENT_EXTERNAL_TCP_PORT=$(get_conf_value "EXTERNAL_TCP_PORT")
     CURRENT_EXTERNAL_UDP_PORT=${CURRENT_EXTERNAL_UDP_PORT:-51820}
     CURRENT_EXTERNAL_TCP_PORT=${CURRENT_EXTERNAL_TCP_PORT:-51821}
 
@@ -271,6 +280,7 @@ EOF
     else
         NEW_EXTERNAL_UDP_PORT="$CURRENT_EXTERNAL_UDP_PORT"
     fi
+    set_conf_value "EXTERNAL_UDP_PORT" "$NEW_EXTERNAL_UDP_PORT"
 
     read -p $'\e[0;32mVoulez-vous modifier le port de l\'interface web ? (o/N, ctrl+c pour annuler) : \e[0m' MODIFY_TCP_PORT
     if [[ $MODIFY_TCP_PORT == $'\e' ]]; then cancel_config; fi
@@ -289,9 +299,10 @@ EOF
     else
         NEW_EXTERNAL_TCP_PORT="$CURRENT_EXTERNAL_TCP_PORT"
     fi
+    set_conf_value "EXTERNAL_TCP_PORT" "$NEW_EXTERNAL_TCP_PORT"
 
     # Mot de passe
-    CURRENT_PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+    CURRENT_PASSWORD_HASH=$(get_conf_value "PASSWORD_HASH")
     if [[ -z "$CURRENT_PASSWORD_HASH" ]]; then
         while true; do
             read -sp "Entrez le mot de passe pour la console web (ctrl+c pour annuler) : " PASSWORD
@@ -334,10 +345,8 @@ EOF
 
     if [[ -n "$PASSWORD" ]]; then
         PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy wgpw "$PASSWORD" | grep -oP "'\K[^']+")
-        # Doubler les $ dans le hash avant l'intégration dans le docker-compose
         ESCAPED_PASSWORD_HASH=$(printf '%s' "$PASSWORD_HASH" | sed -e 's/\$/\$\$/g')
-    else
-        ESCAPED_PASSWORD_HASH="$CURRENT_PASSWORD_HASH"
+        set_conf_value "PASSWORD_HASH" "$ESCAPED_PASSWORD_HASH"
     fi
 
     # Appliquer les modifications dans le fichier docker-compose.yml
@@ -360,6 +369,7 @@ EOF
 
 # Fonction pour le sous-menu Debian
 debian_tools_menu() {
+    SKIP_PAUSE=1
     while true; do
         clear
         echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
@@ -385,13 +395,16 @@ debian_tools_menu() {
                 else
                     echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
                 fi
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             2)
                 df -h
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             3)
                 echo -e "\e[1;33mMise à jour du système...\e[0m"
                 sudo apt update && sudo apt upgrade -y
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             4)
                 echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
@@ -399,11 +412,13 @@ debian_tools_menu() {
                 read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
                 if [[ -z "$IFACE_NUM" ]]; then
                     echo -e "\e[1;33mModification annulée.\e[0m"
+                    SKIP_PAUSE_DEBIAN=0
                     break
                 fi
                 IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
                 if [[ -z "$IFACE" ]]; then
                     echo -e "\e[1;31mInterface invalide.\e[0m"
+                    SKIP_PAUSE_DEBIAN=0
                     break
                 fi
                 CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
@@ -411,6 +426,7 @@ debian_tools_menu() {
                 read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
                 if [[ -z "$NEW_IP" ]]; then
                     echo -e "\e[1;33mModification annulée.\e[0m"
+                    SKIP_PAUSE_DEBIAN=0
                     break
                 fi
                 read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 24 pour /24, laisser vide pour 24) : \e[0m' NEW_MASK
@@ -428,6 +444,7 @@ debian_tools_menu() {
                 fi
                 sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
                 echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             5)
                 echo -e "\n\e[1;36m------ Modifier le nom de la VM ------\e[0m"
@@ -436,6 +453,7 @@ debian_tools_menu() {
                     echo -e "\e[1;32mChangement du nom de la VM en : $NEW_HOSTNAME\e[0m"
                     sudo hostnamectl set-hostname "$NEW_HOSTNAME"
                 fi
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             6)
                 echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
@@ -452,9 +470,11 @@ debian_tools_menu() {
                         echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
                     fi
                 fi
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             7)
                 systemctl status docker --no-pager
+                SKIP_PAUSE_DEBIAN=0
                 ;;
             8)
                 if command -v btop >/dev/null 2>&1; then
@@ -464,6 +484,7 @@ debian_tools_menu() {
                     sudo apt update && sudo apt install -y btop
                     btop
                 fi
+                SKIP_PAUSE_DEBIAN=1
                 continue
                 ;;
             9)
@@ -471,6 +492,7 @@ debian_tools_menu() {
                 echo -e "\e[1;33mTaper exit pour revenir au menu principal.\e[0m"
                 trap 'echo -e "\n\e[1;33mRetour au menu principal...\e[0m"; break' SIGINT
                 bash --norc --noprofile
+                SKIP_PAUSE_DEBIAN=1
                 continue
                 ;;
             0)
@@ -478,41 +500,72 @@ debian_tools_menu() {
                 ;;
             *)
                 echo -e "\e[1;31mChoix invalide.\e[0m"
+                SKIP_PAUSE_DEBIAN=0
                 ;;
         esac
-        echo -e "\nAppuyez sur une touche pour revenir au menu..."
-        read -n 1 -s
+        if [[ "$SKIP_PAUSE_DEBIAN" != "1" ]]; then
+            echo -e "\nAppuyez sur une touche pour revenir au menu..."
+            read -n 1 -s
+        fi
     done
 }
 
-# --- Avertissement si canal beta ---
-if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-    echo -e "\e[1;35m⚠️  Attention : Le canal beta peut contenir des versions instables ou non testées. Utilisez-le à vos risques et périls.\e[0m"
-    # Demander confirmation avec le mot de passe technique
-    EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-    ATTEMPTS=0
-    MAX_ATTEMPTS=3
-    while (( ATTEMPTS < MAX_ATTEMPTS )); do
-        read -sp "Entrez le mot de passe technique pour continuer sur le canal beta (ctrl+c pour annuler) : " TECH_PASSWORD
-        echo
-        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$TECH_PASSWORD")
-        if [[ "$ENTERED_HASH" == "$EXPECTED_HASH" ]]; then
-            echo -e "\e[1;32mAccès au canal beta autorisé.\e[0m"
-            break
-        else
-            ((ATTEMPTS++))
-            if (( ATTEMPTS < MAX_ATTEMPTS )); then
-                echo -e "\e[1;31mMot de passe incorrect. Nouvelle tentative ($ATTEMPTS/$MAX_ATTEMPTS).\e[0m"
-            else
-                echo -e "\e[1;31mMot de passe incorrect. Retour au canal stable.\e[0m"
-                echo "stable" > .channel
-                SCRIPT_CHANNEL="stable"
+# --- Gestion du switch de canal ---
+if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta ? (o/N) : \e[0m' CONFIRM_BETA
+        if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+            # Télécharger le script beta et relancer
+            if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
+                mv "$0.new" "$0"
+                chmod +x "$0"
+                echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
                 sleep 1
                 exec "$0"
                 exit 0
+            else
+                echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
+                sleep 2
             fi
+        else
+            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            sleep 1
         fi
-    done
+    else
+        # Passage beta -> stable sans confirmation
+        if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh" -o "$0.new"; then
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
+            sleep 1
+            exec "$0"
+            exit 0
+        else
+            echo -e "\e[1;31mErreur lors du téléchargement du script stable.\e[0m"
+            sleep 2
+        fi
+    fi
+fi
+
+# --- Avertissement si canal beta ---
+if [[ "$SCRIPT_CHANNEL" == "beta" && "$BETA_CONFIRMED" != "1" ]]; then
+    clear
+    echo -e "\e[1;33m⚠️  Vous avez choisi le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+    echo -e "\e[1;33mEn continuant, vous acceptez les risques liés à l'utilisation de la version beta.\e[0m"
+    read -p $'\e[1;33mConfirmez-vous vouloir rester en beta ? (o/N) : \e[0m' CONFIRM_BETA
+    if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+        set_conf_value "BETA_CONFIRMED" "1"
+        echo -e "\e[1;32mConfirmation enregistrée. Vous ne verrez plus cet avertissement.\e[0m"
+    else
+        sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"stable\"/" "$CONF_FILE"
+        set_conf_value "BETA_CONFIRMED" "0"
+        echo -e "\e[1;32mRetour au canal stable au prochain lancement.\e[0m"
+        echo -e "\e[1;33mRedémarrage du script...\e[0m"
+        sleep 1
+        exec "$0"
+        exit 0
+    fi
 fi
 
 # --- MENU PRINCIPAL ---
@@ -531,20 +584,28 @@ while true; do
     echo "                        \/_____/            \/           \/"
     echo -e "\e[0m"
     echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
-    echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
-    echo
-    echo -e "\e[0;34m📜 Voir les modifications du script en appuyant sur \e[0m'\e[0;32mh\e[0m'\e[0m\n"
+    echo -e "\e[0;32mv$SCRIPT_BASE_VERSION\e[0m"
+    echo -e "\e[0;34m📜 News \e[0m'\e[0;32m!\e[0m'\e[0m\n"
 
     # Afficher le canal actuel et le bouton de switch
-    echo -e "\e[1;36mCanal actuel du script :\e[0m \e[1;33m$SCRIPT_CHANNEL\e[0m"
-    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;35mbeta\e[0m"
+
+    BLINK_ARROW_LEFT="\e[5;33m<==\e[0m"
+    BLINK_ARROW_RIGHT="\e[5;33m==>\e[0m"
+    CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
+    if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
+        echo -e "Canal : \e[32mSTABLE 🟢 \e[0m \e[35mBETA ⚪\e[0m "
+        echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
     else
-        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;32mstable\e[0m"
+        echo -e "Canal : \e[32mSTABLE ⚪ \e[0m \e[35mBETA 🟢\e[0m "
+        echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
     fi
 
-    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
-        echo -e "\e[33mUne nouvelle version du script ($SCRIPT_CHANNEL) est disponible : $REMOTE_VERSION\e[0m"
+    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
+        if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
+            echo -e "\e[33mUne nouvelle version stable ($REMOTE_VERSION_STABLE) est disponible, supérieure à la version beta actuelle ($REMOTE_VERSION_BETA).\e[0m"
+        else
+            echo -e "\e[33mUne nouvelle version du script, est disponible : $REMOTE_VERSION\e[0m"
+        fi
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
@@ -659,8 +720,11 @@ while true; do
             printf "\e[1;36m%-22s : \e[1;33m%s\e[0m\n" "Version wg-easy" "Non définie"
         fi
     else
-        echo -e "\e[5;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
-        echo -e "\e[1;33m         Veuillez configurer pour continuer.\e[0m\n"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
+        echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
+        echo -e "\e[5;33m         Veuillez configurer pour continuer.\e[0m"
     fi
     echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
     echo -e "🌍\e[2;36m MENU PRINCIPAL :\e[0m"
@@ -682,7 +746,7 @@ while true; do
         echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
         # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
         if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
         fi
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
     else
@@ -690,7 +754,7 @@ while true; do
         echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
         # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
         if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
         fi
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
     fi
@@ -705,16 +769,39 @@ while true; do
     # --- Gestion du switch de canal ---
     if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
         if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-            echo "beta" > .channel
-            echo -e "\e[1;35mLe script va passer en mode beta au prochain lancement.\e[0m"
+            echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+            read -p $'\e[1;33mConfirmez-vous vouloir passer en beta ? (o/N) : \e[0m' CONFIRM_BETA
+            if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+                # Télécharger le script beta et relancer
+                if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
+                    mv "$0.new" "$0"
+                    chmod +x "$0"
+                    echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+                    sleep 1
+                    exec "$0"
+                    exit 0
+                else
+                    echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
+                    sleep 2
+                fi
+            else
+                echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+                sleep 1
+            fi
         else
-            echo "stable" > .channel
-            echo -e "\e[1;32mLe script va passer en mode stable au prochain lancement.\e[0m"
+            # Passage beta -> stable sans confirmation
+            if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh" -o "$0.new"; then
+                mv "$0.new" "$0"
+                chmod +x "$0"
+                echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
+                sleep 1
+                exec "$0"
+                exit 0
+            else
+                echo -e "\e[1;31mErreur lors du téléchargement du script stable.\e[0m"
+                sleep 2
+            fi
         fi
-        echo -e "\e[1;33mRedémarrage du script...\e[0m"
-        sleep 1
-        exec "$0"
-        exit 0
     fi
 
     # --- Actions principales ---
@@ -800,14 +887,28 @@ while true; do
             d|D)
                 debian_tools_menu
                 ;;
-            h|H)
+            !)
                 clear
-                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                echo -e "\e[1;36m===== CHANGELOG DU SCRIPT =====\e[0m"
                 if [[ -f CHANGELOG.md ]]; then
-                    cat CHANGELOG.md
+                    while IFS= read -r line; do
+                        if [[ "$line" =~ ^#\  ]]; then
+                            echo -e "\e[1;35m$line\e[0m"         # Titre principal
+                        elif [[ "$line" =~ ^##\  ]]; then
+                            echo -e "\e[1;36m$line\e[0m"         # Version
+                        elif [[ "$line" =~ ^###\  ]]; then
+                            echo -e "\e[1;33m$line\e[0m"         # Sous-titre
+                        elif [[ "$line" =~ ^-\  ]]; then
+                            echo -e "\e[0;30m$line\e[0m"         # Liste
+                        else
+                            echo -e "\e[0;37m$line\e[0m"         # Texte normal
+                        fi
+                    done < CHANGELOG.md
                 else
                     echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
                 fi
+                echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+                read -n 1 -s
                 SKIP_PAUSE=1
                 ;;
             u|U)
@@ -846,14 +947,28 @@ while true; do
         case $ACTION in
             1) configure_values ;;
             d|D) debian_tools_menu ;;
-            h|H)
+            !)
                 clear
-                echo -e "\e[1;36m===== Changelog du script =====\e[0m"
+                echo -e "\e[1;36m===== CHANGELOG DU SCRIPT =====\e[0m"
                 if [[ -f CHANGELOG.md ]]; then
-                    cat CHANGELOG.md
+                    while IFS= read -r line; do
+                        if [[ "$line" =~ ^#\  ]]; then
+                            echo -e "\e[1;35m$line\e[0m"         # Titre principal
+                        elif [[ "$line" =~ ^##\  ]]; then
+                            echo -e "\e[1;36m$line\e[0m"         # Version
+                        elif [[ "$line" =~ ^###\  ]]; then
+                            echo -e "\e[1;33m$line\e[0m"         # Sous-titre
+                        elif [[ "$line" =~ ^-\  ]]; then
+                            echo -e "\e[0;30m$line\e[0m"         # Liste
+                        else
+                            echo -e "\e[0;37m$line\e[0m"         # Texte normal
+                        fi
+                    done < CHANGELOG.md
                 else
                     echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
                 fi
+                echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+                read -n 1 -s
                 SKIP_PAUSE=1
                 ;;
             u|U)
@@ -895,9 +1010,7 @@ while true; do
     fi
 done
 
-# --- Option de rétrogradation manuelle si backup disponible ---
-SCRIPT_BACKUP="config_wg.sh.bak"
-
+# --- Fonctions utilitaires et annexes (si besoin) ---
 restore_script() {
     if [[ -f "$SCRIPT_BACKUP" ]]; then
         echo -e "\e[33mUne sauvegarde du script est disponible.\e[0m"
@@ -915,15 +1028,3 @@ restore_script() {
         fi
     fi
 }
-
-# Ajoute cette option dans le menu principal :
-if [[ -f "$SCRIPT_BACKUP" ]]; then
-    echo -e "\e[1;32mr) \e[0m\e[0;37m⬅️  Rétrograder le script (restaurer la sauvegarde)\e[0m"
-fi
-
-# Dans la gestion des actions du menu principal, ajoute :
-if [[ "$ACTION" == "r" || "$ACTION" == "R" ]]; then
-    restore_script
-    SKIP_PAUSE=1
-    continue
-fi
