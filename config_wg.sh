@@ -571,14 +571,14 @@ while true; do
     BLINK_ARROW_RIGHT="\e[5;33m==>\e[0m"
     CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
     if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
-        echo -e "Canal : \e[32mSTABLE 🟢 \e[0m \e[35mBETA ⚪\e[0m "
+        echo -e "Canal : \e[32mSTABLE 🟢\e[0m $BLINK_ARROW_LEFT \e[90mBETA ⚪\e[0m "
         if [[ -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
             echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
         else
             echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
         fi
     elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-        echo -e "Canal : \e[32mSTABLE ⚪ \e[0m \e[35mBETA 🟢\e[0m "
+        echo -e "Canal : \e[90mSTABLE ⚪\e[0m $BLINK_ARROW_RIGHT \e[32mBETA 🟢\e[0m "
         echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
     fi
 

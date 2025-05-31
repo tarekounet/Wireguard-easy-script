@@ -1,16 +1,23 @@
 # Changelog
 Toutes les modifications notables de ce projet seront documentées ici.
 
-## [1.3.2] - 2025-05-31
+## [1.3.3] - 2025-05-31
 ### Ajouté
-- Ajout de la possibilité de switcher entre une version stable ou beta du script
+- Possibilité de switcher 🔁 entre une version stable et beta du script.
+- Passage de stable → beta uniquement si la version beta est supérieure, sinon ⛔.
+- Si la version stable est supérieure à la beta, retour automatique sur la branche principale.
+- Intégration d'un fichier de configuration pour mémoriser des informations essentielles.
+
 
 ### Modifié
-- Modification visuelle du script général
-- Optimisastion du script
+- Refonte visuelle du script général.
+- Optimisation du script pour de meilleures performances.
 
 ### Corrigé
-- correction sur la remonté du fichier "CHANGELOG"
+- Correction de l'affichage du fichier CHANGELOG.
+- Correction des erreurs liées au changement de canal.
+- Amélioration de la remontée d'informations sur les mises à jour dans chaque canal respectif.
+
 
 ## [1.2.0] - 2025-05-30
 ### Ajouté
