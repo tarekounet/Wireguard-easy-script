@@ -38,11 +38,8 @@ else
     UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 fi
 
-# Extraire le hash du commit local et distant pour la comparaison
-LOCAL_COMMIT=$(echo "$SCRIPT_VERSION" | awk -F'-' '{print $3}')
-REMOTE_COMMIT=$(echo "$REMOTE_VERSION" | awk -F'-' '{print $3}')
-
-if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
+# --- Comparaison version locale / distante (sans commit) ---
+if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
     echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
 fi
 
@@ -591,7 +588,7 @@ while true; do
         echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
         # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
         if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION $SCRIPT_CHANNEL disponible\e[0m)"
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
         fi
         echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
