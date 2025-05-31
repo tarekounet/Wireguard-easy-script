@@ -1,16 +1,119 @@
 #!/bin/bash
 
-SCRIPT_VERSION="1.2.0"
-REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
-UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+# --- Définir la version de base du script ---
+SCRIPT_BASE_VERSION="1.3.0"
 
-# Définir le chemin absolu du fichier docker-compose
+# --- Gestion du canal (stable/beta) optimisée ---
+SCRIPT_CHANNEL="beta"
+
+# 1. Argument en priorité
+if [[ "$1" == "--beta" ]]; then
+    SCRIPT_CHANNEL="beta"
+elif [[ "$1" == "--stable" ]]; then
+    SCRIPT_CHANNEL="stable"
+# 2. Fichier .channel si présent
+elif [[ -f ".channel" ]]; then
+    CHANNEL_FILE=$(cat .channel 2>/dev/null)
+    if [[ "$CHANNEL_FILE" == "beta" || "$CHANNEL_FILE" == "stable" ]]; then
+        SCRIPT_CHANNEL="$CHANNEL_FILE"
+    fi
+fi
+
+# --- Construction de la version ---
+SCRIPT_VERSION_SHORT="${SCRIPT_BASE_VERSION}-${SCRIPT_CHANNEL}"
+# Ne pas utiliser de commit ou de hash dans la version affichée
+
+# --- Définition des URLs selon le canal ---
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
+    REMOTE_VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
+else
+    REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+fi
+
+# --- Comparaison version locale / distante (canal sélectionné uniquement) ---
+show_update=0
+force_switch_to_stable=0
+
+if [[ "$SCRIPT_CHANNEL" == "beta" && -n "$REMOTE_VERSION_STABLE" && -n "$REMOTE_VERSION" ]]; then
+    # Si la version stable > version beta, proposer la stable même en beta
+    if [[ "$(printf '%s\n' "$REMOTE_VERSION_STABLE" "$REMOTE_VERSION_BETA" | sort -V | tail -n1)" == "$REMOTE_VERSION_STABLE" && "$REMOTE_VERSION_STABLE" != "$REMOTE_VERSION_BETA" ]]; then
+        if [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_STABLE" ]]; then
+            show_update=1
+            update_channel="stable"
+            update_version="$REMOTE_VERSION_STABLE"
+            force_switch_to_stable=1
+        fi
+    else
+        if [[ "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION_BETA" ]]; then
+            show_update=1
+            update_channel="beta"
+            update_version="$REMOTE_VERSION_BETA"
+        fi
+    fi
+elif [[ -n "$REMOTE_VERSION" && "$SCRIPT_BASE_VERSION" != "$REMOTE_VERSION" ]]; then
+    show_update=1
+    update_channel="$SCRIPT_CHANNEL"
+    update_version="$REMOTE_VERSION"
+fi
+
+if [[ "$show_update" == "1" ]]; then
+    echo -e "\e[33mUne nouvelle version du script ($update_channel) est disponible : $update_version\e[0m"
+    read -p $'\e[1;33mVoulez-vous mettre à jour le script ? (o/N) : \e[0m' DO_UPDATE
+    if [[ "$DO_UPDATE" == "o" || "$DO_UPDATE" == "O" ]]; then
+        if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+            # Si la stable > beta, repasser automatiquement en canal stable
+            if [[ "$force_switch_to_stable" == "1" ]]; then
+                echo "stable" > .channel
+                echo -e "\e[1;32mLe canal a été repassé automatiquement en stable car la version stable est supérieure à la beta.\e[0m"
+            fi
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
+        else
+            echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+        fi
+    fi
+fi
+
+# --- Affichage version dans le menu principal ---
+echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
+
+# --- Préparation du dossier de configuration ---
 if [[ ! -d "/mnt/wireguard" ]]; then
     mkdir -p "/mnt/wireguard"
 fi
 DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
 
-# --- FONCTIONS PRINCIPALES ---
+# --- Gestion du fichier version.conf ---
+VERSION_CONF="version.conf"
+if [[ ! -f "$VERSION_CONF" ]]; then
+    # Récupérer les versions distantes
+    VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
+    VERSION_BETA=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
+    # Détecter la version locale selon le canal
+    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+        VERSION_LOCAL="$VERSION_BETA"
+    else
+        VERSION_LOCAL="$VERSION_STABLE"
+    fi
+    # Créer le fichier version.conf
+    cat > "$VERSION_CONF" <<EOF
+stable=$VERSION_STABLE
+beta=$VERSION_BETA
+local=$VERSION_LOCAL
+EOF
+fi
+
+# Charger les variables depuis version.conf
+source "$VERSION_CONF"
+
+# --- Fonctions principales ---
 
 configure_values() {
     # Fonction pour gérer l'annulation par Ctrl+C
@@ -382,6 +485,36 @@ debian_tools_menu() {
     done
 }
 
+# --- Avertissement si canal beta ---
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    echo -e "\e[1;35m⚠️  Attention : Le canal beta peut contenir des versions instables ou non testées. Utilisez-le à vos risques et périls.\e[0m"
+    # Demander confirmation avec le mot de passe technique
+    EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+    ATTEMPTS=0
+    MAX_ATTEMPTS=3
+    while (( ATTEMPTS < MAX_ATTEMPTS )); do
+        read -sp "Entrez le mot de passe technique pour continuer sur le canal beta (ctrl+c pour annuler) : " TECH_PASSWORD
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$TECH_PASSWORD")
+        if [[ "$ENTERED_HASH" == "$EXPECTED_HASH" ]]; then
+            echo -e "\e[1;32mAccès au canal beta autorisé.\e[0m"
+            break
+        else
+            ((ATTEMPTS++))
+            if (( ATTEMPTS < MAX_ATTEMPTS )); then
+                echo -e "\e[1;31mMot de passe incorrect. Nouvelle tentative ($ATTEMPTS/$MAX_ATTEMPTS).\e[0m"
+            else
+                echo -e "\e[1;31mMot de passe incorrect. Retour au canal stable.\e[0m"
+                echo "stable" > .channel
+                SCRIPT_CHANNEL="stable"
+                sleep 1
+                exec "$0"
+                exit 0
+            fi
+        fi
+    done
+fi
+
 # --- MENU PRINCIPAL ---
 while true; do
     # Effacer la console
@@ -398,12 +531,20 @@ while true; do
     echo "                        \/_____/            \/           \/"
     echo -e "\e[0m"
     echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
-    echo -e "\e[2;32mv$SCRIPT_VERSION\e[0m"
+    echo -e "\e[2;32mv$SCRIPT_BASE_VERSION\e[0m"
     echo
     echo -e "\e[0;34m📜 Voir les modifications du script en appuyant sur \e[0m'\e[0;32mh\e[0m'\e[0m\n"
 
-    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
-        echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
+    # Afficher le canal actuel et le bouton de switch
+    echo -e "\e[1;36mCanal actuel du script :\e[0m \e[1;33m$SCRIPT_CHANNEL\e[0m"
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;35mbeta\e[0m"
+    else
+        echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;32mstable\e[0m"
+    fi
+
+    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
+        echo -e "\e[33mUne nouvelle version du script ($SCRIPT_CHANNEL) est disponible : $REMOTE_VERSION\e[0m"
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
@@ -539,18 +680,18 @@ while true; do
         echo -e "\e[1;32m5) \e[0m\e[0;37m🐳 Mise à jour du container\e[0m"
         echo -e "\e[1;32m6) \e[0m\e[0;37m♻️ Réinitialiser\e[0m"
         echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-        if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼  Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
+        # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
+        if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
         fi
-        echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
     else
         echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️ Créer la configuration\e[0m"
         echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-        if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
+        # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
+        if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
             echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script (\e[1;33m$REMOTE_VERSION disponible\e[0m)"
         fi
-        echo -e "\e[1;32mh) \e[0m\e[0;37m📜 Voir le changelog du script\e[0m"
         echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
     fi
 
@@ -561,6 +702,22 @@ while true; do
 
     SKIP_PAUSE=0
 
+    # --- Gestion du switch de canal ---
+    if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+        if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+            echo "beta" > .channel
+            echo -e "\e[1;35mLe script va passer en mode beta au prochain lancement.\e[0m"
+        else
+            echo "stable" > .channel
+            echo -e "\e[1;32mLe script va passer en mode stable au prochain lancement.\e[0m"
+        fi
+        echo -e "\e[1;33mRedémarrage du script...\e[0m"
+        sleep 1
+        exec "$0"
+        exit 0
+    fi
+
+    # --- Actions principales ---
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         case $ACTION in
             1) configure_values ;;
@@ -613,7 +770,7 @@ while true; do
                 while (( ATTEMPTS < MAX_ATTEMPTS )); do
                     read -sp "Entrez le mot de passe technique pour confirmer la réinitialisation (ctrl+c pour annuler) : " RESET_PASSWORD
                     echo
-                    if [[ "$RESET_PASSWORD" == $'\e' ]]; then
+                    if [[ $RESET_PASSWORD == $'\e' ]]; then
                         echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
                         break
                     fi
@@ -731,9 +888,42 @@ while true; do
         esac
     fi
 
-    # Pause avant de retourner au menu (sauf pour changelog, update, quitter)
+    # --- Pause avant retour menu ---
     if [[ "$SKIP_PAUSE" != "1" ]]; then
         echo -e "\nAppuyez sur une touche pour revenir au menu..."
         read -n 1 -s
     fi
 done
+
+# --- Option de rétrogradation manuelle si backup disponible ---
+SCRIPT_BACKUP="config_wg.sh.bak"
+
+restore_script() {
+    if [[ -f "$SCRIPT_BACKUP" ]]; then
+        echo -e "\e[33mUne sauvegarde du script est disponible.\e[0m"
+        read -p $'\e[1;33mVoulez-vous restaurer la version précédente du script ? (o/N) : \e[0m' RESTORE_CHOICE
+        if [[ "$RESTORE_CHOICE" == "o" || "$RESTORE_CHOICE" == "O" ]]; then
+            cp "$SCRIPT_BACKUP" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript restauré depuis la sauvegarde locale ($SCRIPT_BACKUP).\e[0m"
+            echo -e "\e[1;33mRedémarrage du script...\e[0m"
+            sleep 1
+            exec "$0"
+            exit 0
+        else
+            echo -e "\e[1;33mRestauration annulée.\e[0m"
+        fi
+    fi
+}
+
+# Ajoute cette option dans le menu principal :
+if [[ -f "$SCRIPT_BACKUP" ]]; then
+    echo -e "\e[1;32mr) \e[0m\e[0;37m⬅️  Rétrograder le script (restaurer la sauvegarde)\e[0m"
+fi
+
+# Dans la gestion des actions du menu principal, ajoute :
+if [[ "$ACTION" == "r" || "$ACTION" == "R" ]]; then
+    restore_script
+    SKIP_PAUSE=1
+    continue
+fi
