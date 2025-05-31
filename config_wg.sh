@@ -3,14 +3,30 @@
 # --- Définir la version de base du script ---
 SCRIPT_BASE_VERSION="1.3"
 
-# --- Gestion du canal (stable/beta) ---
+# --- Gestion du canal (stable/beta) optimisée ---
 SCRIPT_CHANNEL="stable"
+
+# 1. Argument en priorité
 if [[ "$1" == "--beta" ]]; then
     SCRIPT_CHANNEL="beta"
 elif [[ "$1" == "--stable" ]]; then
     SCRIPT_CHANNEL="stable"
+
+# 2. Fichier .channel si présent
 elif [[ -f ".channel" ]]; then
-    SCRIPT_CHANNEL=$(cat .channel)
+    CHANNEL_FILE=$(cat .channel 2>/dev/null)
+    if [[ "$CHANNEL_FILE" == "beta" || "$CHANNEL_FILE" == "stable" ]]; then
+        SCRIPT_CHANNEL="$CHANNEL_FILE"
+    fi
+
+# 3. Détection branche git si possible
+elif command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ "$BRANCH" == "beta" ]]; then
+        SCRIPT_CHANNEL="beta"
+    elif [[ "$BRANCH" == "main" ]]; then
+        SCRIPT_CHANNEL="stable"
+    fi
 fi
 
 # --- Ajout du commit à la version ---
@@ -40,7 +56,7 @@ fi
 
 # --- Comparaison version locale / distante (sans commit) ---
 if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
-    echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
+    echo -e "\e[33mUne nouvelle version du script ($SCRIPT_CHANNEL) est disponible : $REMOTE_VERSION\e[0m"
 fi
 
 # --- Préparation du dossier de configuration ---
@@ -449,8 +465,8 @@ while true; do
         echo -e "\e[1;32ms) \e[0m\e[0;37m🔀 Passer en mode \e[1;32mstable\e[0m"
     fi
 
-    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION" != "$REMOTE_VERSION" ]]; then
-        echo -e "\e[33mUne nouvelle version du script est disponible : $REMOTE_VERSION\e[0m"
+    if [[ -n "$REMOTE_VERSION" && "$SCRIPT_VERSION_SHORT" != "$REMOTE_VERSION" ]]; then
+        echo -e "\e[33mUne nouvelle version du script ($SCRIPT_CHANNEL) est disponible : $REMOTE_VERSION\e[0m"
     fi
 
     # Vérifier les mises à jour disponibles selon le gestionnaire de paquets

@@ -15,12 +15,18 @@ jobs:
 
       - name: Get version and commit
         run: |
-          BASE_VERSION=$(grep '^SCRIPT_BASE_VERSION=' config_wg.sh | head -n1 | cut -d'"' -f2)
-          CHANNEL=$(grep '^SCRIPT_CHANNEL=' config_wg.sh | head -n1 | cut -d'"' -f2)
-          COMMIT=$(git rev-parse --short HEAD)
-          [[ -z "$BASE_VERSION" ]] && BASE_VERSION="1.0"
-          [[ -z "$CHANNEL" ]] && CHANNEL="stable"
-          echo "${BASE_VERSION}-${CHANNEL}-${COMMIT}" > version.txt
+            BASE_VERSION=$(grep '^SCRIPT_BASE_VERSION=' config_wg.sh | head -n1 | cut -d'"' -f2)
+            BRANCH=$(echo "${GITHUB_REF#refs/heads/}")
+            COMMIT=$(git rev-parse --short HEAD)
+            [[ -z "$BASE_VERSION" ]] && BASE_VERSION="1.0"
+            if [[ "$BRANCH" == "main" ]]; then
+            CHANNEL="stable"
+            elif [[ "$BRANCH" == "beta" ]]; then
+            CHANNEL="beta"
+            else
+            CHANNEL="dev"
+            fi
+            echo "${BASE_VERSION}-${CHANNEL}-${COMMIT}" > version.txt
 
       - name: Commit and push version.txt
         env:
