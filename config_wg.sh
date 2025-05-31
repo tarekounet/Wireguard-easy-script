@@ -1,13 +1,19 @@
 #!/bin/bash
 
 SCRIPT_VERSION="1.2"
-# Ajout du numéro de commit court à la version si possible
+# Ajout du numéro de commit court à la version et mise à jour de version.txt
 if command -v git >/dev/null 2>&1 && [[ -d .git ]]; then
     GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
     if [[ -n "$GIT_COMMIT" ]]; then
         SCRIPT_VERSION="${SCRIPT_VERSION}-${GIT_COMMIT}"
+        echo "$SCRIPT_VERSION" > version.txt
+    else
+        echo "$SCRIPT_VERSION" > version.txt
     fi
+else
+    echo "$SCRIPT_VERSION" > version.txt
 fi
+# Vérification de la version du script
 REMOTE_VERSION=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
 UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
 
