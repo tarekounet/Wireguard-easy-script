@@ -4,7 +4,8 @@ CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
 SCRIPT_BASE_VERSION_INIT="1.3.0"
 SCRIPT_CANAL="stable"
-# Création/Mise à jour du fichier de conf si besoin
+
+# Vérifier et créer le fichier de conf AVANT toute autre action
 if [[ ! -f "$CONF_FILE" ]]; then
     cat > "$CONF_FILE" <<EOF
 SCRIPT_CHANNEL="$SCRIPT_CANAL"
@@ -12,24 +13,12 @@ SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
 EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
 BETA_CONFIRMED="0"
 EOF
-else
-    # Update only modified values
-    sed -i "s/^SCRIPT_CHANNEL=.*/SCRIPT_CHANNEL=\"$SCRIPT_CANAL\"/" "$CONF_FILE"
-    sed -i "s/^SCRIPT_BASE_VERSION=.*/SCRIPT_BASE_VERSION=\"$SCRIPT_BASE_VERSION_INIT\"/" "$CONF_FILE"
-    if ! grep -q "^EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'$" "$CONF_FILE"; then
-        sed -i "/^EXPECTED_HASH=/d" "$CONF_FILE"
-        echo "EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'" >> "$CONF_FILE"
-    fi
-    if ! grep -q "^BETA_CONFIRMED=\"0\"$" "$CONF_FILE"; then
-        sed -i "/^BETA_CONFIRMED=/d" "$CONF_FILE"
-        echo "BETA_CONFIRMED=\"0\"" >> "$CONF_FILE"
-    fi
 fi
 
-# Charger la configuration principale
+# --- Chargement de la configuration ---
 source "$CONF_FILE"
 
-# Fonctions utilitaires pour lire/écrire dans wg-easy.conf
+# --- Fonctions utilitaires pour lire/écrire dans wg-easy.conf ---
 set_conf_value() {
     local key="$1"
     local value="$2"
