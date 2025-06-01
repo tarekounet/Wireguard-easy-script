@@ -1,6 +1,17 @@
 # Changelog
 Toutes les modifications notables de ce projet seront documentées ici.
 
+## [1.4.0] - 2025-05-31
+### Ajouté
+- Possibilité de modifier les différentes valeur du port ethernet.
+    IP, Masque, Passerelle, DNS
+
+### Modifié
+- Detection si la carte est en DHCP ou Static pour proposer le choix de changer de mode.
+- Optimisation du script pour de meilleures performances.
+
+### Corrigé
+
 ## [1.3.3] - 2025-05-31
 ### Ajouté
 - Possibilité de switcher 🔁 entre une version stable et beta du script.

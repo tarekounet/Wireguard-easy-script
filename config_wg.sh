@@ -1,31 +1,22 @@
 #!/bin/bash
 
+# =========================
+# 1. Variables globales
+# =========================
+DOCKER_COMPOSE_DIR="/mnt/wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 CONF_FILE="wg-easy.conf"
 SCRIPT_BACKUP="config_wg.sh.bak"
-SCRIPT_BASE_VERSION_INIT="1.3.3"
-SCRIPT_CANAL="stable"
-
-# Vérifier et créer le fichier de conf AVANT toute autre action
-if [[ ! -f "$CONF_FILE" ]]; then
-    cat > "$CONF_FILE" <<EOF
-SCRIPT_CHANNEL="$SCRIPT_CANAL"
-SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
-EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-BETA_CONFIRMED="0"
-EOF
+VERSION_FILE="version.txt"
+SCRIPT_CHANNEL="stable"
+SCRIPT_BASE_VERSION_INIT="1.4.0"
+if [[ -f "$VERSION_FILE" ]]; then
+    SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
 
-# --- Chargement de la configuration ---
-source "$CONF_FILE"
-
-# Fonction de sauvegarde du script
-backup_script() {
-    local backup_file="${SCRIPT_BACKUP:-config_wg.sh.bak}"
-    cp "$0" "$backup_file"
-    echo -e "\e[1;36mSauvegarde du script effectuée : $backup_file\e[0m"
-}
-
-# --- Fonctions utilitaires pour lire/écrire dans wg-easy.conf ---
+# =========================
+# 2. Fonctions utilitaires
+# =========================
 set_conf_value() {
     local key="$1"
     local value="$2"
@@ -41,7 +32,50 @@ get_conf_value() {
     grep "^${key}=" "$CONF_FILE" | cut -d '=' -f2- | tr -d '"'
 }
 
-# --- Gestion du canal via argument ---
+# =========================
+# 3. Initialisation config
+# =========================
+init_tech_password() {
+    while true; do
+        read -p $'\e[1;33mVoulez-vous définir un mot de passe technique ? (o/N) : \e[0m' INIT_PASS_CHOICE
+        if [[ "$INIT_PASS_CHOICE" == "o" || "$INIT_PASS_CHOICE" == "O" ]]; then
+            while true; do
+                read -sp "Entrez le mot de passe technique : " PASS1
+                echo
+                read -sp "Confirmez le mot de passe technique : " PASS2
+                echo
+                if [[ -z "$PASS1" ]]; then
+                    echo -e "\e[1;31mLe mot de passe ne peut pas être vide.\e[0m"
+                elif [[ "$PASS1" != "$PASS2" ]]; then
+                    echo -e "\e[1;31mLes mots de passe ne correspondent pas.\e[0m"
+                else
+                    HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS1")
+                    break
+                fi
+            done
+            break
+        else
+            HASH=""
+            break
+        fi
+    done
+}
+
+if [[ ! -f "$CONF_FILE" ]]; then
+    init_tech_password
+    cat > "$CONF_FILE" <<EOF
+SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
+SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
+EXPECTED_HASH='$HASH'
+BETA_CONFIRMED="0"
+EOF
+fi
+
+source "$CONF_FILE"
+
+# =========================
+# 4. Gestion du canal via argument
+# =========================
 if [[ "$1" == "--beta" ]]; then
     SCRIPT_CHANNEL="beta"
 elif [[ "$1" == "--stable" ]]; then
@@ -50,47 +84,43 @@ else
     SCRIPT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
 fi
 
-# --- Récupération des versions distantes ---
+# =========================
+# 5. Récupération des versions distantes
+# =========================
 VERSION_STABLE=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt)
 VERSION_BETA=$(curl -s https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/version.txt)
 
-# --- Mise à jour du fichier de conf si besoin ---
+# =========================
+# 6. Mise à jour du fichier de conf si besoin
+# =========================
 MODIFIED=0
-if [[ "$(get_conf_value "SCRIPT_CHANNEL")" != "$SCRIPT_CHANNEL" ]]; then
-    set_conf_value "SCRIPT_CHANNEL" "$SCRIPT_CHANNEL"
-    MODIFIED=1
-fi
-if [[ "$(get_conf_value "SCRIPT_BASE_VERSION")" != "$SCRIPT_BASE_VERSION_INIT" ]]; then
-    set_conf_value "SCRIPT_BASE_VERSION" "$SCRIPT_BASE_VERSION_INIT"
-    MODIFIED=1
-fi
-if [[ "$(get_conf_value "VERSION_STABLE")" != "$VERSION_STABLE" ]]; then
-    set_conf_value "VERSION_STABLE" "$VERSION_STABLE"
-    MODIFIED=1
-fi
-if [[ "$(get_conf_value "VERSION_BETA")" != "$VERSION_BETA" ]]; then
-    set_conf_value "VERSION_BETA" "$VERSION_BETA"
-    MODIFIED=1
-fi
+[[ "$(get_conf_value "SCRIPT_CHANNEL")" != "$SCRIPT_CHANNEL" ]] && set_conf_value "SCRIPT_CHANNEL" "$SCRIPT_CHANNEL" && MODIFIED=1
+[[ "$(get_conf_value "SCRIPT_BASE_VERSION")" != "$SCRIPT_BASE_VERSION_INIT" ]] && set_conf_value "SCRIPT_BASE_VERSION" "$SCRIPT_BASE_VERSION_INIT" && MODIFIED=1
+[[ "$(get_conf_value "VERSION_STABLE")" != "$VERSION_STABLE" ]] && set_conf_value "VERSION_STABLE" "$VERSION_STABLE" && MODIFIED=1
+[[ "$(get_conf_value "VERSION_BETA")" != "$VERSION_BETA" ]] && set_conf_value "VERSION_BETA" "$VERSION_BETA" && MODIFIED=1
 
-# --- Utilisation dans le script ---
+# =========================
+# 7. Vérification de mise à jour disponible
+# =========================
 VERSION_LOCAL=$(get_conf_value "SCRIPT_BASE_VERSION")
 VERSION_STABLE_CONF=$(get_conf_value "VERSION_STABLE")
 VERSION_BETA_CONF=$(get_conf_value "VERSION_BETA")
 SCRIPT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
 
-# --- Affichage des informations ---
-echo -e "\e[2;32mWireguard Easy Script - v$VERSION_LOCAL ($SCRIPT_CHANNEL)\e[0m"
-echo -e "\e[2;34mVersion stable distante : $VERSION_STABLE_CONF\e[0m"
-echo -e "\e[2;34mVersion beta distante : $VERSION_BETA_CONF\e[0m"
-
-# --- Préparation du dossier de configuration ---
-if [[ ! -d "/mnt/wireguard" ]]; then
-    mkdir -p "/mnt/wireguard"
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    REMOTE_VERSION="$VERSION_BETA_CONF"
+else
+    REMOTE_VERSION="$VERSION_STABLE_CONF"
 fi
-DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
 
-# --- Fonctions principales ---
+if [[ -n "$REMOTE_VERSION" && "$VERSION_LOCAL" != "$REMOTE_VERSION" ]]; then
+    echo -e "\e[1;33mUne mise à jour du script est disponible : $REMOTE_VERSION (actuelle : $VERSION_LOCAL)\e[0m"
+    echo -e "\e[1;33mUtilisez l'option 'u' dans le menu pour mettre à jour.\e[0m"
+fi
+
+# =========================
+# 8. Fonctions principales
+# =========================
 
 configure_values() {
     # Fonction pour gérer l'annulation par Ctrl+C
@@ -337,7 +367,6 @@ EOF
     return
 }
 
-# Fonction pour le sous-menu Debian
 debian_tools_menu() {
     SKIP_PAUSE=1
     while true; do
@@ -345,16 +374,27 @@ debian_tools_menu() {
         echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
         echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
         echo -e "\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "\n\e[1;32m1) \e[0m\e[0;37m📦 Afficher la version de Debian\e[0m"
+
+        echo -e "\n\e[1;33m--- Informations système ---\e[0m"
+        echo -e "\e[1;32m1) \e[0m\e[0;37m📦 Afficher la version de Debian\e[0m"
         echo -e "\e[1;32m2) \e[0m\e[0;37m💾 Afficher l'espace disque\e[0m"
-        echo -e "\e[1;32m3) \e[0m\e[0;37m🔄 Mettre à jour le système (apt update & upgrade)\e[0m"
-        echo -e "\e[1;32m4) \e[0m\e[0;37m🌐 Réseau : Modifier l'adresse IP du serveur\e[0m"
-        echo -e "\e[1;32m5) \e[0m\e[0;37m🖥️ Système : Modifier le nom de la VM\e[0m"
-        echo -e "\e[1;32m6) \e[0m\e[0;37m🔐 Sécurité : Modifier le port SSH\e[0m"
         echo -e "\e[1;32m7) \e[0m\e[0;37m🐳 Afficher l'état du service Docker\e[0m"
         echo -e "\e[1;32m8) \e[0m\e[0;37m📊 Moniteur système : Afficher les performances (btop)\e[0m"
-        echo -e "\e[1;32m9) \e[0m\e[0;37m💻 Console : Ouvrir une session bash\e[0m"
-        echo -e "\e[1;32m0) \e[0m\e[0;37m❌ Retour au menu principal\e[0m"
+
+        echo -e "\n\e[1;33m--- Administration réseau ---\e[0m"
+        echo -e "\e[1;32m4) \e[0m\e[0;37m🌐 Modifier l'adresse IP du serveur\e[0m"
+
+        echo -e "\n\e[1;33m--- Administration système ---\e[0m"
+        echo -e "\e[1;32m3)  \e[0m\e[0;37m🔄 Mettre à jour le système (apt update & upgrade)\e[0m"
+        echo -e "\e[1;32m5)  \e[0m\e[0;37m🖥️ Modifier le nom de la VM\e[0m"
+        echo -e "\e[1;32m6)  \e[0m\e[0;37m🔐 Modifier le port SSH\e[0m"
+        echo -e "\e[1;32m10) \e[0m\e[0;37m🔁 Redémarrer la VM\e[0m"
+        echo -e "\e[1;32m11) \e[0m\e[0;37m⚡ Éteindre la VM\e[0m"
+
+        echo -e "\n\e[1;33m--- Divers ---\e[0m"
+        echo -e "\e[1;32m9) \e[0m\e[0;37m💻 Ouvrir une session bash\e[0m"
+
+        echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Retour au menu principal\e[0m"
         echo
         read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
         clear
@@ -391,29 +431,98 @@ debian_tools_menu() {
                     SKIP_PAUSE_DEBIAN=0
                     break
                 fi
+
+                # Vérification du mode actuel (DHCP ou statique)
+                DHCP_STATE="Statique"
+                if nmcli device show "$IFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
+                    DHCP_STATE="DHCP"
+                fi
+                echo -e "\e[1;33mMode actuel de l\'interface $IFACE :\e[0m $DHCP_STATE"
+
+                read -p $'\e[1;33mVoulez-vous conserver ce mode ? (o/N) : \e[0m' KEEP_MODE
+                if [[ "$KEEP_MODE" == "o" || "$KEEP_MODE" == "O" ]]; then
+                    echo -e "\e[1;33mMode conservé.\e[0m"
+                else
+                    if [[ "$DHCP_STATE" == "DHCP" ]]; then
+                        echo -e "\e[1;33mPassage en mode statique...\e[0m"
+                        sudo nmcli con mod "$IFACE" ipv4.method manual
+                    else
+                        echo -e "\e[1;33mPassage en mode DHCP...\e[0m"
+                        sudo nmcli con mod "$IFACE" ipv4.method auto
+                        sudo nmcli con up "$IFACE"
+                        echo -e "\e[1;32mMode DHCP appliqué.\e[0m"
+                        SKIP_PAUSE_DEBIAN=0
+                        break
+                    fi
+                fi
+
+                # Modification des valeurs en mode statique
                 CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
                 echo -e "\e[1;33mAdresse IP actuelle de $IFACE :\e[0m $CUR_IP"
-                read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
-                if [[ -z "$NEW_IP" ]]; then
-                    echo -e "\e[1;33mModification annulée.\e[0m"
-                    SKIP_PAUSE_DEBIAN=0
-                    break
+                read -p $'\e[1;33mVoulez-vous modifier l\'adresse IP ? (o/N) : \e[0m' MODIFY_IP
+                if [[ "$MODIFY_IP" == "o" || "$MODIFY_IP" == "O" ]]; then
+                    read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
+                    if [[ -z "$NEW_IP" ]]; then
+                        echo -e "\e[1;33mModification annulée.\e[0m"
+                        SKIP_PAUSE_DEBIAN=0
+                        break
+                    fi
+                    MODIF_RESEAU=1
+                else
+                    NEW_IP=$(echo "$CUR_IP" | cut -d '/' -f 1)
                 fi
-                read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 24 pour /24, laisser vide pour 24) : \e[0m' NEW_MASK
-                NEW_MASK=${NEW_MASK:-24}
-                read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
-                read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
 
-                sudo ip addr flush dev "$IFACE"
-                sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
-                if [[ -n "$NEW_GW" ]]; then
-                    sudo ip route replace default via "$NEW_GW" dev "$IFACE"
+                # Masque
+                CUR_MASK=$(echo "$CUR_IP" | cut -d '/' -f 2)
+                CUR_MASK_DECIMAL=$(ipcalc -m "$CUR_IP" | awk '/Netmask/ {print $2}')
+                echo -e "\e[1;33mMasque de sous-réseau actuel :\e[0m $CUR_MASK_DECIMAL"
+                read -p $'\e[1;33mVoulez-vous modifier le masque de sous-réseau ? (o/N) : \e[0m' MODIFY_MASK
+                if [[ "$MODIFY_MASK" == "o" || "$MODIFY_MASK" == "O" ]]; then
+                    read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 255.255.255.0, laisser vide pour 255.255.255.0) : \e[0m' NEW_MASK_DECIMAL
+                    NEW_MASK_DECIMAL=${NEW_MASK_DECIMAL:-255.255.255.0}
+                    NEW_MASK=$(ipcalc -p "$NEW_IP/$NEW_MASK_DECIMAL" | awk '/Prefix/ {print $2}')
+                    MODIF_RESEAU=1
+                else
+                    NEW_MASK="$CUR_MASK"
                 fi
-                if [[ -n "$NEW_DNS" ]]; then
-                    echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
+
+                # Passerelle
+                CUR_GW=$(ip route | awk '/default/ {print $3}')
+                echo -e "\e[1;33mPasserelle actuelle :\e[0m $CUR_GW"
+                read -p $'\e[1;33mVoulez-vous modifier la passerelle ? (o/N) : \e[0m' MODIFY_GW
+                if [[ "$MODIFY_GW" == "o" || "$MODIFY_GW" == "O" ]]; then
+                    read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
+                    MODIF_RESEAU=1
+                else
+                    NEW_GW="$CUR_GW"
                 fi
-                sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
-                echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
+
+                # DNS
+                CUR_DNS=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | head -n 1)
+                echo -e "\e[1;33mDNS actuel :\e[0m $CUR_DNS"
+                read -p $'\e[1;33mVoulez-vous modifier le DNS ? (o/N) : \e[0m' MODIFY_DNS
+                if [[ "$MODIFY_DNS" == "o" || "$MODIFY_DNS" == "O" ]]; then
+                    read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
+                    MODIF_RESEAU=1
+                else
+                    NEW_DNS="$CUR_DNS"
+                fi
+
+                # Appliquer uniquement si au moins une modification
+                if [[ "$MODIF_RESEAU" == "1" ]]; then
+                    sudo ip addr flush dev "$IFACE"
+                    sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
+                    if [[ -n "$NEW_GW" ]]; then
+                        sudo ip route replace default via "$NEW_GW" dev "$IFACE"
+                    fi
+                    if [[ -n "$NEW_DNS" ]]; then
+                        echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
+                    fi
+                    sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
+                    echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
+                else
+                    echo -e "\e[1;33mAucune modification réseau appliquée.\e[0m"
+                fi
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             5)
@@ -480,39 +589,74 @@ debian_tools_menu() {
     done
 }
 
-# --- Gestion du switch de canal ---
-if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+show_changelog() {
+    clear
+    echo -e "\e[1;36m===== CHANGELOG DU SCRIPT =====\e[0m"
+    if [[ -f CHANGELOG.md ]]; then
+        cat CHANGELOG.md
+    else
+        echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read -n 1 -s
+}
+
+update_script() {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+        UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
+    else
+        UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
+    fi
+    if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
+        if ! cmp -s "$0" "$0.new"; then
+            cp "$0" "$SCRIPT_BACKUP"
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
+        else
+            rm "$0.new"
+            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+        fi
+    else
+        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+    fi
+}
+
+switch_channel() {
     if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-        # Demande du mot de passe technique avant de passer en beta
-        EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
+        EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
         read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
         echo
         ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
         if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
             echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
             sleep 2
-        else
-            echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-            read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
-            if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
-                set_conf_value "SCRIPT_CHANNEL" "beta"
-                set_conf_value "BETA_CONFIRMED" "1"   # <-- Stocke la validation du risque dans le fichier de conf
-                if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
-                    mv "$0.new" "$0"
-                    chmod +x "$0"
-                    echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
-                    sleep 1
-                    exec "$0"
-                    exit 0
-                else
-                    echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
-                    sleep 2
-                fi
-            else
-                set_conf_value "BETA_CONFIRMED" "0"
-                echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            return
+        fi
+        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+        if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
+            set_conf_value "SCRIPT_CHANNEL" "beta"
+            set_conf_value "BETA_CONFIRMED" "1"
+            if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
+                mv "$0.new" "$0"
+                chmod +x "$0"
+                echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
                 sleep 1
+                exec "$0"
+            else
+                echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
+                sleep 2
             fi
+        else
+            set_conf_value "BETA_CONFIRMED" "0"
+            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            sleep 1
         fi
     else
         set_conf_value "SCRIPT_CHANNEL" "stable"
@@ -523,527 +667,359 @@ if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
             echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
             sleep 1
             exec "$0"
-            exit 0
         else
             echo -e "\e[1;31mErreur lors du téléchargement du script stable.\e[0m"
             sleep 2
         fi
     fi
-fi
-
-# --- Avertissement si canal beta ---
-if [[ "$SCRIPT_CHANNEL" == "beta" && "$BETA_CONFIRMED" != "1" ]]; then
-    clear
-    echo -e "\e[1;33m⚠️  Vous avez choisi le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-    echo -e "\e[1;33mEn continuant, vous acceptez les risques liés à l'utilisation de la version beta.\e[0m"
-    read -p $'\e[1;33mConfirmez-vous vouloir rester en beta ? (o/N) : \e[0m' CONFIRM_BETA
-    if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
-        set_conf_value "BETA_CONFIRMED" "1"
-        echo -e "\e[1;32mConfirmation enregistrée. Vous ne verrez plus cet avertissement.\e[0m"
-    else
-        echo -e "\e[1;33mAnnulation du passage au canal stable. Vous restez dans le canal actuel.\e[0m"
-        set_conf_value "BETA_CONFIRMED" "1"
-    fi
-fi
-
-# --- MENU PRINCIPAL ---
-while true; do
-    # Effacer la console
-    clear
-
-    # Afficher un message d'accueil avant le menu
-    echo -e "\e[90m=============================================================\e[0m"
-    echo -e "\e[0;31m"
-    echo "        .__                                             .___"
-    echo "__  _  _|__|______   ____   ____  __ _______ _______  __| _/"
-    echo "\ \/ \/ /  \_  __ \_/ __ \ / ___\|  |  \__  \\_  __  \/ __ | "
-    echo " \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ | "
-    echo "  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ | "
-    echo "                        \/_____/            \/           \/"
-    echo -e "\e[0m"
-    echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
-    echo -e "\e[0;32mv$SCRIPT_BASE_VERSION\e[0m"
-    echo -e "\e[0;34m📜 News \e[0m'\e[0;32m!\e[0m'\e[0m\n"
-
-    # Afficher le canal actuel et le bouton de switch
-
-    BLINK_ARROW_LEFT="\e[5;33m<==\e[0m"
-    BLINK_ARROW_RIGHT="\e[5;33m==>\e[0m"
-    CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
-    if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
-        echo -e "Canal : \e[32mSTABLE 🟢\e[0m $BLINK_ARROW_LEFT \e[90mBETA ⚪\e[0m "
-        if [[ -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
-            echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
-        else
-            echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
-        fi
-    elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-        echo -e "Canal : \e[90mSTABLE ⚪\e[0m $BLINK_ARROW_RIGHT \e[32mBETA 🟢\e[0m "
-        echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
-    fi
-
-        # Ajouter un bouton pour mettre à jour le script avec une icône
-        echo -e "\e[2;33m🔼 Appuyez sur 'u' pour mettre à jour le script vers la dernière version.\e[0m"
-    # Vérification des mises à jour disponibles pour chaque canal
-    if [[ -n "$VERSION_STABLE_CONF" && "$VERSION_LOCAL" != "$VERSION_STABLE_CONF" ]]; then
-        echo -e "\e[33mUne nouvelle version STABLE est disponible : $VERSION_STABLE_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-        if [[ -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
-            echo -e "\e[33mLa version STABLE est plus récente que la version BETA. Passage au canal STABLE.\e[0m"
-            set_conf_value "SCRIPT_CHANNEL" "stable"
-            set_conf_value "SCRIPT_BASE_VERSION" "$VERSION_STABLE_CONF"
-            echo -e "\e[33mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
-        else
-            echo -e "\e[33mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
-        fi
-    fi
-    if [[ -n "$VERSION_BETA_CONF" && "$VERSION_LOCAL" != "$VERSION_BETA_CONF" ]]; then
-        echo -e "\e[35mUne nouvelle version BETA est disponible : $VERSION_BETA_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-        echo -e "\e[35mAppuyez sur 'u' pour mettre à jour le script.\e[0m"
-    fi
-
-    # Vérifier les mises à jour disponibles selon le gestionnaire de paquets
-    UPDATES_AVAILABLE=0
-    if command -v apt >/dev/null 2>&1; then
-        UPDATES=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
-        if (( UPDATES > 0 )); then
-            UPDATES_AVAILABLE=1
-        fi
-    elif command -v dnf >/dev/null 2>&1; then
-        UPDATES=$(dnf check-update --refresh 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
-        if (( UPDATES > 0 )); then
-            UPDATES_AVAILABLE=1
-        fi
-    elif command -v yum >/dev/null 2>&1; then
-        UPDATES=$(yum check-update 2>/dev/null | grep -E '^[a-zA-Z0-9]' | wc -l)
-        if (( UPDATES > 0 )); then
-            UPDATES_AVAILABLE=1
-        fi
-    elif command -v pacman >/dev/null 2>&1; then
-        UPDATES=$(checkupdates 2>/dev/null | wc -l)
-        if (( UPDATES > 0 )); then
-            UPDATES_AVAILABLE=1
-        fi
-    fi
-
-    # Clignoter le menu outils système Linux si des mises à jour sont disponibles
-    if (( UPDATES_AVAILABLE == 1 )); then
-        MENU_TOOLS_LINUX="\e[5;33md) 🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-    else
-        MENU_TOOLS_LINUX="\e[1;32md) 🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-    fi
-    # Afficher l'état du conteneur Wireguard uniquement si le fichier docker-compose existe
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-        CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wireguard 2>/dev/null)
-        case "$CONTAINER_STATUS" in
-            running)
-                STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wireguard)
-                SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
-                DAYS=$((SECONDS_UP/86400))
-                HOURS=$(( (SECONDS_UP%86400)/3600 ))
-                MINUTES=$(( (SECONDS_UP%3600)/60 ))
-                SECONDS=$((SECONDS_UP%60))
-                if (( DAYS > 0 )); then
-                    UPTIME_STR="${DAYS}j ${HOURS}h ${MINUTES}m ${SECONDS}s"
-                elif (( HOURS > 0 )); then
-                    UPTIME_STR="${HOURS}h ${MINUTES}m ${SECONDS}s"
-                elif (( MINUTES > 0 )); then
-                    UPTIME_STR="${MINUTES}m ${SECONDS}s"
-                else
-                    UPTIME_STR="${SECONDS}s"
-                fi
-                echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
-                echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
-                ;;
-            exited)
-                echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
-                ;;
-            created)
-                echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
-                ;;
-            *)
-                if docker ps -a --format '{{.Names}}' | grep -qw wireguard; then
-                    echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
-                    echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
-                    docker logs --tail 10 wireguard 2>&1
-                    LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wireguard 2>/dev/null)
-                    if [[ "$LAST_EXIT_CODE" != "0" ]]; then
-                        echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
-                    fi
-                    echo
-                else
-                    echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
-                fi
-                ;;
-        esac
-    fi
-
-    # Afficher les informations du fichier de configuration
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
-
-        # Détection DHCP ou statique
-        INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
-        DHCP_STATE="Inconnu"
-        if [[ -n "$INTERFACE" ]]; then
-            if grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null; then
-                DHCP_STATE="DHCP"
-            elif nmcli device show "$INTERFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
-                DHCP_STATE="DHCP"
-            else
-                DHCP_STATE="Statique"
-            fi
-        fi
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP config." "$DHCP_STATE"
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port VPN externe" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
-        printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
-        PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-        if [[ -n "$PASSWORD_HASH" ]]; then
-            printf "\e[1;36m%-22s : \e[0;32m%s\e[0m\n" "Mot de passe" "🔐 OK"
-        else
-            printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Mot de passe" "❌ Non défini"
-        fi
-        WG_EASY_VERSION=$(grep 'image:' "$DOCKER_COMPOSE_FILE" | grep 'ghcr.io/wg-easy/wg-easy' | sed -E 's/.*wg-easy:([0-9a-zA-Z._-]+).*/\1/')
-        if [[ -n "$WG_EASY_VERSION" ]]; then
-            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Version wg-easy" "$WG_EASY_VERSION"
-        else
-            printf "\e[1;36m%-22s : \e[1;33m%s\e[0m\n" "Version wg-easy" "Non définie"
-        fi
-    else
-        echo -e "\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-        echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
-        echo -e "\e[5;33m         Veuillez configurer pour continuer.\e[0m"
-    fi
-    echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
-    echo -e "🌍\e[2;36m MENU PRINCIPAL :\e[0m"
-    echo -e "\e[2;35m--------------------------------------------------\e[0m"
-    # Afficher le menu selon la présence du fichier docker-compose.yml
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️ Modifier la configuration\e[0m"
-        if [[ "$CONTAINER_STATUS" == "running" ]]; then
-            echo -e "\e[1;90m2) 🚀 Lancer le service (déjà lancé)\e[0m"
-            echo -e "\e[1;32m3) \e[0m\e[0;37m🛑 Arrêter le service\e[0m"
-            echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
-        else
-            echo -e "\e[1;32m2) \e[0m\e[0;37m🚀 Lancer le service\e[0m"
-            echo -e "\e[1;90m3) 🛑 Arrêter le service (déjà arrêté)\e[0m"
-            echo -e "\e[1;90m4) 🔄 Redémarrer le service (service arrêté)\e[0m"
-        fi
-        echo -e "\e[1;32m5) \e[0m\e[0;37m🐳 Mise à jour du container\e[0m"
-        echo -e "\e[1;32m6) \e[0m\e[0;37m♻️ Réinitialiser\e[0m"
-        echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-        # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
-        if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
-        fi
-        echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
-    else
-        echo -e "\n\e[1;32m1) \e[0m\e[0;37m🛠️ Créer la configuration\e[0m"
-        echo -e "\e[1;32md) \e[0m\e[0;37m🐧 MENU OUTILS SYSTÈME LINUX\e[0m"
-        # Afficher le bouton de mise à jour uniquement si le commit local est différent du commit distant du canal sélectionné
-        if [[ -n "$REMOTE_VERSION" && "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]]; then
-            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
-        fi
-        echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
-    fi
-
-    # Demander le choix de l'utilisateur
+}
+RAZ_docker_compose() {
+    EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
+    read -sp $'\e[1;33mEntrez le mot de passe technique pour réinitialiser la configuration : \e[0m' PASS
     echo
-    read -p $'\e[1;33mEntrez votre choix : \e[0m' ACTION
-    clear
+    ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+    if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+        echo -e "\e[1;31mMot de passe incorrect. Réinitialisation annulée.\e[0m"
+        return
+    fi
 
-    SKIP_PAUSE=0
+    echo -e "\e[1;33m⚠️  Cette action supprimera toutes les configurations existantes.\e[0m"
+    read -p $'\e[1;33mConfirmez-vous vouloir réinitialiser la configuration ? (o/N) : \e[0m' CONFIRM_RAZ
+    if [[ "$CONFIRM_RAZ" != "o" && "$CONFIRM_RAZ" != "O" ]]; then
+        echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
+        return
+    fi
 
-    # --- Gestion du switch de canal ---
-    if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
-        if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-            # Demande du mot de passe technique avant de passer en beta
-            EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-            read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
-            echo
-            ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
-            if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
-                echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
-                sleep 2
-            else
-                echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-                read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
-                if [[ "$CONFIRM_BETA" == "o" || "$CONFIRM_BETA" == "O" ]]; then
-                    set_conf_value "SCRIPT_CHANNEL" "beta"
-                    set_conf_value "BETA_CONFIRMED" "1"   # <-- Stocke la validation du risque dans le fichier de conf
-                    if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh" -o "$0.new"; then
-                        mv "$0.new" "$0"
-                        chmod +x "$0"
-                        echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
-                        sleep 1
-                        exec "$0"
-                        exit 0
-                    else
-                        echo -e "\e[1;31mErreur lors du téléchargement du script beta.\e[0m"
-                        sleep 2
-                    fi
-                else
-                    set_conf_value "BETA_CONFIRMED" "0"
-                    echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
-                    sleep 1
-                fi
-            fi
-        else
-            set_conf_value "SCRIPT_CHANNEL" "stable"
-            set_conf_value "BETA_CONFIRMED" "0"
-            if curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh" -o "$0.new"; then
-                mv "$0.new" "$0"
-                chmod +x "$0"
-                echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
-                sleep 1
-                exec "$0"
-                exit 0
-            else
-                echo -e "\e[1;31mErreur lors du téléchargement du script stable.\e[0m"
-                sleep 2
-            fi
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        rm -f "$DOCKER_COMPOSE_FILE"
+        echo -e "\e[1;32mLe fichier docker-compose.yml a été supprimé.\e[0m"
+    else
+        echo -e "\e[1;31mAucun fichier docker-compose.yml trouvé.\e[0m"
+    fi
+
+    if [[ -d "/mnt/wireguard" ]]; then
+        rm -rf "/mnt/wireguard"
+        echo -e "\e[1;32mLe dossier /mnt/wireguard a été supprimé.\e[0m"
+    else
+        echo -e "\e[1;31mAucun dossier /mnt/wireguard trouvé.\e[0m"
+    fi
+}
+
+change_tech_password() {
+    CURRENT_HASH=$(get_conf_value "EXPECTED_HASH")
+    if [[ -n "$CURRENT_HASH" ]]; then
+        read -sp $'\e[1;33mEntrez l\'ancien mot de passe technique : \e[0m' OLD_PASS
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$OLD_PASS")
+        if [[ "$ENTERED_HASH" != "$CURRENT_HASH" ]]; then
+            echo -e "\e[1;31mMot de passe incorrect.\e[0m"
+            return
         fi
     fi
+    while true; do
+        read -sp "Entrez le nouveau mot de passe technique : " PASS1
+        echo
+        read -sp "Confirmez le nouveau mot de passe technique : " PASS2
+        echo
+        if [[ -z "$PASS1" ]]; then
+            echo -e "\e[1;31mLe mot de passe ne peut pas être vide.\e[0m"
+        elif [[ "$PASS1" != "$PASS2" ]]; then
+            echo -e "\e[1;31mLes mots de passe ne correspondent pas.\e[0m"
+        else
+            HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS1")
+            set_conf_value "EXPECTED_HASH" "$HASH"
+            echo -e "\e[1;32mMot de passe technique modifié avec succès.\e[0m"
+            break
+        fi
+    done
+}
 
-    # --- Actions principales ---
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        case $ACTION in
-            1) configure_values ;;
-            2)
-                if [[ "$CONTAINER_STATUS" == "running" ]]; then
-                    echo -e "\e[1;90mLe service Wireguard est déjà lancé.\e[0m"
-                else
-                    PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-                    if [[ -z "$PASSWORD_HASH" ]]; then
-                        echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+# =========================
+# 9. Menu principal (ajoute une option pour changer le mot de passe technique)
+# =========================
+
+main_menu() {
+    while true; do
+        clear
+
+        # Afficher un message d'accueil avant le menu
+        echo -e "\e[90m=============================================================\e[0m"
+        echo -e "\e[0;31m"
+        echo "        .__                                             .___"
+        echo "__  _  _|__|______   ____   ____  __ _______ _______  __| _/"
+        echo "\ \/ \/ /  \_  __ \_/ __ \ / ___\|  |  \__  \\_  __  \/ __ | "
+        echo " \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ | "
+        echo "  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ | "
+        echo "                        \/_____/            \/           \/"
+        echo -e "\e[0m"
+        echo -e "\e[90m==============\e[6;0m Wireguard Easy Script Manager \e[90m================\e[0m"
+        echo -e "\e[0;32mv$VERSION_LOCAL\e[0m"
+        echo -e "\e[0;34m📜 News \e[0m'\e[0;32m!\e[0m'\e[0m\n"
+
+        BLINK_ARROW_LEFT="\e[5;33m<==\e[0m"
+        BLINK_ARROW_RIGHT="\e[5;33m==>\e[0m"
+        CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
+        if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
+            echo -e "Canal : \e[32mSTABLE 🟢\e[0m $BLINK_ARROW_LEFT \e[90mBETA ⚪\e[0m "
+            if [[ -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
+                echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
+            else
+                echo -e "\e[2;33mAppuyez sur 's' pour passer au canal BETA.\e[0m"
+            fi
+        elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
+            echo -e "Canal : \e[90mSTABLE ⚪\e[0m $BLINK_ARROW_RIGHT \e[32mBETA 🟢\e[0m "
+            echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
+        fi
+
+        if [[ -n "$VERSION_STABLE_CONF" && "$VERSION_LOCAL" != "$VERSION_STABLE_CONF" ]]; then
+            echo -e "\e[33mUne nouvelle version STABLE est disponible : $VERSION_STABLE_CONF (actuelle : $VERSION_LOCAL)\e[0m"
+        fi
+        if [[ -n "$VERSION_BETA_CONF" && "$VERSION_LOCAL" != "$VERSION_BETA_CONF" ]]; then
+            echo -e "\e[35mUne nouvelle version BETA est disponible : $VERSION_BETA_CONF (actuelle : $VERSION_LOCAL)\e[0m"
+        fi
+        echo -e "\e[2;33m🔼 Appuyez sur 'u' pour mettre à jour le script vers la dernière version.\e[0m"
+
+        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+            echo -e "\e[2;35m--------------------------------------------------\e[0m"
+            echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
+            echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
+            CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wireguard 2>/dev/null)
+            case "$CONTAINER_STATUS" in
+                running)
+                    STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wireguard)
+                    SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
+                    DAYS=$((SECONDS_UP/86400))
+                    HOURS=$(( (SECONDS_UP%86400)/3600 ))
+                    MINUTES=$(( (SECONDS_UP%3600)/60 ))
+                    SECONDS=$((SECONDS_UP%60))
+                    if (( DAYS > 0 )); then
+                        UPTIME_STR="${DAYS}j ${HOURS}h ${MINUTES}m ${SECONDS}s"
+                    elif (( HOURS > 0 )); then
+                        UPTIME_STR="${HOURS}h ${MINUTES}m ${SECONDS}s"
+                    elif (( MINUTES > 0 )); then
+                        UPTIME_STR="${MINUTES}m ${SECONDS}s"
                     else
-                        echo "Démarrage de Wireguard..."
+                        UPTIME_STR="${SECONDS}s"
+                    fi
+                    echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
+                    echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
+                    ;;
+                exited)
+                    echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
+                    ;;
+                created)
+                    echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
+                    ;;
+                *)
+                    if docker ps -a --format '{{.Names}}' | grep -qw wireguard; then
+                        echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
+                        echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
+                        docker logs --tail 10 wireguard 2>&1
+                        LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wireguard 2>/dev/null)
+                        if [[ "$LAST_EXIT_CODE" != "0" ]]; then
+                            echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
+                        fi
+                        echo
+                    else
+                        echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
+                    fi
+                    ;;
+            esac
+        fi
+
+        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
+            INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
+            DHCP_STATE="Inconnu"
+            if [[ -n "$INTERFACE" ]]; then
+                if grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null; then
+                    DHCP_STATE="DHCP"
+                elif nmcli device show "$INTERFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
+                    DHCP_STATE="DHCP"
+                else
+                    DHCP_STATE="Statique"
+                fi
+            fi
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP config." "$DHCP_STATE"
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse publique" "$(grep 'WG_HOST=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)"
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port VPN externe" "$(grep -oP '^\s*- \K\d+(?=:51820/udp)' "$DOCKER_COMPOSE_FILE")"
+            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Port interface web" "$(grep -oP '^\s*- \K\d+(?=:51821/tcp)' "$DOCKER_COMPOSE_FILE")"
+            PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+            if [[ -n "$PASSWORD_HASH" ]]; then
+                printf "\e[1;36m%-22s : \e[0;32m%s\e[0m\n" "Mot de passe" "🔐 OK"
+            else
+                printf "\e[1;36m%-22s : \e[1;31m%s\e[0m\n" "Mot de passe" "❌ Non défini"
+            fi
+            WG_EASY_VERSION=$(grep 'image:' "$DOCKER_COMPOSE_FILE" | grep 'ghcr.io/wg-easy/wg-easy' | sed -E 's/.*wg-easy:([0-9a-zA-Z._-]+).*/\1/')
+            if [[ -n "$WG_EASY_VERSION" ]]; then
+                printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Version wg-easy" "$WG_EASY_VERSION"
+            else
+                printf "\e[1;36m%-22s : \e[1;33m%s\e[0m\n" "Version wg-easy" "Non définie"
+            fi
+        else
+            echo -e "\e[2;35m--------------------------------------------------\e[0m"
+            echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
+            echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
+            echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
+            echo -e "\e[5;33m         Veuillez configurer pour continuer.\e[0m"
+        fi
+        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "🌍\e[2;36m MENU PRINCIPAL :\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
+        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+            echo -e "\n\e[1;32m===== MENU PRINCIPAL =====\e[0m"
+            echo -e "\e[1;36m--- Configuration ---\e[0m"
+            echo -e "\e[1;32m1) \e[0m\e[0;37m🛠️ Modifier la configuration\e[0m"
+            echo -e "\e[1;32mp) \e[0m\e[0;37m🔑 Modifier le mot de passe technique\e[0m"
+            echo -e "\e[1;32md) \e[0m\e[0;37m🐧 Outils système Linux\e[0m"
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
+            echo -e "\e[1;32m!) \e[0m\e[0;37m📝 Voir le changelog\e[0m"
+
+            echo -e "\n\e[1;36m--- Gestion du service Wireguard ---\e[0m"
+            if [[ "$CONTAINER_STATUS" == "running" ]]; then
+                echo -e "\e[1;90m2) 🚀 Lancer le service (déjà lancé)\e[0m"
+                echo -e "\e[1;32m3) \e[0m\e[0;37m🛑 Arrêter le service\e[0m"
+                echo -e "\e[1;32m4) \e[0m\e[0;37m🔄 Redémarrer le service\e[0m"
+            else
+                echo -e "\e[1;32m2) \e[0m\e[0;37m🚀 Lancer le service\e[0m"
+                echo -e "\e[1;90m3) 🛑 Arrêter le service (déjà arrêté)\e[0m"
+                echo -e "\e[1;90m4) 🔄 Redémarrer le service (service arrêté)\e[0m"
+            fi
+
+            echo -e "\n\e[1;36m--- Maintenance ---\e[0m"
+            echo -e "\e[1;32m5) \e[0m\e[0;37m🐳 Mettre à jour le container\e[0m"
+            echo -e "\e[1;32m6) \e[0m\e[0;37m♻️ Réinitialiser la configuration\e[0m"
+
+            echo -e "\n\e[1;36m--- Autre ---\e[0m"
+            echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
+        else
+            echo -e "\n\e[1;32m===== MENU PRINCIPAL =====\e[0m"
+            echo -e "\e[1;36m--- Configuration ---\e[0m"
+            echo -e "\e[1;32m1) \e[0m\e[0;37m🛠️ Créer la configuration\e[0m"
+            echo -e "\e[1;32mp) \e[0m\e[0;37m🔑 Modifier le mot de passe technique\e[0m"
+            echo -e "\e[1;32md) \e[0m\e[0;37m🐧 Outils système Linux\e[0m"
+            echo -e "\e[1;32mu) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
+            echo -e "\e[1;32m!) \e[0m\e[0;37m📝 Voir le changelog\e[0m"
+            echo -e "\n\e[1;36m--- Autre ---\e[0m"
+            echo -e "\n\e[1;32m0) \e[0m\e[0;37m❌ Quitter le script\e[0m"
+        fi
+
+        echo
+        read -p $'\e[1;33mEntrez votre choix : \e[0m' ACTION
+        clear
+
+        if [[ "$ACTION" == "p" || "$ACTION" == "P" ]]; then
+            change_tech_password
+            continue
+        fi
+
+        SKIP_PAUSE=0
+
+        # --- Gestion du switch de canal ---
+        if [[ "$ACTION" == "s" || "$ACTION" == "S" ]]; then
+            switch_channel
+            continue
+        fi
+
+        # --- Actions principales ---
+        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+            case $ACTION in
+                1) configure_values ;;
+                2)
+                    if [[ "$CONTAINER_STATUS" == "running" ]]; then
+                        echo -e "\e[1;90mLe service Wireguard est déjà lancé.\e[0m"
+                    else
+                        PASSWORD_HASH=$(grep 'PASSWORD_HASH=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+                        if [[ -z "$PASSWORD_HASH" ]]; then
+                            echo -e "\e[1;31m❌ Le mot de passe n'est pas défini. Veuillez configurer un mot de passe avant de démarrer le service.\e[0m"
+                        else
+                            echo "Démarrage de Wireguard..."
+                            docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+                            echo "Wireguard démarré avec succès ! 🚀"
+                        fi
+                    fi
+                    ;;
+                3)
+                    if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                        echo -e "\e[1;90mLe service Wireguard est déjà arrêté.\e[0m"
+                    else
+                        echo "Arrêt de Wireguard..."
+                        docker compose -f "$DOCKER_COMPOSE_FILE" down
+                        echo "Wireguard arrêté avec succès ! 🛑"
+                    fi
+                    ;;
+                4)
+                    if [[ "$CONTAINER_STATUS" != "running" ]]; then
+                        echo -e "\e[1;90mImpossible de redémarrer : le service est arrêté.\e[0m"
+                    else
+                        echo "Redémarrage de Wireguard..."
+                        docker compose -f "$DOCKER_COMPOSE_FILE" down
                         docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                        echo "Wireguard démarré avec succès ! 🚀"
+                        echo "Wireguard redémarré avec succès ! 🔄"
                     fi
-                fi
-                ;;
-            3)
-                if [[ "$CONTAINER_STATUS" != "running" ]]; then
-                    echo -e "\e[1;90mLe service Wireguard est déjà arrêté.\e[0m"
-                else
-                    echo "Arrêt de Wireguard..."
-                    docker compose -f "$DOCKER_COMPOSE_FILE" down
-                    echo "Wireguard arrêté avec succès ! 🛑"
-                fi
-                ;;
-            4)
-                if [[ "$CONTAINER_STATUS" != "running" ]]; then
-                    echo -e "\e[1;90mImpossible de redémarrer : le service est arrêté.\e[0m"
-                else
-                    echo "Redémarrage de Wireguard..."
-                    docker compose -f "$DOCKER_COMPOSE_FILE" down
+                    ;;
+                5)
+                    echo "Mise à jour de Wireguard..."
+                    docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
+                    docker compose -f "$DOCKER_COMPOSE_FILE" pull
                     docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                    echo "Wireguard redémarré avec succès ! 🔄"
-                fi
-                ;;
-            5)
-                echo "Mise à jour de Wireguard..."
-                docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
-                docker compose -f "$DOCKER_COMPOSE_FILE" pull
-                docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-                echo "Wireguard mis à jour et purgé avec succès ! ⬆️"
-                ;;
-            6)
-                echo "Réinitialisation de Wireguard..."
-                # Confirmation par mot de passe technique (hashé en SHA-512)
-                EXPECTED_HASH='$6$Qw8n0Qw8$JGEBbD1jUBwWZxPtOezJeB4iEPobWoj6bYp6N224NSaI764XoUGgsrQzD01SrDu1edPk8xsAsxvdYu2ll2yMQ0'
-                ATTEMPTS=0
-                MAX_ATTEMPTS=3
-                while (( ATTEMPTS < MAX_ATTEMPTS )); do
-                    read -sp "Entrez le mot de passe technique pour confirmer la réinitialisation (ctrl+c pour annuler) : " RESET_PASSWORD
-                    echo
-                    if [[ $RESET_PASSWORD == $'\e' ]]; then
-                        echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
-                        break
-                    fi
-                    ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$RESET_PASSWORD")
-                    if [[ "$ENTERED_HASH" == "$EXPECTED_HASH" ]]; then
-                        echo -e "\e[1;32mMot de passe correct.\e[0m"
-                        read -p $'\e[1;33mÊtes-vous sûr de vouloir réinitialiser Wireguard ? Cette action est irréversible. (o/N) : \e[0m' CONFIRM_RESET
-                        if [[ "$CONFIRM_RESET" == "o" || "$CONFIRM_RESET" == "O" ]]; then
-                            docker compose -f "$DOCKER_COMPOSE_FILE" down
-                            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
-                            echo "Wireguard réinitialisé avec succès ! ♻️"
-                        else
-                            echo -e "\e[1;33mRéinitialisation annulée.\e[0m"
-                        fi
-                        break
-                    else
-                        ((ATTEMPTS++))
-                        if (( ATTEMPTS < MAX_ATTEMPTS )); then
-                            echo -e "\e[1;31mMot de passe incorrect. Nouvelle tentative ($ATTEMPTS/$MAX_ATTEMPTS).\e[0m"
-                        else
-                            echo -e "\e[1;31mMot de passe incorrect. Réinitialisation annulée.\e[0m\n"
-                        fi
-                    fi
-                done
-                ;;
+                    echo "Wireguard mis à jour et purgé avec succès ! ⬆️"
+                    ;;
+                6)
+                    RAZ_docker_compose
+                    ;;
+                d|D)
+                    debian_tools_menu
+                    ;;
+                !)
+                    show_changelog
+                    SKIP_PAUSE=1
+                    ;;
+                u|U)
+                    update_script
+                    SKIP_PAUSE=1
+                    ;;
+                0)
+                    clear
+                    echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+                    SKIP_PAUSE=1
+                    exit 0
+                    ;;
+                *)
+                    echo -e "\e[1;31mChoix invalide.\e[0m"
+                    ;;
+            esac
+        else
+            case $ACTION in
+                1) configure_values ;;
+                d|D) debian_tools_menu ;;
+                !)
+                    show_changelog
+                    SKIP_PAUSE=1
+                    ;;
+                u|U)
+                    update_script
+                    SKIP_PAUSE=1
+                    ;;
+                0)
+                    clear
+                    echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+                    SKIP_PAUSE=1
+                    exit 0
+                    ;;
+                *)
+                    echo -e "\e[1;31mChoix invalide.\e[0m"
+                    ;;
+            esac
+        fi
 
-            d|D)
-                debian_tools_menu
-                ;;
-            !)
-                clear
-                echo -e "\e[1;36m===== CHANGELOG DU SCRIPT =====\e[0m"
-                if [[ -f CHANGELOG.md ]]; then
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^#\  ]]; then
-                            echo -e "\e[1;35m$line\e[0m"         # Titre principal
-                        elif [[ "$line" =~ ^##\  ]]; then
-                            echo -e "\e[1;36m$line\e[0m"         # Version
-                        elif [[ "$line" =~ ^###\  ]]; then
-                            echo -e "\e[1;33m$line\e[0m"         # Sous-titre
-                        elif [[ "$line" =~ ^-\  ]]; then
-                            echo -e "\e[0;30m$line\e[0m"         # Liste
-                        else
-                            echo -e "\e[0;37m$line\e[0m"         # Texte normal
-                        fi
-                    done < CHANGELOG.md
-                else
-                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
-                fi
-                echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-                read -n 1 -s
-                SKIP_PAUSE=1
-                ;;
-            u|U)
-                clear
-                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-                # Déterminer l'URL de mise à jour selon le canal courant
-                CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
-                if [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
-                else
-                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
-                fi
-
-                # Récupérer le changelog depuis GitHub et remplacer le fichier local
-                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
-                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
-                else
-                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
-                fi
-
-                # Vérifier si une mise à jour est disponible avant backup et remplacement
-                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    if ! cmp -s "$0" "$0.new"; then
-                        backup_script
-                        mv "$0.new" "$0"
-                        chmod +x "$0"
-                        echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                        echo -e "\nAppuyez sur une touche pour relancer le script..."
-                        read -n 1 -s
-                        exec "$0"
-                    else
-                        rm "$0.new"
-                        echo -e "\e[33mAucune mise à jour disponible.\e[0m"
-                    fi
-                else
-                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            0)
-                clear
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                SKIP_PAUSE=1
-                exit 0
-                ;;
-            *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                ;;
-        esac
-    else
-        case $ACTION in
-            1) configure_values ;;
-            d|D) debian_tools_menu ;;
-            !)
-                clear
-                echo -e "\e[1;36m===== CHANGELOG DU SCRIPT =====\e[0m"
-                if [[ -f CHANGELOG.md ]]; then
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^#\  ]]; then
-                            echo -e "\e[1;35m$line\e[0m"         # Titre principal
-                        elif [[ "$line" =~ ^##\  ]]; then
-                            echo -e "\e[1;36m$line\e[0m"         # Version
-                        elif [[ "$line" =~ ^###\  ]]; then
-                            echo -e "\e[1;33m$line\e[0m"         # Sous-titre
-                        elif [[ "$line" =~ ^-\  ]]; then
-                            echo -e "\e[0;30m$line\e[0m"         # Liste
-                        else
-                            echo -e "\e[0;37m$line\e[0m"         # Texte normal
-                        fi
-                    done < CHANGELOG.md
-                else
-                    echo -e "\e[1;31mAucun fichier CHANGELOG.md trouvé.\e[0m"
-                fi
-                echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-                read -n 1 -s
-                SKIP_PAUSE=1
-                ;;
-            u|U)
-                clear
-                echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-                # Déterminer l'URL de mise à jour selon le canal courant
-                CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
-                if [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/beta/config_wg.sh"
-                else
-                    UPDATE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
-                fi
-
-                # Récupérer le changelog depuis GitHub et remplacer le fichier local
-                if curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/CHANGELOG.md -o CHANGELOG.md; then
-                    echo -e "\e[32mCHANGELOG.md mis à jour.\e[0m"
-                else
-                    echo -e "\e[31mImpossible de récupérer le changelog depuis GitHub.\e[0m"
-                fi
-
-                # Vérifier si une mise à jour est disponible avant backup et remplacement
-                if curl -fsSL "$UPDATE_URL" -o "$0.new"; then
-                    if ! cmp -s "$0" "$0.new"; then
-                        backup_script
-                        mv "$0.new" "$0"
-                        chmod +x "$0"
-                        echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-                        echo -e "\nAppuyez sur une touche pour relancer le script..."
-                        read -n 1 -s
-                        exec "$0"
-                    else
-                        rm "$0.new"
-                        echo -e "\e[33mAucune mise à jour disponible.\e[0m"
-                    fi
-                else
-                    echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-                fi
-                SKIP_PAUSE=1
-                ;;
-            0)
-                clear
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                SKIP_PAUSE=1
-                exit 0
-                ;;
-            *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                ;;
-        esac
-    fi
-
-    # --- Pause avant retour menu ---
-    if [[ "$SKIP_PAUSE" != "1" ]]; then
-        echo -e "\nAppuyez sur une touche pour revenir au menu..."
-        read -n 1 -s
-    fi
-done
+        if [[ "$SKIP_PAUSE" != "1" ]]; then
+            echo -e "\nAppuyez sur une touche pour revenir au menu..."
+            read -n 1 -s
+        fi
+    done
+}
+# =========================
+# 10. Lancement du menu principal
+# =========================
+main_menu
