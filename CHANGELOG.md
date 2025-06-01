@@ -5,6 +5,9 @@ Toutes les modifications notables de ce projet seront documentées ici.
 ### Ajouté
 - Possibilité de modifier les différentes valeur du port ethernet.
     IP, Masque, Passerelle, DNS
+- On peut eteindre et redémarrer la vm.
+    le mot de passe technique sera demandé
+- Au premier lancement un mot de passe technique sera demander.
 
 ### Modifié
 - Detection si la carte est en DHCP ou Static pour proposer le choix de changer de mode.
