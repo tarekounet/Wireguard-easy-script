@@ -1,7 +1,75 @@
-# Changelog
-Toutes les modifications notables de ce projet seront documentées ici.
+# Wireguard Easy Script
 
+## 📌 Présentation générale
+
+Ce script Bash permet de gérer un serveur WireGuard avec Docker Compose, facilement et en toute sécurité.  
+Il propose une interface en ligne de commande colorée, des sauvegardes automatiques, la gestion du mot de passe technique, et la mise à jour automatique du script et de ses modules.
+
+---
+
+## 🏗️ Nouvelle structure (v1.5.0)
+
+- **Script principal** : `config_wg.sh`
+    - C’est le point d’entrée. Il vérifie et télécharge automatiquement les modules nécessaires depuis GitHub si besoin.
+    - Il gère le choix du canal (stable/beta) et charge tous les modules du dossier `lib/`.
+
+- **Modules dans `lib/`** :
+    - `utils.sh` : Fonctions utilitaires (affichage, validation, logs, gestion des versions…)
+    - `conf.sh` : Fonctions pour la gestion de la configuration et du mot de passe technique
+    - `docker.sh` : Fonctions pour la configuration et la gestion de Wireguard via Docker
+    - `menu.sh` : Affichage du menu principal et gestion des actions utilisateur
+    - `debian_tools.sh` : Outils système pour Debian/Linux
+
+---
+
+## 🚀 Fonctionnalités principales
+
+- **Auto-bootstrap** : Si tu copies juste `config_wg.sh`, il télécharge tout seul les modules manquants.
+- **Gestion des mises à jour** :
+    - Le script et chaque module vérifient s’il existe une nouvelle version sur GitHub.
+    - Si une mise à jour est dispo (script ou module), le menu affiche un bouton clignotant pour prévenir l’utilisateur.
+- **Canal stable/beta** : Tu peux choisir d’utiliser la version stable ou beta du script et des modules.
+- **Menu interactif** : Toutes les actions (config, démarrage, arrêt, mise à jour…) sont accessibles via un menu coloré et simple.
+- **Sécurité** : Gestion du mot de passe technique, sauvegarde/restauration automatique de la configuration.
+- **Configuration facile** : Modification des ports, de l’adresse publique, du mot de passe, etc., via des questions simples.
+
+---
+
+## 📝 Exemple d’utilisation
+
+1. **Premier lancement** :  
+   - Le script crée le dossier `lib/` et télécharge les modules si besoin.
+   - Il vérifie les dépendances et la configuration.
+2. **Utilisation** :  
+   - L’utilisateur navigue dans le menu pour configurer, démarrer ou mettre à jour Wireguard.
+   - Les modules sont chargés dynamiquement.
+3. **Mise à jour** :  
+   - Si une nouvelle version du script ou d’un module est dispo, le menu le signale.
+   - L’utilisateur peut mettre à jour en un clic, sans rien télécharger manuellement.
+
+---
+
+## 🆕 Historique des changements
+
+- **v1.5.0**  
+    - Passage à une structure modulaire (`lib/`).
+    - Téléchargement automatique des modules manquants.
+    - Vérification et affichage des mises à jour (script et modules).
+    - Gestion du canal stable/beta.
+    - Séparation claire des fonctions (utilitaires, config, docker, menu, outils système).
+    - Menu interactif amélioré avec couleurs et emojis.
+
+---
+
+**Ce script est maintenant plus facile à maintenir, à mettre à jour et à utiliser, même si tu ne copies que le script principal !**
 ## [1.4.0] - 2025-05-31
+### Ajouté
+
+### Modifié
+
+### Corrigé
+- mot de passe technique non gardé
+## [1.4.0] - 2025-06-01
 ### Ajouté
 - Possibilité de modifier les différentes valeur du port ethernet.
     IP, Masque, Passerelle, DNS
