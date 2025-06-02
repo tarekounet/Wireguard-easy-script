@@ -1,4 +1,19 @@
+##############################
+#        VERSION MODULE      #
+##############################
+
 DOCKER_VERSION="1.0.0"
+
+##############################
+#      CONSTANTES            #
+##############################
+
+# Chemin du fichier docker-compose
+DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
+
+##############################
+#   CONFIGURATION PRINCIPALE #
+##############################
 
 configure_values() {
     # Fonction pour gérer l'annulation par Ctrl+C
@@ -85,41 +100,46 @@ networks:
         - subnet: 10.42.42.0/24
         - subnet: fdcc:ad94:bacf:61a3::/64
 EOF
-    echo "Fichier docker-compose.yml créé avec succès."
+        echo "Fichier docker-compose.yml créé avec succès."
     else
-    DOCKER_COMPOSE_CREATED=0
+        DOCKER_COMPOSE_CREATED=0
     fi
 
-        # Modification du port PORT dans le fichier docker-compose.yml
-        CURRENT_PORT=$(grep 'PORT=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-        msg_info "Port actuel pour PORT : $CURRENT_PORT"
-        read -p $'Voulez-vous modifier le port PORT ? (o/N, ctrl+c pour annuler) : ' MODIFY_PORT
-        if [[ "${MODIFY_PORT,,}" == "o" ]]; then
-            while true; do
-                read -p $'Entrez le nouveau port PORT (1-65535, par défaut : '"$CURRENT_PORT"', ctrl+c pour annuler) : ' NEW_PORT
-                NEW_PORT=${NEW_PORT:-$CURRENT_PORT}
-                if validate_port "$NEW_PORT"; then
-                    break
-                else
-                    msg_error "Veuillez entrer un nombre entre 1 et 65535."
-                fi
-            done
-            sed -i "s#PORT=.*#PORT=$NEW_PORT#" "$DOCKER_COMPOSE_FILE"
-            msg_success "Le port PORT a été modifié avec succès."
-        else
-            msg_warn "Aucune modification apportée au port PORT."
-        fi
+    # Modification du port PORT dans le fichier docker-compose.yml
+    CURRENT_PORT=$(grep 'PORT=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
+    msg_info "Port actuel pour PORT : $CURRENT_PORT"
+    read -p $'Voulez-vous modifier le port PORT ? (o/N, ctrl+c pour annuler) : ' MODIFY_PORT
+    if [[ "${MODIFY_PORT,,}" == "o" ]]; then
+        while true; do
+            read -p $'Entrez le nouveau port PORT (1-65535, par défaut : '"$CURRENT_PORT"', ctrl+c pour annuler) : ' NEW_PORT
+            NEW_PORT=${NEW_PORT:-$CURRENT_PORT}
+            if validate_port "$NEW_PORT"; then
+                break
+            else
+                msg_error "Veuillez entrer un nombre entre 1 et 65535."
+            fi
+        done
+        sed -i "s#PORT=.*#PORT=$NEW_PORT#" "$DOCKER_COMPOSE_FILE"
+        msg_success "Le port PORT a été modifié avec succès."
+    else
+        msg_warn "Aucune modification apportée au port PORT."
+    fi
 
-        # Question sur l'exposition de l'interface web côté internet
-        read -p $'L\'interface web sera-t-elle exposée côté internet ? (o/N, ctrl+c pour annuler) : ' EXPOSE_WEB
-        if [[ "${EXPOSE_WEB,,}" == "o" ]]; then
-            sed -i "s#INSECURE=.*#INSECURE=false#" "$DOCKER_COMPOSE_FILE"
-            msg_success "L'interface web a été configurée pour ne pas être exposée de manière non sécurisée."
-        else
-            sed -i "s#INSECURE=.*#INSECURE=true#" "$DOCKER_COMPOSE_FILE"
-            msg_warn "L'interface web reste configurée comme non sécurisée."
-        fi
+    # Question sur l'exposition de l'interface web côté internet
+    read -p $'L\'interface web sera-t-elle exposée côté internet ? (o/N, ctrl+c pour annuler) : ' EXPOSE_WEB
+    if [[ "${EXPOSE_WEB,,}" == "o" ]]; then
+        sed -i "s#INSECURE=.*#INSECURE=false#" "$DOCKER_COMPOSE_FILE"
+        msg_success "L'interface web a été configurée pour ne pas être exposée de manière non sécurisée."
+    else
+        sed -i "s#INSECURE=.*#INSECURE=true#" "$DOCKER_COMPOSE_FILE"
+        msg_warn "L'interface web reste configurée comme non sécurisée."
+    fi
 }
+
+##############################
+#   RÉINITIALISATION CONFIG  #
+##############################
+
 RAZ_docker_compose() {
     if ! ask_tech_password; then
         msg_error "Réinitialisation annulée."

@@ -1,9 +1,19 @@
+##############################
+#        VERSION MODULE      #
+##############################
+
 DEBIAN_TOOLS_VERSION="1.0.0"
+
+##############################
+#      MENU PRINCIPAL        #
+##############################
 
 debian_tools_menu() {
     SKIP_PAUSE=1
     while true; do
         clear
+
+        # --- Affichage du menu ---
         echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
         echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
         echo -e "\e[2;35m--------------------------------------------------\e[0m"
@@ -36,8 +46,11 @@ debian_tools_menu() {
         echo
         read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
         clear
+
+        # --- Actions du menu ---
         case $DEBIAN_ACTION in
             1)
+                # Afficher la version de Debian
                 if [[ -f /etc/debian_version ]]; then
                     echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
                 else
@@ -46,10 +59,12 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             2)
+                # Afficher l'espace disque
                 df -h
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             3)
+                # Mettre à jour le système
                 if [[ "$UPDATE_COUNT" -gt 0 ]]; then
                     echo -e "\e[1;33mMise à jour du système...\e[0m"
                     sudo apt update && sudo apt upgrade -y
@@ -57,6 +72,7 @@ debian_tools_menu() {
                 fi
                 ;;
             4)
+                # Modifier l'adresse IP du serveur
                 echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
                 ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
                 read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
@@ -166,6 +182,7 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             5)
+                # Modifier le nom de la VM
                 echo -e "\n\e[1;36m------ Modifier le nom de la VM ------\e[0m"
                 read -p $'\e[1;33mNouveau nom de la VM (hostname, laisser vide pour aucune modification) : \e[0m' NEW_HOSTNAME
                 if [[ -n "$NEW_HOSTNAME" ]]; then
@@ -175,6 +192,7 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             6)
+                # Modifier le port SSH
                 echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
                 CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
                 CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
@@ -192,10 +210,12 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             7)
+                # Afficher l'état du service Docker
                 systemctl status docker --no-pager
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             8)
+                # Moniteur système (btop)
                 if command -v btop >/dev/null 2>&1; then
                     btop
                 else
@@ -207,6 +227,7 @@ debian_tools_menu() {
                 continue
                 ;;
             9)
+                # Ouvrir une session bash
                 echo -e "\e[1;33mVous pouvez maintenant exécuter des commandes dans la console.\e[0m"
                 echo -e "\e[1;33mTaper exit pour revenir au menu principal.\e[0m"
                 trap 'echo -e "\n\e[1;33mRetour au menu principal...\e[0m"; break' SIGINT
@@ -215,6 +236,7 @@ debian_tools_menu() {
                 continue
                 ;;
             10)
+                # Redémarrer la VM
                 if ask_tech_password; then
                     echo -e "\e[1;33mRedémarrage de la VM...\e[0m"
                     sudo reboot
@@ -224,6 +246,7 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             11)
+                # Éteindre la VM
                 if ask_tech_password; then
                     echo -e "\e[1;33mExtinction de la VM...\e[0m"
                     sudo poweroff
@@ -240,6 +263,7 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
         esac
+
         if [[ "$SKIP_PAUSE_DEBIAN" != "1" ]]; then
             echo -e "\nAppuyez sur une touche pour revenir au menu..."
             read -n 1 -s
