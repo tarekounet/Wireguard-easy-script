@@ -2,7 +2,7 @@
 #        VERSION MODULE      #
 ##############################
 
-MENU_VERSION="1.0.0"
+MENU_VERSION="1.1.0"
 
 ##############################
 #      MENU PRINCIPAL        #
@@ -151,7 +151,7 @@ main_menu() {
                 echo -e "\e[1;90m2) 🛑 Arrêter le service (déjà arrêté)\e[0m"
                 echo -e "\e[1;90m3) 🔄 Redémarrer le service (service arrêté)\e[0m"
             fi
-            echo -e "\e[1;32m4) \e[0m\e[0;37m🛠️  Modifier la configuration\e[0m"
+            echo -e "\e[1;32m4) \e[0m\e[0;37m🛠️  changer le port WEBUI\e[0m"
             echo -e "\e[1;32m5) \e[0m\e[0;37m🐳 Mettre à jour le container\e[0m"
             echo -e "\e[1;32m6) \e[0m\e[0;37m♻️  Réinitialiser la configuration\e[0m"
             echo -e "\n\e[1;36m--- Configuration ---\e[0m"
@@ -231,7 +231,7 @@ main_menu() {
                         SKIP_PAUSE=1
                     fi
                     ;;
-                4) configure_values ;;
+                4) change_wg_easy_web_port ;;
                 5)
                     echo "Mise à jour de Wireguard..."
                     docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
@@ -272,7 +272,14 @@ main_menu() {
             esac
         else
             case $ACTION in
-                1) configure_values ;;
+                1)                     
+                    auto_detect_and_validate_nat_port
+                    if [[ $? -ne 0 ]]; then
+                        echo -e "\e[1;31mImpossible de valider la redirection NAT. Configuration Wireguard annulée.\e[0m"
+                        break
+                    fi
+                    configure_values 
+                    ;;
                 2) change_tech_password ;;
                 3) debian_tools_menu ;;
                 4)

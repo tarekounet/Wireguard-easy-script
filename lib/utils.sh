@@ -2,7 +2,7 @@
 #        VERSION MODULE      #
 ##############################
 
-UTILS_VERSION="1.0.0"
+UTILS_VERSION="1.1.0"
 
 ##############################
 #      AFFICHAGE COULEUR     #
@@ -30,6 +30,36 @@ validate_ip() {
     [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && \
     awk -F. '{for(i=1;i<=4;i++) if($i>255) exit 1}' <<< "$ip"
 }
+
+##############################
+#      CHANGE PORT WEB       #
+##############################
+
+change_wg_easy_web_port() {
+    local compose_file="$DOCKER_COMPOSE_FILE"
+    local new_port
+
+    read -p $'\e[1;33mEntrez le nouveau port pour l’interface web (par défaut 51821) : \e[0m' new_port
+    if ! validate_port "$new_port"; then
+        echo -e "\e[1;31mPort invalide.\e[0m"
+        return 1
+    fi
+
+    # Modifie la variable d'environnement PORT="" dans le docker-compose
+    if grep -qE 'PORT="?([0-9]+)"?' "$compose_file"; then
+        sed -i -E "s/(PORT=)\"?[0-9]+\"?/\1\"$new_port\"/" "$compose_file"
+        echo -e "\e[1;32mLe port de l’interface web a été modifié à : $new_port\e[0m"
+    else
+        echo -e "\e[1;31mImpossible de trouver la variable PORT dans $compose_file.\e[0m"
+        return 1
+    fi
+
+    # Redémarre le conteneur pour appliquer le changement
+    docker compose -f "$compose_file" down
+    docker compose -f "$compose_file" up -d
+    echo -e "\e[1;32mWireguard redémarré avec le nouveau port web.\e[0m"
+}
+
 
 ##############################
 #         LOGGING            #
@@ -171,4 +201,68 @@ update_modules() {
     else
         msg_info "Tous les modules sont déjà à jour."
     fi
+}
+
+#################################
+#   SCAN PORT AVEC VALIDATION   #
+#################################
+
+find_external_port_for_51820() {
+    if ! command -v nmap >/dev/null 2>&1; then
+        echo -e "\e[1;33mnmap n'est pas installé. Installation en cours...\e[0m"
+        sudo apt update && sudo apt install -y nmap
+        if ! command -v nmap >/dev/null 2>&1; then
+            echo -e "\e[1;31mErreur : l'installation de nmap a échoué. Veuillez l'installer manuellement.\e[0m"
+            return 1
+        fi
+    fi
+
+    IP_PUBLIC=$(curl -s https://api.ipify.org)
+    echo -e "\e[1;36mIP publique détectée : $IP_PUBLIC\e[0m"
+    echo -e "\e[1;33mRecherche automatique des ports UDP ouverts sur votre box (1-10000, cela peut prendre du temps)...\e[0m"
+
+    PORTS_FOUND=()
+    while read -r line; do
+        port=$(echo "$line" | awk -F/ '{print $1}')
+        PORTS_FOUND+=("$port")
+    done < <(nmap -sU --open -p 1-10000 "$IP_PUBLIC" | grep -E '^[0-9]+/udp\s+open')
+
+    if [[ ${#PORTS_FOUND[@]} -eq 0 ]]; then
+        echo -e "\e[1;32mAucun port UDP ouvert détecté sur votre box dans la plage 1-10000.\e[0m"
+        return 1
+    fi
+
+    echo -e "\e[1;33mPorts UDP ouverts détectés : ${PORTS_FOUND[*]}\e[0m"
+    # On retourne la liste des ports trouvés
+    FOUND_PORTS="${PORTS_FOUND[*]}"
+}
+
+auto_detect_and_validate_nat_port() {
+    find_external_port_for_51820
+    if [[ -z "$FOUND_PORTS" ]]; then
+        echo -e "\e[1;31mAucun port UDP ouvert détecté, impossible de valider la redirection NAT.\e[0m"
+        return 1
+    fi
+
+    for port in $FOUND_PORTS; do
+        echo -e "\e[1;36mTest de la redirection NAT sur le port $port...\e[0m"
+        # Utilise la fonction de validation avec docker web de test
+        # On force le port à tester sans demander à l'utilisateur
+        IP_PUBLIC=$(curl -s https://api.ipify.org)
+        docker rm -f wg-port-test >/dev/null 2>&1
+        docker run -d --name wg-port-test -p "$port":80 nginx:alpine >/dev/null
+        sleep 2
+        if curl -s --max-time 5 "http://$IP_PUBLIC:$port" | grep -qi 'nginx'; then
+            echo -e "\e[1;32m✅ Succès : le port $port est bien ouvert et redirigé vers votre machine !\e[0m"
+            docker rm -f wg-port-test >/dev/null
+            set_conf_value "WG_EXTERNAL_PORT" "$port"
+            return 0
+        else
+            echo -e "\e[1;31m❌ Échec : impossible d'accéder à http://$IP_PUBLIC:$port"
+            docker rm -f wg-port-test >/dev/null
+        fi
+    done
+
+    echo -e "\e[1;31mAucun des ports ouverts détectés ne fonctionne pour la redirection NAT avec un conteneur web de test.\e[0m"
+    return 1
 }
