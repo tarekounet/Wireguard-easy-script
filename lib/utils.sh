@@ -1,8 +1,21 @@
+
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-UTILS_VERSION="1.1.0"
+UTILS_VERSION="1.2.2"
+
+##############################
+#        acces ROOT          #
+##############################
+
+run_as_root() {
+    if [[ $EUID -ne 0 ]]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
 
 ##############################
 #      AFFICHAGE COULEUR     #
@@ -210,7 +223,7 @@ update_modules() {
 find_external_port_for_51820() {
     if ! command -v nmap >/dev/null 2>&1; then
         echo -e "\e[1;33mnmap n'est pas installé. Installation en cours...\e[0m"
-        sudo apt update && sudo apt install -y nmap
+         run_as_root apt update && run_as_root apt install -y nmap
         if ! command -v nmap >/dev/null 2>&1; then
             echo -e "\e[1;31mErreur : l'installation de nmap a échoué. Veuillez l'installer manuellement.\e[0m"
             return 1
@@ -265,4 +278,109 @@ auto_detect_and_validate_nat_port() {
 
     echo -e "\e[1;31mAucun des ports ouverts détectés ne fonctionne pour la redirection NAT avec un conteneur web de test.\e[0m"
     return 1
+}
+
+##############################
+#     Check des prerequis    #
+############################## 
+
+check_and_install_prerequisites() {
+    local missing=0
+
+    # Docker
+    if ! command -v docker >/dev/null 2>&1; then
+        msg_warn "Docker n'est pas installé. Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y docker.io
+        missing=1
+    fi
+
+    # docker compose (plugin ou standalone)
+    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+        msg_warn "docker compose n'est pas installé. Installation en cours..."
+        run_as_root apt install -y docker-compose-plugin
+        missing=1
+    fi
+
+    # sudo
+    if ! command -v sudo >/dev/null 2>&1; then
+        msg_warn "sudo n'est pas installé. Installation en cours..."
+        apt update
+        apt install -y sudo
+        missing=1
+    fi
+
+    # curl
+    if ! command -v curl >/dev/null 2>&1; then
+        msg_warn "curl n'est pas installé. Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y curl
+        missing=1
+    fi
+
+    # btop (optionnel)
+    if ! command -v btop >/dev/null 2>&1; then
+        msg_warn "btop n'est pas installé (optionnel, pour le monitoring). Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y btop
+    fi
+
+    if [[ "$missing" -eq 1 ]]; then
+        msg_success "Les prérequis manquants ont été installés. Veuillez relancer le script si besoin."
+    else
+        msg_success "Tous les prérequis sont présents."
+    fi
+}
+
+################################
+#   Création de l'user + acl   #
+################################
+
+setup_script_user() {
+    local user="system"
+    local target_dir="/home/$user/github/Wireguard-easy-script"
+    local script_name="config_wg.sh"
+    local script_entry="$target_dir/$script_name"
+    local password
+
+    # Demande le mot de passe à l'utilisateur (en masqué)
+    read -s -p "Entrez le mot de passe à définir pour l'utilisateur '$user' : " password
+    echo
+
+    # Crée l'utilisateur s'il n'existe pas
+    if ! id "$user" &>/dev/null; then
+        run_as_root useradd -m -s /bin/bash "$user"
+        echo "$user:$password" | run_as_root chpasswd
+        msg_success "Utilisateur '$user' créé avec succès."
+    else
+        msg_info "L'utilisateur '$user' existe déjà."
+    fi
+
+    # Ajoute au groupe docker
+    if ! id -nG "$user" | grep -qw docker; then
+        run_as_root usermod -aG docker "$user"
+        msg_success "Utilisateur '$user' ajouté au groupe docker."
+    fi
+
+    # Crée le dossier cible si besoin
+    run_as_root mkdir -p "$target_dir"
+
+    # Copie le script principal si absent
+    if [[ ! -f "$script_entry" ]]; then
+        # Trouve le chemin absolu du script courant
+        local current_script_path="$(realpath "$0")"
+        run_as_root cp "$current_script_path" "$script_entry"
+        msg_success "Script principal copié dans $target_dir."
+    fi
+
+    # Donne les droits d'écriture sur le dossier du script
+    run_as_root chown -R "$user":"$user" "$target_dir"
+    run_as_root chmod -R u+rwX "$target_dir"
+
+    # Ajoute le lancement auto du script à la connexion (dans .bash_profile)
+    local profile="/home/$user/.bash_profile"
+    if ! grep -q "$script_entry" "$profile" 2>/dev/null; then
+        echo "[[ \$- == *i* ]] && bash \"$script_entry\"" | run_as_root tee -a "$profile" >/dev/null
+        msg_success "Le script sera lancé automatiquement à la connexion de $user."
+    fi
 }
