@@ -35,23 +35,9 @@ SCRIPT_BACKUP="config_wg.sh.bak"
 VERSION_FILE="version.txt"
 LOG_FILE="/var/log/wg-easy-script.log"
 SCRIPT_CHANNEL="stable"
-SCRIPT_BASE_VERSION_INIT="1.5.0"
+SCRIPT_BASE_VERSION_INIT="1.6.0"
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
-fi
-
-# Vérification des dépendances
-for dep in docker curl openssl; do
-    if ! command -v "$dep" &>/dev/null; then
-        msg_error "Dépendance manquante : $dep"
-        exit 1
-    fi
-done
-
-# Vérification des droits root
-if [[ $EUID -ne 0 ]]; then
-    msg_error "Ce script doit être lancé en root."
-    exit 1
 fi
 
 # Initialisation de la conf si besoin

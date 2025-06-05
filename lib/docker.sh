@@ -1,58 +1,48 @@
+#!/bin/bash
+
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-DOCKER_VERSION="1.0.0"
+DOCKER_VERSION="1.0.1"
 
 ##############################
 #      CONSTANTES            #
 ##############################
 
-# Chemin du fichier docker-compose
 DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
 
 ##############################
 #   CONFIGURATION PRINCIPALE #
 ##############################
-
-configure_values() {
-    # Fonction pour gérer l'annulation par Ctrl+C
-    cancel_config() {
-        trap - SIGINT
-        echo -e "\n\e[1;31mConfiguration annulée par l'utilisateur.\e[0m"
-        if [[ "$DOCKER_COMPOSE_CREATED" == "1" && -f "$DOCKER_COMPOSE_FILE" ]]; then
+cancel_config() {
+    trap - SIGINT
+    echo -e "\n\e[1;31mConfiguration annulée par l'utilisateur.\e[0m"
+    if [[ "$DOCKER_COMPOSE_CREATED" == "1" && -f "$DOCKER_COMPOSE_FILE" ]]; then
+        read -p $'Voulez-vous supprimer le fichier docker-compose.yml créé ? (o/N) : ' CONFIRM_DEL
+        if [[ "$CONFIRM_DEL" =~ ^[oO]$ ]]; then
             rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
             echo -e "\e[1;31mLe fichier docker-compose.yml créé a été supprimé.\e[0m"
+        else
+            echo -e "\e[1;33mLe fichier docker-compose.yml a été conservé.\e[0m"
         fi
-        if [[ -f "$DOCKER_COMPOSE_FILE.bak" ]]; then
-            mv "$DOCKER_COMPOSE_FILE.bak" "$DOCKER_COMPOSE_FILE"
-            echo -e "\e[1;33mLes modifications ont été annulées et le fichier de configuration restauré.\e[0m"
-        fi
-        while true; do
-            echo -e "\nVoulez-vous recommencer la configuration ? (o/N)"
-            read -n 1 -s RESTART_CHOICE
-            echo
-            if [[ "$RESTART_CHOICE" == "o" || "$RESTART_CHOICE" == "O" ]]; then
-                configure_values
-                return
-            elif [[ "$RESTART_CHOICE" == "n" || "$RESTART_CHOICE" == "N" || -z "$RESTART_CHOICE" ]]; then
-                echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-                pkill -KILL -u "system"
-            else
-                echo -e "\e[1;31mChoix invalide. Veuillez répondre par o ou n.\e[0m"
-            fi
-        done
-    }
+    fi
+    ...
+    exit 1
+}
 
+configure_values() {
+    # Fonction d'annulation (Ctrl+C) pendant la création
     trap cancel_config SIGINT
 
-    # Sauvegarder l'état initial du fichier docker-compose.yml pour pouvoir annuler les modifications
+    # Sauvegarde de l'état initial
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak"
     fi
 
-    # Vérifier si le fichier docker-compose.yml existe
+    # Création du fichier si absent
     if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
+        trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
         mkdir -p /mnt/wireguard/config
@@ -65,7 +55,6 @@ services:
     environment:
     - PORT=51821
     - INSECURE=false
-
     image: ghcr.io/wg-easy/wg-easy:15
     container_name: wg-easy
     networks:
@@ -82,7 +71,6 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
-      # - NET_RAW # ⚠️ Uncomment if using Podman
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
@@ -101,11 +89,12 @@ networks:
         - subnet: fdcc:ad94:bacf:61a3::/64
 EOF
         echo "Fichier docker-compose.yml créé avec succès."
+        trap - SIGINT
     else
         DOCKER_COMPOSE_CREATED=0
     fi
 
-    # Modification du port PORT dans le fichier docker-compose.yml
+    # Modification du port
     CURRENT_PORT=$(grep 'PORT=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
     msg_info "Port actuel pour PORT : $CURRENT_PORT"
     read -p $'Voulez-vous modifier le port PORT ? (o/N, ctrl+c pour annuler) : ' MODIFY_PORT
@@ -125,7 +114,7 @@ EOF
         msg_warn "Aucune modification apportée au port PORT."
     fi
 
-    # Question sur l'exposition de l'interface web côté internet
+    # Sécurité interface web
     read -p $'L\'interface web sera-t-elle exposée côté internet ? (o/N, ctrl+c pour annuler) : ' EXPOSE_WEB
     if [[ "${EXPOSE_WEB,,}" == "o" ]]; then
         sed -i "s#INSECURE=.*#INSECURE=false#" "$DOCKER_COMPOSE_FILE"
@@ -147,7 +136,7 @@ RAZ_docker_compose() {
     fi
     msg_warn "⚠️  Cette action supprimera toutes les configurations existantes."
     read -p $'Confirmez-vous vouloir réinitialiser la configuration ? (o/N) : ' CONFIRM_RAZ
-    if [[ "$CONFIRM_RAZ" != "o" && "$CONFIRM_RAZ" != "O" ]]; then
+    if [[ ! "$CONFIRM_RAZ" =~ ^[oO]$ ]]; then
         msg_warn "Réinitialisation annulée."
         return
     fi
