@@ -35,7 +35,7 @@ SCRIPT_BACKUP="config_wg.sh.bak"
 VERSION_FILE="version.txt"
 LOG_FILE="/var/log/wg-easy-script.log"
 SCRIPT_CHANNEL="stable"
-SCRIPT_BASE_VERSION_INIT="1.5.0"
+SCRIPT_BASE_VERSION_INIT="1.6.0"
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
