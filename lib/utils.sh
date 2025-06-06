@@ -1,9 +1,33 @@
-UTILS_VERSION="1.0.0"
+##############################
+#        VERSION MODULE      #
+##############################
+
+UTILS_VERSION="1.2.3"
+
+##############################
+#        acces ROOT          #
+##############################
+
+run_as_root() {
+    if [[ $EUID -ne 0 ]]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
+
+##############################
+#      AFFICHAGE COULEUR     #
+##############################
 
 msg_info()    { echo -e "\e[1;36m$1\e[0m"; }
 msg_success() { echo -e "\e[1;32m$1\e[0m"; }
 msg_warn()    { echo -e "\e[1;33m$1\e[0m"; }
 msg_error()   { echo -e "\e[1;31m$1\e[0m"; }
+
+##############################
+#      VALIDATION ENTRÉES    #
+##############################
 
 validate_port() {
     local port="$1"
@@ -18,9 +42,49 @@ validate_ip() {
     [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && \
     awk -F. '{for(i=1;i<=4;i++) if($i>255) exit 1}' <<< "$ip"
 }
+
+##############################
+#      CHANGE PORT WEB       #
+##############################
+
+change_wg_easy_web_port() {
+    local compose_file="$DOCKER_COMPOSE_FILE"
+    local new_port
+
+    read -p $'\e[1;33mEntrez le nouveau port pour l’interface web (par défaut 51821) : \e[0m' new_port
+    if ! validate_port "$new_port"; then
+        echo -e "\e[1;31mPort invalide.\e[0m"
+        return 1
+    fi
+
+    # Modifie la variable d'environnement PORT="" dans le docker-compose
+    if grep -qE 'PORT="?([0-9]+)"?' "$compose_file"; then
+        sed -i -E "s/(PORT=)\"?[0-9]+\"?/\1\"$new_port\"/" "$compose_file"
+        echo -e "\e[1;32mLe port de l’interface web a été modifié à : $new_port\e[0m"
+    else
+        echo -e "\e[1;31mImpossible de trouver la variable PORT dans $compose_file.\e[0m"
+        return 1
+    fi
+
+    # Redémarre le conteneur pour appliquer le changement
+    docker compose -f "$compose_file" down
+    docker compose -f "$compose_file" up -d
+    echo -e "\e[1;32mWireguard redémarré avec le nouveau port web.\e[0m"
+}
+
+
+##############################
+#         LOGGING            #
+##############################
+
 log_action() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/wg-easy-script.log
 }
+
+##############################
+#     GESTION DES VERSIONS   #
+##############################
+
 version_gt() {
     local IFS=.
     local i ver1=($1) ver2=($2)
@@ -35,46 +99,13 @@ version_gt() {
     done
     return 1
 }
-show_modules_versions() {
-    msg_info "Versions des modules chargés :"
-    echo "  utils.sh         : $UTILS_VERSION"
-    echo "  conf.sh          : $CONF_VERSION"
-    echo "  docker.sh        : $DOCKER_VERSION"
-    echo "  menu.sh          : $MENU_VERSION"
-    echo "  debian_tools.sh  : $DEBIAN_TOOLS_VERSION"
-}
 
-update_module() {
-    msg_info "Quel module voulez-vous mettre à jour ?"
-    echo "1) utils.sh"
-    echo "2) conf.sh"
-    echo "3) docker.sh"
-    echo "4) menu.sh"
-    echo "5) debian_tools.sh"
-    read -p "Votre choix : " CHOIX
-    case "$CHOIX" in
-        1) MODULE="utils.sh"; LOCAL_VERSION="$UTILS_VERSION" ;;
-        2) MODULE="conf.sh"; LOCAL_VERSION="$CONF_VERSION" ;;
-        3) MODULE="docker.sh"; LOCAL_VERSION="$DOCKER_VERSION" ;;
-        4) MODULE="menu.sh"; LOCAL_VERSION="$MENU_VERSION" ;;
-        5) MODULE="debian_tools.sh"; LOCAL_VERSION="$DEBIAN_TOOLS_VERSION" ;;
-        *) msg_error "Choix invalide."; return ;;
-    esac
-    local branch
-    branch=$(get_github_branch)
-    REMOTE_VERSION=$(get_remote_module_version "$MODULE")
-    if [[ -z "$REMOTE_VERSION" ]]; then
-        msg_warn "Impossible de récupérer la version distante de $MODULE."
-    elif [[ "$LOCAL_VERSION" == "$REMOTE_VERSION" ]]; then
-        msg_success "$MODULE est déjà à jour (v$LOCAL_VERSION)."
+get_github_branch() {
+    # Utilise la variable globale SCRIPT_CHANNEL
+    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+        echo "beta"
     else
-        msg_info "Mise à jour de $MODULE (local: $LOCAL_VERSION → distant: $REMOTE_VERSION)..."
-        if curl -fsSL -o "lib/$MODULE" "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/lib/$MODULE"; then
-            msg_success "$MODULE mis à jour en $REMOTE_VERSION !"
-            msg_warn "Relancez le script pour recharger le module mis à jour."
-        else
-            msg_error "Échec de la mise à jour de $MODULE."
-        fi
+        echo "main"
     fi
 }
 
@@ -84,11 +115,17 @@ get_remote_module_version() {
     branch=$(get_github_branch)
     curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/lib/$module" | grep -m1 -E 'VERSION="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+'
 }
+
+##############################
+#   AFFICHAGE DES VERSIONS   #
+##############################
+
 show_modules_versions() {
     msg_info "Versions des modules chargés :"
-    for mod in utils conf docker menu debian_tools; do
+    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
+        mod=$(basename "$file" .sh)
         local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var}"
+        local_version="${!local_var:-inconnue}"
         remote_version=$(get_remote_module_version "$mod.sh")
         if [[ -z "$remote_version" ]]; then
             status="\e[33m(Version distante inconnue)\e[0m"
@@ -101,14 +138,34 @@ show_modules_versions() {
     done
 }
 
-get_github_branch() {
-    # Utilise la variable globale SCRIPT_CHANNEL
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        echo "beta"
+show_modules_versions_fancy() {
+    clear
+    echo -e "\e[1;36m===== Versions des modules chargés =====\e[0m"
+    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
+        mod_name=$(basename "$file" .sh)
+        # Ignore utils.sh si tu ne veux pas l'afficher
+        [[ "$mod_name" == "utils" ]] && continue
+        # Cherche la variable VERSION dans le fichier
+        version=$(grep -m1 -E 'VERSION="?([0-9.]+)"?' "$file" | grep -oE '[0-9]+\.[0-9.]+' || echo "inconnue")
+        printf "\e[0;36m%-30s : \e[0;32m%s\e[0m\n" "$mod_name" "$version"
+    done
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_changelog() {
+    clear
+    if [[ -f "CHANGELOG.md" ]]; then
+        less -R "CHANGELOG.md"
     else
-        echo "main"
+        echo -e "\e[31mAucun changelog trouvé.\e[0m"
+        sleep 2
     fi
 }
+
+##############################
+#     MISE À JOUR MODULES    #
+##############################
 
 check_updates() {
     MODULE_UPDATE_AVAILABLE=0
@@ -131,5 +188,136 @@ check_updates() {
     remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
     if [[ -n "$remote_script_version" && "$SCRIPT_BASE_VERSION_INIT" != "$remote_script_version" ]]; then
         SCRIPT_UPDATE_AVAILABLE=1
+    fi
+}
+
+update_modules() {
+    local branch
+    branch=$(get_github_branch)
+    local updated=0
+    for mod in utils conf docker menu debian_tools; do
+        remote_version=$(get_remote_module_version "$mod.sh")
+        local_var=$(echo "${mod^^}_VERSION")
+        local_version="${!local_var}"
+        if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
+            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/lib/$mod.sh"; then
+                msg_success "Module \"$mod\" mis à jour (v$local_version → v$remote_version)"
+                updated=1
+            else
+                msg_error "Échec de la mise à jour du module \"$mod\""
+            fi
+        else
+            msg_info "Module \"$mod\" est déjà à jour (v$local_version)."
+        fi
+    done
+    if [[ "$updated" -eq 1 ]]; then
+        msg_warn "Relance le script pour charger les nouveaux modules."
+    else
+        msg_info "Tous les modules sont déjà à jour."
+    fi
+}
+
+##############################
+#     Check des prerequis    #
+############################## 
+
+check_and_install_prerequisites() {
+    local missing=0
+
+    # Docker
+    if ! command -v docker >/dev/null 2>&1; then
+        msg_warn "Docker n'est pas installé. Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y docker.io
+        missing=1
+    fi
+
+    # docker compose (plugin ou standalone)
+    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+        msg_warn "docker compose n'est pas installé. Installation en cours..."
+        run_as_root apt install -y docker-compose-plugin
+        missing=1
+    fi
+
+    # sudo
+    if ! command -v sudo >/dev/null 2>&1; then
+        msg_warn "sudo n'est pas installé. Installation en cours..."
+        apt update
+        apt install -y sudo
+        missing=1
+    fi
+
+    # curl
+    if ! command -v curl >/dev/null 2>&1; then
+        msg_warn "curl n'est pas installé. Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y curl
+        missing=1
+    fi
+
+    # btop (optionnel)
+    if ! command -v btop >/dev/null 2>&1; then
+        msg_warn "btop n'est pas installé (optionnel, pour le monitoring). Installation en cours..."
+        run_as_root apt update
+        run_as_root apt install -y btop
+    fi
+
+    if [[ "$missing" -eq 1 ]]; then
+        msg_success "Les prérequis manquants ont été installés. Veuillez relancer le script si besoin."
+    else
+        msg_success "Tous les prérequis sont présents."
+    fi
+}
+
+################################
+#   Création de l'user + acl   #
+################################
+
+setup_script_user() {
+    local user="system"
+    local target_dir="/home/$user/github/Wireguard-easy-script"
+    local script_name="config_wg.sh"
+    local script_entry="$target_dir/$script_name"
+    local password
+
+    # Demande le mot de passe à l'utilisateur (en masqué)
+    read -s -p "Entrez le mot de passe à définir pour l'utilisateur '$user' : " password
+    echo
+
+    # Crée l'utilisateur s'il n'existe pas
+    if ! id "$user" &>/dev/null; then
+        run_as_root useradd -m -s /bin/bash "$user"
+        echo "$user:$password" | run_as_root chpasswd
+        msg_success "Utilisateur '$user' créé avec succès."
+    else
+        msg_info "L'utilisateur '$user' existe déjà."
+    fi
+
+    # Ajoute au groupe docker
+    if ! id -nG "$user" | grep -qw docker; then
+        run_as_root usermod -aG docker "$user"
+        msg_success "Utilisateur '$user' ajouté au groupe docker."
+    fi
+
+    # Crée le dossier cible si besoin
+    run_as_root mkdir -p "$target_dir"
+
+    # Copie le script principal si absent
+    if [[ ! -f "$script_entry" ]]; then
+        # Trouve le chemin absolu du script courant
+        local current_script_path="$(realpath "$0")"
+        run_as_root cp "$current_script_path" "$script_entry"
+        msg_success "Script principal copié dans $target_dir."
+    fi
+
+    # Donne les droits d'écriture sur le dossier du script
+    run_as_root chown -R "$user":"$user" "$target_dir"
+    run_as_root chmod -R u+rwX "$target_dir"
+
+    # Ajoute le lancement auto du script à la connexion (dans .bash_profile)
+    local profile="/home/$user/.bash_profile"
+    if ! grep -q "$script_entry" "$profile" 2>/dev/null; then
+        echo "[[ \$- == *i* ]] && bash \"$script_entry\"" | run_as_root tee -a "$profile" >/dev/null
+        msg_success "Le script sera lancé automatiquement à la connexion de $user."
     fi
 }

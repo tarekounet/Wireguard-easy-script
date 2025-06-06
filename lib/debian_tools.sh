@@ -1,9 +1,19 @@
-DEBIAN_TOOLS_VERSION="1.0.0"
+##############################
+#        VERSION MODULE      #
+##############################
+
+DEBIAN_TOOLS_VERSION="1.0.2"
+
+##############################
+#      MENU PRINCIPAL        #
+##############################
 
 debian_tools_menu() {
     SKIP_PAUSE=1
     while true; do
         clear
+
+        # --- Affichage du menu ---
         echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
         echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
         echo -e "\e[2;35m--------------------------------------------------\e[0m"
@@ -36,8 +46,11 @@ debian_tools_menu() {
         echo
         read -p $'\e[1;33mVotre choix (Debian) : \e[0m' DEBIAN_ACTION
         clear
+
+        # --- Actions du menu ---
         case $DEBIAN_ACTION in
             1)
+                # Afficher la version de Debian
                 if [[ -f /etc/debian_version ]]; then
                     echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
                 else
@@ -46,17 +59,20 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             2)
+                # Afficher l'espace disque
                 df -h
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             3)
+                # Mettre à jour le système
                 if [[ "$UPDATE_COUNT" -gt 0 ]]; then
                     echo -e "\e[1;33mMise à jour du système...\e[0m"
-                    sudo apt update && sudo apt upgrade -y
+                     run_as_root apt update && run_as_root apt upgrade -y
                     SKIP_PAUSE_DEBIAN=0
                 fi
                 ;;
             4)
+                # Modifier l'adresse IP du serveur
                 echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
                 ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
                 read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
@@ -85,11 +101,11 @@ debian_tools_menu() {
                 else
                     if [[ "$DHCP_STATE" == "DHCP" ]]; then
                         echo -e "\e[1;33mPassage en mode statique...\e[0m"
-                        sudo nmcli con mod "$IFACE" ipv4.method manual
+                         nmcli con mod "$IFACE" ipv4.method manual
                     else
                         echo -e "\e[1;33mPassage en mode DHCP...\e[0m"
-                        sudo nmcli con mod "$IFACE" ipv4.method auto
-                        sudo nmcli con up "$IFACE"
+                         nmcli con mod "$IFACE" ipv4.method auto
+                         nmcli con up "$IFACE"
                         echo -e "\e[1;32mMode DHCP appliqué.\e[0m"
                         SKIP_PAUSE_DEBIAN=0
                         break
@@ -150,15 +166,15 @@ debian_tools_menu() {
 
                 # Appliquer uniquement si au moins une modification
                 if [[ "$MODIF_RESEAU" == "1" ]]; then
-                    sudo ip addr flush dev "$IFACE"
-                    sudo ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
+                     ip addr flush dev "$IFACE"
+                     ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
                     if [[ -n "$NEW_GW" ]]; then
-                        sudo ip route replace default via "$NEW_GW" dev "$IFACE"
+                         ip route replace default via "$NEW_GW" dev "$IFACE"
                     fi
                     if [[ -n "$NEW_DNS" ]]; then
-                        echo "nameserver $NEW_DNS" | sudo tee /etc/resolv.conf > /dev/null
+                        echo "nameserver $NEW_DNS" |  tee /etc/resolv.conf > /dev/null
                     fi
-                    sudo systemctl restart networking 2>/dev/null || sudo systemctl restart NetworkManager 2>/dev/null
+                     systemctl restart networking 2>/dev/null ||  systemctl restart NetworkManager 2>/dev/null
                     echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
                 else
                     echo -e "\e[1;33mAucune modification réseau appliquée.\e[0m"
@@ -166,15 +182,17 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             5)
+                # Modifier le nom de la VM
                 echo -e "\n\e[1;36m------ Modifier le nom de la VM ------\e[0m"
                 read -p $'\e[1;33mNouveau nom de la VM (hostname, laisser vide pour aucune modification) : \e[0m' NEW_HOSTNAME
                 if [[ -n "$NEW_HOSTNAME" ]]; then
                     echo -e "\e[1;32mChangement du nom de la VM en : $NEW_HOSTNAME\e[0m"
-                    sudo hostnamectl set-hostname "$NEW_HOSTNAME"
+                     hostnamectl set-hostname "$NEW_HOSTNAME"
                 fi
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             6)
+                # Modifier le port SSH
                 echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
                 CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
                 CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
@@ -182,8 +200,8 @@ debian_tools_menu() {
                 read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
                 if [[ -n "$NEW_SSH_PORT" ]]; then
                     if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
-                        sudo sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
-                        sudo systemctl restart sshd
+                         sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
+                         systemctl restart sshd
                         echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
                     else
                         echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
@@ -192,21 +210,24 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             7)
+                # Afficher l'état du service Docker
                 systemctl status docker --no-pager
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             8)
+                # Moniteur système (btop)
                 if command -v btop >/dev/null 2>&1; then
                     btop
                 else
                     echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
-                    sudo apt update && sudo apt install -y btop
+                     run_as_root apt update && run_as_root apt install -y btop
                     btop
                 fi
                 SKIP_PAUSE_DEBIAN=1
                 continue
                 ;;
             9)
+                # Ouvrir une session bash
                 echo -e "\e[1;33mVous pouvez maintenant exécuter des commandes dans la console.\e[0m"
                 echo -e "\e[1;33mTaper exit pour revenir au menu principal.\e[0m"
                 trap 'echo -e "\n\e[1;33mRetour au menu principal...\e[0m"; break' SIGINT
@@ -215,18 +236,20 @@ debian_tools_menu() {
                 continue
                 ;;
             10)
+                # Redémarrer la VM
                 if ask_tech_password; then
                     echo -e "\e[1;33mRedémarrage de la VM...\e[0m"
-                    sudo reboot
+                     reboot
                 else
                     echo -e "\e[1;31mRedémarrage annulé.\e[0m"
                 fi
                 SKIP_PAUSE_DEBIAN=0
                 ;;
             11)
+                # Éteindre la VM
                 if ask_tech_password; then
                     echo -e "\e[1;33mExtinction de la VM...\e[0m"
-                    sudo poweroff
+                     poweroff
                 else
                     echo -e "\e[1;31mExtinction annulée.\e[0m"
                 fi
@@ -240,6 +263,7 @@ debian_tools_menu() {
                 SKIP_PAUSE_DEBIAN=0
                 ;;
         esac
+
         if [[ "$SKIP_PAUSE_DEBIAN" != "1" ]]; then
             echo -e "\nAppuyez sur une touche pour revenir au menu..."
             read -n 1 -s

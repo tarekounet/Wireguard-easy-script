@@ -40,20 +40,6 @@ if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
 
-# Vérification des dépendances
-for dep in docker curl openssl; do
-    if ! command -v "$dep" &>/dev/null; then
-        msg_error "Dépendance manquante : $dep"
-        exit 1
-    fi
-done
-
-# Vérification des droits root
-if [[ $EUID -ne 0 ]]; then
-    msg_error "Ce script doit être lancé en root."
-    exit 1
-fi
-
 # Initialisation de la conf si besoin
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."

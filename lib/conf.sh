@@ -1,4 +1,19 @@
+##############################
+#        VERSION MODULE      #
+##############################
+
 CONF_VERSION="1.0.0"
+
+##############################
+#      CONSTANTES            #
+##############################
+
+# Le chemin du fichier de configuration principal
+CONF_FILE="wg-easy.conf"
+
+##############################
+#   GESTION DE LA CONF       #
+##############################
 
 set_conf_value() {
     local key="$1"
@@ -14,6 +29,10 @@ get_conf_value() {
     local key="$1"
     grep "^${key}=" "$CONF_FILE" | cut -d '=' -f2- | tr -d '"'
 }
+
+##############################
+#   GESTION DU MOT DE PASSE  #
+##############################
 
 set_tech_password() {
     local PASS1 PASS2 HASH
