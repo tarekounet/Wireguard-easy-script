@@ -42,9 +42,9 @@ menu_script_update() {
         labels+=("📦 Afficher les versions des modules")
         actions+=("show_modules_versions")
 
-        # Groupe 3 : Canal & changelog
+        # Groupe 3 : configuration & changelog
         group_separators+=(${#labels[@]})
-        group_titles+=("🔀 Canal & changelog")
+        group_titles+=("🚧 Configuration & changelog")
         labels+=("🔀 Changer de canal (stable/beta)")
         actions+=("switch_channel")
         labels+=("📝 Voir le changelog")
@@ -79,6 +79,7 @@ menu_script_update() {
                 update_modules) update_modules ;;
                 show_modules_versions) show_modules_versions ;;
                 switch_channel) switch_channel ;;
+                change_tech_password) change_tech_password ;;
                 show_changelog) show_changelog ;;
                 *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
             esac

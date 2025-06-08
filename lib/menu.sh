@@ -152,50 +152,31 @@ main_menu() {
             # Groupe 2 : Maintenance & configuration
             group_separators+=(${#labels[@]})
             group_titles+=("🛠️ Maintenance & configuration")
-            labels+=("🛠️  Changer le port WEBUI")
+            labels+=("🌐 Changer le port WEBUI")
             actions+=("change_wg_easy_web_port")
             labels+=("🐳 Mettre à jour le container")
             actions+=("update_wireguard")
-            labels+=("♻️  Réinitialiser la configuration")
+            labels+=("♻️ Réinitialiser la configuration")
             actions+=("RAZ_docker_compose")
-            labels+=("🔑 Modifier le mot de passe technique")
-            actions+=("change_tech_password")
 
             # Groupe 3 : Outils & informations
             group_separators+=(${#labels[@]})
             group_titles+=("📦 Outils & informations")
             labels+=("🐧 Outils système Linux")
             actions+=("debian_tools_menu")
-            labels+=("🛠️  Script & Mises à jour")
+            labels+=("🛠️ Script & Mises à jour")
             actions+=("menu_script_update")
-            labels+=("📦 Mettre à jour les modules")
-            actions+=("update_modules")
-            labels+=("📋 Afficher les versions des modules")
-            actions+=("show_modules_versions")
-            labels+=("🔀 Changer de canal stable/beta")
-            actions+=("switch_channel")
-            labels+=("📝 Voir le changelog")
-            actions+=("show_changelog")
+
         else
             # Groupe unique si pas de docker-compose
             group_separators+=(0)
             group_titles+=("🛠️ Configuration initiale")
             labels+=("🛠️ Créer la configuration")
             actions+=("configure_values")
-            labels+=("🔑 Modifier le mot de passe technique")
-            actions+=("change_tech_password")
             labels+=("🐧 Outils système Linux")
             actions+=("debian_tools_menu")
-            labels+=("🛠️  Script & Mises à jour")
+            labels+=("🛠️ Script & Mises à jour")
             actions+=("menu_script_update")
-            labels+=("📦 Mettre à jour les modules")
-            actions+=("update_modules")
-            labels+=("📋 Afficher les versions des modules")
-            actions+=("show_modules_versions")
-            labels+=("🔀 Changer de canal stable/beta")
-            actions+=("switch_channel")
-            labels+=("📝 Voir le changelog")
-            actions+=("show_changelog")
         fi
 
         # Affichage du menu dynamique avec séparateurs de groupes
@@ -233,13 +214,8 @@ main_menu() {
                 change_wg_easy_web_port) change_wg_easy_web_port ;;
                 update_wireguard) update_wireguard; SKIP_PAUSE=1 ;;
                 RAZ_docker_compose) RAZ_docker_compose ;;
-                change_tech_password) change_tech_password ;;
                 debian_tools_menu) debian_tools_menu ;;
                 menu_script_update) menu_script_update ;;
-                update_modules) update_modules ;;
-                show_modules_versions) show_modules_versions ;;
-                switch_channel) switch_channel ;;
-                show_changelog) show_changelog; SKIP_PAUSE=1 ;;
                 configure_values) configure_values ;;
                 "") ;; # Option inactive
                 *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;

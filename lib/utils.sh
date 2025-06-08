@@ -571,6 +571,15 @@ switch_channel() {
 #   MENU PRINCIPAL DU SCRIPT  #
 ###############################
 
+start_wireguard () {
+    clear
+    echo "Démarrage de Wireguard..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+    echo "Wireguard démarré avec succès ! 🚀"
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu principal...\e[0m"
+    read -n 1 -s
+    exec "$0"
+}   
 update_wireguard() {
     clear
     echo "Mise à jour de Wireguard..."
