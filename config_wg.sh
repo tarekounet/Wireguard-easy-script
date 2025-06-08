@@ -1,15 +1,36 @@
 #!/bin/bash
 # Auto-bootstrap des modules si le dossier lib/ ou des modules sont manquants
 
+##############################
+#   VARIABLES GÉNÉRALES      #
+##############################
+
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
-BRANCH="${SCRIPT_CHANNEL:-main}"
+CONF_FILE="wg-easy.conf"
+VERSION_FILE="version.txt"
+SCRIPT_BACKUP="config_wg.sh.bak"
+LOG_FILE="/var/log/wg-easy-script.log"
+DOCKER_COMPOSE_DIR="/mnt/wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
+SCRIPT_CHANNEL="stable"
+SCRIPT_BASE_VERSION_INIT="1.7.0"
 
 # Détecte le canal si déjà présent dans la conf
-if [[ -f wg-easy.conf ]]; then
-    BRANCH=$(grep '^SCRIPT_CHANNEL=' wg-easy.conf | cut -d'"' -f2)
-    [[ -z "$BRANCH" ]] && BRANCH="main"
+if [[ -f "$CONF_FILE" ]]; then
+    SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" | cut -d'"' -f2)
+    [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
 fi
+
+BRANCH="${SCRIPT_CHANNEL:-main}"
+
+if [[ -f "$VERSION_FILE" ]]; then
+    SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
+fi
+
+##############################
+#   AUTO-BOOTSTRAP MODULES   #
+##############################
 
 if [[ ! -d lib ]]; then
     mkdir lib
@@ -22,25 +43,16 @@ for mod in utils conf docker menu debian_tools; do
         chmod +x "lib/$mod.sh"
     fi
 done
+
 # Chargement des modules
 for f in lib/*.sh; do
     source "$f"
 done
 
-# Variables globales
-DOCKER_COMPOSE_DIR="/mnt/wireguard"
-DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-CONF_FILE="wg-easy.conf"
-SCRIPT_BACKUP="config_wg.sh.bak"
-VERSION_FILE="version.txt"
-LOG_FILE="/var/log/wg-easy-script.log"
-SCRIPT_CHANNEL="stable"
-SCRIPT_BASE_VERSION_INIT="1.6.0"
-if [[ -f "$VERSION_FILE" ]]; then
-    SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
-fi
+##############################
+#   INITIALISATION DE LA CONF
+##############################
 
-# Initialisation de la conf si besoin
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
     set_tech_password
@@ -54,6 +66,9 @@ EOF
     msg_success "Fichier de configuration créé avec succès."
 fi
 
-# Lancement du menu principal
+##############################
+#   LANCEMENT DU SCRIPT      #
+##############################
+
 check_updates
 main_menu

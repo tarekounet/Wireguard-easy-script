@@ -1,8 +1,13 @@
+# Protection : ce module ne doit être chargé que par config_wg.sh
+if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
+    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
+    exit 1
+fi
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-UTILS_VERSION="1.2.3"
+UTILS_VERSION="1.3.0"
 
 ##############################
 #        acces ROOT          #
@@ -16,6 +21,73 @@ run_as_root() {
     fi
 }
 
+###############################
+#       CENTRAGE BLOCK        # 
+###############################
+
+center_block() {
+    local content=("$@")
+    local cols rows
+    read -r cols rows <<< "$(get_screen_size)"
+
+    # Calcul du nombre de lignes et de la largeur max
+    local max_width=0
+    for line in "${content[@]}"; do
+        [[ ${#line} -gt $max_width ]] && max_width=${#line}
+    done
+    local block_height=${#content[@]}
+
+    # Calcul du décalage
+    local pad_top=$(( (rows - block_height) / 2 ))
+    local pad_left=$(( (cols - max_width) / 2 ))
+
+    # Affichage du bloc centré
+    for ((i=0; i<pad_top; i++)); do echo ""; done
+    for line in "${content[@]}"; do
+        printf "%*s%s\n" $pad_left "" "$line"
+    done
+}
+
+##############################
+#         LOGO ASCII         #
+##############################
+
+function get_screen_size() {
+    cols=$(tput cols)
+    rows=$(tput lines)
+    echo "$cols $rows"
+}
+
+show_logo_ascii() {
+    local ascii_art="
+============================================================
+        .__                                             .___
+__  _  _|__|______   ____   ____  __ _______ _______  __| _/
+\ \/ \/ /  \_  __ \_/ __ \ / ___\|  |  \__  \_  __  \/ __ |
+ \     /|  ||  | \/\  ___// /_/  >  |  // __ \|  | \/ /_/ |
+  \/\_/ |__||__|    \___  >___  /|____/(____  /__|  \____ |
+                        \/_____/            \/           \/
+
+=================== Easy Script Manager ====================
+
+"
+    clear
+    local line_num=0
+    local colors=(31 91 91 31 91 31 91 31 91 31 91 31)
+    local color_index=0
+    local color_count=${#colors[@]}
+    while IFS= read -r line; do
+        if [[ $line_num -eq 0 || $line =~ ^=+$ ]]; then
+            printf "\033[90m%s\033[0m\n" "$line"
+        elif [[ $line =~ "Easy Script Manager" ]]; then
+            printf "\033[97m%s\033[0m\n" "$line"
+        else
+            printf "\033[%sm%s\033[0m\n" "${colors[color_index]}" "$line"
+            color_index=$(( (color_index + 1) % color_count ))
+        fi
+        line_num=$((line_num + 1))
+    done <<< "$ascii_art"
+}
 ##############################
 #      AFFICHAGE COULEUR     #
 ##############################
@@ -111,9 +183,15 @@ get_github_branch() {
 
 get_remote_module_version() {
     local module="$1"
-    local branch
+    local branch url version
     branch=$(get_github_branch)
-    curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/lib/$module" | grep -m1 -E 'VERSION="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+'
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/${module}"
+    version=$(curl -fsSL "$url" | grep -m1 -E 'VERSION="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
+    if [[ -z "$version" ]]; then
+        echo "inconnue"
+    else
+        echo "$version"
+    fi
 }
 
 ##############################
@@ -121,6 +199,7 @@ get_remote_module_version() {
 ##############################
 
 show_modules_versions() {
+    clear
     msg_info "Versions des modules chargés :"
     for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
         mod=$(basename "$file" .sh)
@@ -136,6 +215,8 @@ show_modules_versions() {
         fi
         printf "  %-16s : %s %b\n" "$mod.sh" "$local_version" "$status"
     done
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
 }
 
 show_modules_versions_fancy() {
@@ -171,6 +252,9 @@ check_updates() {
     MODULE_UPDATE_AVAILABLE=0
     SCRIPT_UPDATE_AVAILABLE=0
 
+    local branch
+    branch=$(get_github_branch)
+
     # Vérification des modules
     for mod in utils conf docker menu debian_tools; do
         local_var=$(echo "${mod^^}_VERSION")
@@ -183,9 +267,7 @@ check_updates() {
     done
 
     # Vérification du script principal
-    local branch
-    branch=$(get_github_branch)
-    remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
+    remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
     if [[ -n "$remote_script_version" && "$SCRIPT_BASE_VERSION_INIT" != "$remote_script_version" ]]; then
         SCRIPT_UPDATE_AVAILABLE=1
     fi
@@ -200,7 +282,7 @@ update_modules() {
         local_var=$(echo "${mod^^}_VERSION")
         local_version="${!local_var}"
         if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
-            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/$branch/lib/$mod.sh"; then
+            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/$mod.sh"; then
                 msg_success "Module \"$mod\" mis à jour (v$local_version → v$remote_version)"
                 updated=1
             else
@@ -275,7 +357,8 @@ check_and_install_prerequisites() {
 
 setup_script_user() {
     local user="system"
-    local target_dir="/home/$user/github/Wireguard-easy-script"
+    # Utilise le dossier où est lancé config_wg.sh comme cible
+    local target_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     local script_name="config_wg.sh"
     local script_entry="$target_dir/$script_name"
     local password
@@ -319,5 +402,367 @@ setup_script_user() {
     if ! grep -q "$script_entry" "$profile" 2>/dev/null; then
         echo "[[ \$- == *i* ]] && bash \"$script_entry\"" | run_as_root tee -a "$profile" >/dev/null
         msg_success "Le script sera lancé automatiquement à la connexion de $user."
+    fi
+}
+
+##############################
+#   MISE À JOUR DU SCRIPT    #
+##############################
+
+update_script() {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    local branch="${SCRIPT_CHANNEL:-main}"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+
+    if curl -fsSL "$update_url" -o "$0.new"; then
+        if ! cmp -s "$0" "$0.new"; then
+            cp "$0" "$SCRIPT_BACKUP"
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
+        else
+            rm "$0.new"
+            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+        fi
+    else
+        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+    fi
+}
+
+##############################
+#    CHANGEMENT DE CANAL     #
+##############################
+
+switch_channel() {
+    local new_channel url
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
+        read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+        if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+            echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
+            sleep 2
+            return
+        fi
+        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+        if [[ "$CONFIRM_BETA" =~ ^[oO]$ ]]; then
+            new_channel="beta"
+        else
+            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            sleep 1
+            return
+        fi
+    else
+        new_channel="stable"
+    fi
+
+    set_conf_value "SCRIPT_CHANNEL" "$new_channel"
+    set_conf_value "BETA_CONFIRMED" $([[ "$new_channel" == "beta" ]] && echo "1" || echo "0")
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${new_channel}/config_wg.sh"
+
+    if curl -fsSL "$url" -o "$0.new"; then
+        mv "$0.new" "$0"
+        chmod +x "$0"
+        if [[ "$new_channel" == "beta" ]]; then
+            echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+        else
+            echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
+        fi
+        sleep 1
+        exec "$0"
+    else
+        echo -e "\e[1;31mErreur lors du téléchargement du script ($new_channel).\e[0m"
+        sleep 2
+    fi
+}
+
+##############################
+#   MISE À JOUR DU SCRIPT    #
+##############################
+
+update_script() {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    local branch="${SCRIPT_CHANNEL:-main}"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+
+    if curl -fsSL "$update_url" -o "$0.new"; then
+        if ! cmp -s "$0" "$0.new"; then
+            cp "$0" "$SCRIPT_BACKUP"
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
+        else
+            rm "$0.new"
+            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+        fi
+    else
+        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+    fi
+}
+
+##############################
+#    CHANGEMENT DE CANAL     #
+##############################
+
+canal_blocage() {
+    if [[ "$CURRENT_CHANNEL" == "stable" && -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
+    echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
+    SKIP_PAUSE=0
+else
+    switch_channel
+fi
+}
+switch_channel() {
+    local new_channel url
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
+        read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+        if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+            echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
+            sleep 2
+            return
+        fi
+        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+        if [[ "$CONFIRM_BETA" =~ ^[oO]$ ]]; then
+            new_channel="beta"
+        else
+            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            sleep 1
+            return
+        fi
+    else
+        new_channel="stable"
+    fi
+
+    set_conf_value "SCRIPT_CHANNEL" "$new_channel"
+    set_conf_value "BETA_CONFIRMED" $([[ "$new_channel" == "beta" ]] && echo "1" || echo "0")
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${new_channel}/config_wg.sh"
+
+    if curl -fsSL "$url" -o "$0.new"; then
+        mv "$0.new" "$0"
+        chmod +x "$0"
+        if [[ "$new_channel" == "beta" ]]; then
+            echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+        else
+            echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
+        fi
+        sleep 1
+        exec "$0"
+    else
+        echo -e "\e[1;31mErreur lors du téléchargement du script ($new_channel).\e[0m"
+        sleep 2
+    fi
+}
+
+###############################
+#   MENU PRINCIPAL DU SCRIPT  #
+###############################
+
+update_wireguard() {
+    clear
+    echo "Mise à jour de Wireguard..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
+    docker compose -f "$DOCKER_COMPOSE_FILE" pull
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+    echo "Wireguard mis à jour et purgé avec succès ! ⬆️"
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu principal...\e[0m"
+    read -n 1 -s
+    exec "$0"
+}
+restart_wireguard() {
+    clear
+    echo "Redémarrage de Wireguard..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" restart
+    echo "Wireguard redémarré avec succès ! 🔄"
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu principal...\e[0m"
+    read -n 1 -s
+    exec "$0"
+}
+shutdown_wireguard() {
+    clear
+    echo "Extinction de Wireguard..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" down
+    echo "Wireguard éteint avec succès ! 📴"
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu principal...\e[0m"
+    read -n 1 -s
+    exec "$0"
+}
+
+################################
+#         Debian Tools         #
+################################
+shutdown_vm() {
+    clear
+    if ask_tech_password; then
+        echo -e "\e[1;33mExtinction de la VM...\e[0m"
+            run_as_root /sbin/poweroff
+    else
+        echo -e "\e[1;31mExtinction annulée.\e[0m"
+    fi
+}
+
+reboot_vm() {
+    clear
+    if ask_tech_password; then
+        echo -e "\e[1;33mRedémarrage de la VM...\e[0m"
+        run_as_root /sbin/reboot
+    else
+        echo -e "\e[1;31mExtinction annulée.\e[0m"
+    fi
+}
+
+rename_vm() {
+    clear
+    if ask_tech_password; then
+        read -p $'\e[1;33mEntrez le nouveau nom de la VM : \e[0m' new_name
+        if [[ -z "$new_name" ]]; then
+            echo -e "\e[1;31mNom invalide.\e[0m"
+            return 1
+        fi
+        run_as_root hostnamectl set-hostname "$new_name"
+        echo -e "\e[1;32mNom de la VM modifié avec succès en : $new_name\e[0m"
+    else
+        echo -e "\e[1;31mChangement de nom annulé.\e[0m"
+    fi
+}
+
+ssh_access() {
+    clear
+    echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
+    CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
+    CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
+    echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
+    read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
+    if [[ -n "$NEW_SSH_PORT" ]]; then
+        if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
+                sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
+                systemctl restart sshd
+            echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
+        else
+            echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
+        fi
+    fi
+}
+
+configure_ip_vm() {
+    # Modifier l'adresse IP du serveur
+    echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
+    ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
+    read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
+    if [[ -z "$IFACE_NUM" ]]; then
+        echo -e "\e[1;33mModification annulée.\e[0m"
+    SKIP_PAUSE_DEBIAN=0
+        break
+    fi
+    IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
+    if [[ -z "$IFACE" ]]; then
+        echo -e "\e[1;31mInterface invalide.\e[0m"
+        SKIP_PAUSE_DEBIAN=0
+        break
+    fi
+
+    # Vérification du mode actuel (DHCP ou statique)
+    DHCP_STATE="Statique"
+    if nmcli device show "$IFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
+        DHCP_STATE="DHCP"
+    fi
+    echo -e "\e[1;33mMode actuel de l\'interface $IFACE :\e[0m $DHCP_STATE"
+
+    read -p $'\e[1;33mVoulez-vous conserver ce mode ? (o/N) : \e[0m' KEEP_MODE
+    if [[ "$KEEP_MODE" == "o" || "$KEEP_MODE" == "O" ]]; then
+        echo -e "\e[1;33mMode conservé.\e[0m"
+    else
+        if [[ "$DHCP_STATE" == "DHCP" ]]; then
+            echo -e "\e[1;33mPassage en mode statique...\e[0m"
+                nmcli con mod "$IFACE" ipv4.method manual
+        else
+            echo -e "\e[1;33mPassage en mode DHCP...\e[0m"
+                nmcli con mod "$IFACE" ipv4.method auto
+                nmcli con up "$IFACE"
+            echo -e "\e[1;32mMode DHCP appliqué.\e[0m"
+            SKIP_PAUSE_DEBIAN=0
+            break
+        fi
+    fi
+
+    # Modification des valeurs en mode statique
+    CUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet / {print $2}')
+    echo -e "\e[1;33mAdresse IP actuelle de $IFACE :\e[0m $CUR_IP"
+    read -p $'\e[1;33mVoulez-vous modifier l\'adresse IP ? (o/N) : \e[0m' MODIFY_IP
+    if [[ "$MODIFY_IP" == "o" || "$MODIFY_IP" == "O" ]]; then
+        read -p $'\e[1;33mNouvelle adresse IP (ex : 192.168.1.100, laisser vide pour annuler) : \e[0m' NEW_IP
+        if [[ -z "$NEW_IP" ]]; then
+            echo -e "\e[1;33mModification annulée.\e[0m"
+            SKIP_PAUSE_DEBIAN=0
+            break
+        fi
+        MODIF_RESEAU=1
+    else
+        NEW_IP=$(echo "$CUR_IP" | cut -d '/' -f 1)
+    fi
+
+    # Masque
+    CUR_MASK=$(echo "$CUR_IP" | cut -d '/' -f 2)
+    CUR_MASK_DECIMAL=$(ipcalc -m "$CUR_IP" | awk '/Netmask/ {print $2}')
+    echo -e "\e[1;33mMasque de sous-réseau actuel :\e[0m $CUR_MASK_DECIMAL"
+    read -p $'\e[1;33mVoulez-vous modifier le masque de sous-réseau ? (o/N) : \e[0m' MODIFY_MASK
+    if [[ "$MODIFY_MASK" == "o" || "$MODIFY_MASK" == "O" ]]; then
+        read -p $'\e[1;33mNouveau masque de sous-réseau (ex : 255.255.255.0, laisser vide pour 255.255.255.0) : \e[0m' NEW_MASK_DECIMAL
+        NEW_MASK_DECIMAL=${NEW_MASK_DECIMAL:-255.255.255.0}
+        NEW_MASK=$(ipcalc -p "$NEW_IP/$NEW_MASK_DECIMAL" | awk '/Prefix/ {print $2}')
+        MODIF_RESEAU=1
+    else
+        NEW_MASK="$CUR_MASK"
+    fi
+
+    # Passerelle
+    CUR_GW=$(ip route | awk '/default/ {print $3}')
+    echo -e "\e[1;33mPasserelle actuelle :\e[0m $CUR_GW"
+    read -p $'\e[1;33mVoulez-vous modifier la passerelle ? (o/N) : \e[0m' MODIFY_GW
+    if [[ "$MODIFY_GW" == "o" || "$MODIFY_GW" == "O" ]]; then
+        read -p $'\e[1;33mNouvelle passerelle (laisser vide pour aucune modification) : \e[0m' NEW_GW
+        MODIF_RESEAU=1
+    else
+        NEW_GW="$CUR_GW"
+    fi
+
+    # DNS
+    CUR_DNS=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | head -n 1)
+    echo -e "\e[1;33mDNS actuel :\e[0m $CUR_DNS"
+    read -p $'\e[1;33mVoulez-vous modifier le DNS ? (o/N) : \e[0m' MODIFY_DNS
+    if [[ "$MODIFY_DNS" == "o" || "$MODIFY_DNS" == "O" ]]; then
+        read -p $'\e[1;33mNouveau DNS (laisser vide pour aucune modification) : \e[0m' NEW_DNS
+        MODIF_RESEAU=1
+    else
+        NEW_DNS="$CUR_DNS"
+    fi
+
+    # Appliquer uniquement si au moins une modification
+    if [[ "$MODIF_RESEAU" == "1" ]]; then
+            ip addr flush dev "$IFACE"
+            ip addr add "$NEW_IP/$NEW_MASK" dev "$IFACE"
+        if [[ -n "$NEW_GW" ]]; then
+                ip route replace default via "$NEW_GW" dev "$IFACE"
+        fi
+        if [[ -n "$NEW_DNS" ]]; then
+            echo "nameserver $NEW_DNS" |  tee /etc/resolv.conf > /dev/null
+        fi
+            systemctl restart networking 2>/dev/null ||  systemctl restart NetworkManager 2>/dev/null
+        echo -e "\e[1;32mConfiguration appliquée. Attention, la connexion SSH peut être interrompue.\e[0m"
+    else
+        echo -e "\e[1;33mAucune modification réseau appliquée.\e[0m"
     fi
 }

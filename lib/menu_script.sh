@@ -1,59 +1,89 @@
+# Protection : ce module ne doit être chargé que par config_wg.sh
+if [[ "$(basename -- "$0")" == "menu_script.sh" ]]; then
+    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
+    exit 1
+fi
+
 ##############################
 #        VERSION MODULE      #
 ##############################
-menu_script_VERSION="1.0.0"
+MENU_SCRIPT_VERSION="1.1.0"
 
 ##############################
 #    MENU SCRIPT FUNCTIONS   #
 ##############################
 
-show_script_update_menu() {
-    echo -e "\n\e[1;36m========== Script & Mises à jour ==========\e[0m"
-    if [[ "$1" == "with_config" ]]; then
-        if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
-            echo -e "\e[5;33m9) 🔼 Mettre à jour le script (nouvelle version dispo)\e[0m"
-        else
-            echo -e "\e[1;32m9) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
-        fi
-        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
-            echo -e "\e[5;33m10) ⬆️  Mettre à jour les modules (mise à jour dispo)\e[0m"
-        else
-            echo -e "\e[1;32m10) \e[0m\e[0;37m⬆️  Mettre à jour les modules\e[0m"
-        fi
-        echo -e "\e[1;32m11) \e[0m\e[0;37m📦 Afficher les versions des modules\e[0m"
-        echo -e "\e[1;32m12) \e[0m\e[0;37m🔀 Changer de canal (stable/beta)\e[0m"
-        echo -e "\e[1;32m13) \e[0m\e[0;37m📝 Voir le changelog\e[0m"
-        echo -e "\n\e[1;33mAppuyez sur 0 pour revenir au menu principal.\e[0m"
-    else
-        if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
-            echo -e "\e[5;33m4) 🔼 Mettre à jour le script (nouvelle version dispo)\e[0m"
-        else
-            echo -e "\e[1;32m4) \e[0m\e[0;37m🔼 Mettre à jour le script\e[0m"
-        fi
-        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
-            echo -e "\e[5;33m5) ⬆️  Mettre à jour les modules (mise à jour dispo)\e[0m"
-        else
-            echo -e "\e[1;32m5) \e[0m\e[0;37m⬆️  Mettre à jour les modules\e[0m"
-        fi
-        echo -e "\e[1;32m6) \e[0m\e[0;37m📦 Afficher les versions des modules\e[0m"
-        echo -e "\e[1;32m7) \e[0m\e[0;37m🔀 Changer de canal (stable/beta)\e[0m"
-        echo -e "\e[1;32m8) \e[0m\e[0;37m📝 Voir le changelog\e[0m"
-        echo -e "\n\e[1;33mAppuyez sur 0 pour revenir au menu principal.\e[0m"
-    fi
-}
 menu_script_update() {
     while true; do
         clear
-        show_script_update_menu only_menu
+        echo -e "\n\e[1;36m========== Script & Mises à jour ==========\e[0m"
+
+        # Groupes de labels et d'actions
+        local labels=()
+        local actions=()
+        local group_separators=()
+        local group_titles=()
+
+        # Groupe 1 : Mises à jour
+        group_separators+=(0)
+        group_titles+=("🔄 Mises à jour")
+        if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
+            labels+=("🔼 Mettre à jour le script (nouvelle version dispo)")
+            actions+=("update_script")
+        fi
+        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
+            labels+=("⬆️  Mettre à jour les modules (mise à jour dispo)")
+            actions+=("update_modules")
+        fi
+
+        # Groupe 2 : Informations
+        group_separators+=(${#labels[@]})
+        group_titles+=("📦 Informations")
+        labels+=("📦 Afficher les versions des modules")
+        actions+=("show_modules_versions")
+
+        # Groupe 3 : Canal & changelog
+        group_separators+=(${#labels[@]})
+        group_titles+=("🔀 Canal & changelog")
+        labels+=("🔀 Changer de canal (stable/beta)")
+        actions+=("switch_channel")
+        labels+=("📝 Voir le changelog")
+        actions+=("show_changelog")
+
+        # Affichage du menu dynamique avec séparateurs de groupes
+        local group_idx=0
+        for i in "${!labels[@]}"; do
+            if [[ " ${group_separators[@]} " =~ " $i " ]]; then
+                echo -e "\n\e[1;36m--- ${group_titles[$group_idx]} ---\e[0m"
+                ((group_idx++))
+            fi
+            printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
+        done
+        echo -e "\n\e[1;32m0) \e[0m\e[0;37mRetour au menu principal\e[0m"
+
+        # Lecture du choix utilisateur
         echo
-        read -p $'\e[1;33mEntrez votre choix (0 pour retour) : \e[0m' CHOICE
-        case $CHOICE in
-            0|9|4) break ;;  # Retour immédiat sans pause
-            10|5) update_modules ;;
-            11|6) show_modules_versions ;;
-            12|7) switch_channel ;;
-            13|8) show_changelog ;;
-            *) echo -e "\e[1;31mChoix invalide.\e[0m"; sleep 1 ;;
-        esac
+        read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
+        if [[ -z "$CHOICE" ]]; then
+            echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
+            sleep 1
+            continue
+        fi
+
+        if [[ "$CHOICE" == "0" ]]; then
+            break
+        elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
+            action="${actions[$((CHOICE-1))]}"
+            case "$action" in
+                update_script) update_script ;;
+                update_modules) update_modules ;;
+                show_modules_versions) show_modules_versions ;;
+                switch_channel) switch_channel ;;
+                show_changelog) show_changelog ;;
+                *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
+            esac
+        else
+            echo -e "\e[1;31mChoix invalide.\e[0m"; sleep 1
+        fi
     done
 }
