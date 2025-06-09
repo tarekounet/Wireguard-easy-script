@@ -8,12 +8,12 @@ fi
 #        VERSION MODULE      #
 ##############################
 
-MENU_VERSION="1.3.0"
+MENU_VERSION="1.3.2"
 
 ##############################
 #         sources            #
 ##############################
-
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/menu_script.sh"
 
 ##############################
@@ -52,7 +52,7 @@ main_menu() {
             echo -e "\e[2;35m--------------------------------------------------\e[0m"
             echo -e "\e[1;36m📄 Informations actuelles de Wireguard :\e[0m"
             echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-            check_new_wg_easy_version
+            update_wg_easy_version_only
             CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
             case "$CONTAINER_STATUS" in
             running)
