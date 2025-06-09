@@ -2,7 +2,7 @@
 #        VERSION MODULE      #
 ##############################
 
-DEBIAN_TOOLS_VERSION="1.1.0"
+DEBIAN_TOOLS_VERSION="1.2.0"
 
 ##############################
 #      MENU PRINCIPAL        #
@@ -11,6 +11,7 @@ DEBIAN_TOOLS_VERSION="1.1.0"
 debian_tools_menu() {
     while true; do
         clear
+        show_logo_ascii
         echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
         echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
         echo -e "\e[2;35m--------------------------------------------------\e[0m"
@@ -18,8 +19,12 @@ debian_tools_menu() {
         # Groupes de labels et d'actions
         local labels=()
         local actions=()
+        local group_separators=()
+        local group_titles=()
 
         # Groupe : Informations système
+        group_separators+=(0)
+        group_titles+=("🖥️ Informations système")
         labels+=("📦 Afficher la version de Debian")
         actions+=("show_debian_version")
         labels+=("💾 Afficher l'espace disque")
@@ -28,12 +33,16 @@ debian_tools_menu() {
         actions+=("show_system_monitor")
 
         # Groupe : Réseau & Docker
+        group_separators+=(${#labels[@]})
+        group_titles+=("🌐 Réseau & Docker")
         labels+=("🐳 Afficher l'état du service Docker")
         actions+=("show_docker_status")
         labels+=("🌐 Modifier l'adresse IP du serveur")
         actions+=("configure_ip_vm")
 
         # Groupe : Administration système
+        group_separators+=(${#labels[@]})
+        group_titles+=("🔧 Administration système")
         labels+=("🔄 Mettre à jour le système")
         actions+=("update_system")
         labels+=("🖥️ Modifier le nom de la VM")
@@ -42,30 +51,23 @@ debian_tools_menu() {
         actions+=("modify_ssh_port")
 
         # Groupe : Actions sur la VM
-        labels+=("🔁 Redémarrer la VM")
+        group_separators+=(${#labels[@]})
+        group_titles+=("🚦 Actions sur la VM")
+        labels+=(" 🔁 Redémarrer la VM")
         actions+=("reboot_vm")
-        labels+=("⚡ Éteindre la VM")
+        labels+=("💤 Éteindre la VM")
         actions+=("shutdown_vm")
-        labels+=("💻 Ouvrir une session bash")
-        actions+=("open_bash_session")
+        
 
-        # Affichage du menu dynamique avec séparateurs de groupes
-        local group_separators=(3 5 9 12)
-        local group_titles=(
-            "🖥️  Informations système"
-            "🌐 Réseau & Docker"
-            "🔧 Administration système"
-            "⚡ Actions sur la VM"
-        )
         local group_idx=0
         for i in "${!labels[@]}"; do
             if [[ " ${group_separators[@]} " =~ " $i " ]]; then
-                echo -e "\n\e[1;36m--- ${group_titles[$group_idx]} ---\e[0m"
+                echo -e "\n\e[0;36m--- ${group_titles[$group_idx]} ---\e[0m"
                 ((group_idx++))
             fi
             printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
         done
-        echo -e "\n\e[1;32m0) \e[0m\e[0;37mRetour au menu principal\e[0m"
+        echo -e "\n\e[1;32m0) \e[0m\e[2;31m🔙 Retour au menu principal\e[0m"
 
         echo
         read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
@@ -111,15 +113,11 @@ debian_tools_menu() {
                 modify_ssh_port) modify_ssh_port ;;
                 reboot_vm) reboot_vm ;;
                 shutdown_vm) shutdown_vm ;;
-                open_bash_session) open_bash_session ;;
                 *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
             esac
         else
             echo -e "\e[1;31mChoix invalide.\e[0m"
             sleep 1
         fi
-
-        echo -e "\nAppuyez sur une touche pour revenir au menu..."
-        read -n 1 -s
     done
 }

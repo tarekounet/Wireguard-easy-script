@@ -8,7 +8,7 @@ fi
 #        VERSION MODULE      #
 ##############################
 
-DOCKER_VERSION="1.0.1"
+DOCKER_VERSION="1.1.0"
 
 ##############################
 #      CONSTANTES            #
@@ -53,13 +53,17 @@ configure_values() {
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
   etc_wireguard:
-
+    driver: local
+    driver_opts:
+      type: none
+      device: /mnt/wireguard/config
+      o: bind
 services:
   wg-easy:
     environment:
     - PORT=51821
     - INSECURE=false
-    image: ghcr.io/wg-easy/wg-easy:15
+    image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION}
     container_name: wg-easy
     networks:
       wg:

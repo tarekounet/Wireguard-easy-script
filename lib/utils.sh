@@ -7,7 +7,7 @@ fi
 #        VERSION MODULE      #
 ##############################
 
-UTILS_VERSION="1.3.0"
+UTILS_VERSION="1.4.0"
 
 ##############################
 #        acces ROOT          #
@@ -583,6 +583,9 @@ start_wireguard () {
 update_wireguard() {
     clear
     echo "Mise à jour de Wireguard..."
+
+    check_and_update_wg_easy_version
+
     docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
     docker compose -f "$DOCKER_COMPOSE_FILE" pull
     docker compose -f "$DOCKER_COMPOSE_FILE" up -d
@@ -774,4 +777,33 @@ configure_ip_vm() {
     else
         echo -e "\e[1;33mAucune modification réseau appliquée.\e[0m"
     fi
+}
+
+################################
+#    UPDATE DOCKER COMPOSE     #
+################################
+
+update_wg_easy_version_only() {
+    # Récupère la version depuis ton GitHub
+    WG_EASY_VERSION=$(curl -fsSL https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/WG_EASY_VERSION)
+    if [[ -z "$WG_EASY_VERSION" ]]; then
+        echo "Impossible de récupérer la version de wg-easy depuis GitHub."
+        return 1
+    fi
+
+    # Vérifie si le fichier existe
+    if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
+        echo "Aucun fichier docker-compose.yml trouvé."
+        return 1
+    fi
+
+    # Met à jour la ligne image: dans le docker-compose.yml
+    sed -i "s#image: ghcr.io/wg-easy/wg-easy:.*#image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION#" "$DOCKER_COMPOSE_FILE"
+    echo "docker-compose.yml mis à jour avec la version $WG_EASY_VERSION."
+
+    # Relance le conteneur avec la nouvelle image
+    docker compose -f "$DOCKER_COMPOSE_FILE" pull
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+
+    echo "Wireguard mis à jour sans recréer la configuration."
 }

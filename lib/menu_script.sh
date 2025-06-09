@@ -16,7 +16,10 @@ MENU_SCRIPT_VERSION="1.1.0"
 menu_script_update() {
     while true; do
         clear
-        echo -e "\n\e[1;36m========== Script & Mises à jour ==========\e[0m"
+        show_logo_ascii
+        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "\e[1;36m            📜 MENU OUTILS SCRIPT 📜\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m"
 
         # Groupes de labels et d'actions
         local labels=()
@@ -26,7 +29,7 @@ menu_script_update() {
 
         # Groupe 1 : Mises à jour
         group_separators+=(0)
-        group_titles+=("🔄 Mises à jour")
+        group_titles+=("🚧 Configuration & 🔄 Mises à jour")
         if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
             labels+=("🔼 Mettre à jour le script (nouvelle version dispo)")
             actions+=("update_script")
@@ -35,18 +38,13 @@ menu_script_update() {
             labels+=("⬆️  Mettre à jour les modules (mise à jour dispo)")
             actions+=("update_modules")
         fi
-
-        # Groupe 2 : Informations
-        group_separators+=(${#labels[@]})
-        group_titles+=("📦 Informations")
-        labels+=("📦 Afficher les versions des modules")
-        actions+=("show_modules_versions")
-
-        # Groupe 3 : configuration & changelog
-        group_separators+=(${#labels[@]})
-        group_titles+=("🚧 Configuration & changelog")
         labels+=("🔀 Changer de canal (stable/beta)")
         actions+=("switch_channel")
+        # Groupe 2 : Informations
+        group_separators+=(${#labels[@]})
+        group_titles+=("⁉️ Informations et version")
+        labels+=("📦 Afficher les versions des modules")
+        actions+=("show_modules_versions")
         labels+=("📝 Voir le changelog")
         actions+=("show_changelog")
 
@@ -59,7 +57,7 @@ menu_script_update() {
             fi
             printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
         done
-        echo -e "\n\e[1;32m0) \e[0m\e[0;37mRetour au menu principal\e[0m"
+        echo -e "\n\e[1;32m0) \e[0m\e[0;37m🔙 Retour au menu principal\e[0m"
 
         # Lecture du choix utilisateur
         echo

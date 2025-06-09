@@ -8,7 +8,7 @@ fi
 #        VERSION MODULE      #
 ##############################
 
-MENU_VERSION="1.2.0"
+MENU_VERSION="1.3.0"
 
 ##############################
 #         sources            #
@@ -24,97 +24,97 @@ main_menu() {
     while true; do
         clear
         show_logo_ascii
-        BLINK_ARROW_LEFT="\e[5;33m<==\e[0m"
-        BLINK_ARROW_RIGHT="\e[5;33m==>\e[0m"
         CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
 
+        echo -e "\e[1;36mCanal actuel du script:\e[0m"
         if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
-            echo -e "Canal : \e[32mSTABLE 🟢\e[0m $BLINK_ARROW_LEFT \e[90mBETA ⚪\e[0m "
+            echo -e "\e[32m[STABLE 🟢]\e[0m"
         elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-            echo -e "Canal : \e[90mSTABLE ⚪\e[0m $BLINK_ARROW_RIGHT \e[32mBETA 🟢\e[0m "
-            echo -e "\e[2;33mAppuyez sur 's' pour passer au canal STABLE.\e[0m"
+            echo -e "\e[33m[BETA 🟡]\e[0m"
+        else
+            echo -e "\e[31m[INCONNU ❓]\e[0m"
         fi
 
         # === INFOS MISES À JOUR ===
         if [[ -n "$VERSION_STABLE_CONF" ]]; then
             if version_gt "$VERSION_STABLE_CONF" "$VERSION_LOCAL"; then
                 echo -e "\e[33mUne nouvelle version STABLE est disponible : $VERSION_STABLE_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-                echo -e "\e[33mUtilisez l'option 'u' dans le menu pour mettre à jour.\e[0m"
             fi
         fi
         if [[ "$CURRENT_CHANNEL" == "beta" && -n "$VERSION_BETA_CONF" ]]; then
             if version_gt "$VERSION_BETA_CONF" "$VERSION_LOCAL"; then
                 echo -e "\e[35mUne nouvelle version BETA est disponible : $VERSION_BETA_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-                echo -e "\e[33mUtilisez l'option 'u' dans le menu pour mettre à jour.\e[0m"
             fi
         fi
 
         # === INFOS CONTAINER & CONFIG ===
         if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
             echo -e "\e[2;35m--------------------------------------------------\e[0m"
-            echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
+            echo -e "\e[1;36m📄 Informations actuelles de Wireguard :\e[0m"
             echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
+            check_new_wg_easy_version
             CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
             case "$CONTAINER_STATUS" in
-                running)
-                    STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wg-easy)
-                    SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
-                    DAYS=$((SECONDS_UP/86400))
-                    HOURS=$(( (SECONDS_UP%86400)/3600 ))
-                    MINUTES=$(( (SECONDS_UP%3600)/60 ))
-                    SECONDS=$((SECONDS_UP%60))
-                    if (( DAYS > 0 )); then
-                        UPTIME_STR="${DAYS}j ${HOURS}h ${MINUTES}m ${SECONDS}s"
-                    elif (( HOURS > 0 )); then
-                        UPTIME_STR="${HOURS}h ${MINUTES}m ${SECONDS}s"
-                    elif (( MINUTES > 0 )); then
-                        UPTIME_STR="${MINUTES}m ${SECONDS}s"
-                    else
-                        UPTIME_STR="${SECONDS}s"
-                    fi
-                    echo -e "\e[32m✅ Wireguard est en cours d'exécution.\e[0m"
-                    echo -e "\e[37m⏱️  Durée : $UPTIME_STR\e[0m\n"
-                    ;;
-                exited)
-                    echo -e "\e[33m⏸️  Wireguard est arrêté (exited)\e[0m"
-                    ;;
-                created)
-                    echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
-                    ;;
-                *)
-                    if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
-                        echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m"
-                        echo -e "\e[33mDerniers logs du conteneur Wireguard :\e[0m"
-                        docker logs --tail 10 wg-easy 2>&1
-                        LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
-                        if [[ "$LAST_EXIT_CODE" != "0" ]]; then
-                            echo -e "\e[31m⚠️  Le dernier lancement du conteneur a échoué (exit code: $LAST_EXIT_CODE).\e[0m"
-                        fi
-                        echo
-                    else
-                        echo -e "\e[5;31m❌ Wireguard n'est pas en cours d'exécution.\e[0m\n"
-                    fi
-                    ;;
+            running)
+                STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wg-easy)
+                SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
+                DAYS=$((SECONDS_UP/86400))
+                HOURS=$(( (SECONDS_UP%86400)/3600 ))
+                MINUTES=$(( (SECONDS_UP%3600)/60 ))
+                SECONDS=$((SECONDS_UP%60))
+                UPTIME_STR=$(printf "%d jours, %02dh:%02dm:%02ds" "$DAYS" "$HOURS" "$MINUTES" "$SECONDS")
+                echo -e "\e[32m✅ Wireguard est actif\e[0m"
+                echo -e "\e[1;37m⏱️  Uptime : \e[0;33m$UPTIME_STR\e[0m\n"
+                ;;
+            exited)
+                echo -e "\e[33m⏸️  Wireguard est arrêté\e[0m\n"
+                ;;
+            created)
+                echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
+                ;;
+            *)
+                if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
+                echo -e "\e[31m❌ Wireguard n'est pas actif\e[0m"
+                echo -e "\e[1;33m📋 Derniers logs Wireguard :\e[0m"
+                docker logs --tail 10 wg-easy 2>&1 | while read -r line; do
+                    echo -e "\e[0;37m> $line\e[0m"
+                done
+                LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
+                if [[ "$LAST_EXIT_CODE" != "0" ]]; then
+                    echo -e "\e[31m⚠️  Échec du dernier lancement (Code : $LAST_EXIT_CODE)\e[0m\n"
+                fi
+                else
+                echo -e "\e[31m❌ Wireguard n'est pas configuré ou actif\e[0m\n"
+                fi
+                ;;
             esac
         fi
 
         # === INFOS RÉSEAU & CONFIG ===
         if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-            printf "\e[1;36m%-22s : \e[0;33m%s\e[0m\n" "Adresse IP du poste" "$(hostname -I | awk '{print $1}')"
-            INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
-            DHCP_STATE="Inconnu"
-            if [[ -n "$INTERFACE" ]]; then
+            # Récupération des informations réseau
+            local ip_address=$(hostname -I | awk '{print $1}')
+            local interface=$(ip route | awk '/default/ {print $5; exit}')
+            local dhcp_state="Inconnu"
+
+            # Détermination du type d'adresse IP (DHCP ou statique)
+            if [[ -n "$interface" ]]; then
             if grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null; then
-                DHCP_STATE="DHCP"
-            elif nmcli device show "$INTERFACE" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
-                DHCP_STATE="DHCP"
+                dhcp_state="DHCP"
+            elif nmcli device show "$interface" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
+                dhcp_state="DHCP"
             else
-                DHCP_STATE="Statique"
+                dhcp_state="Statique"
             fi
             fi
-            printf "\e[0;36m%-22s : \e[0;32m%s\e[0m\n" "Adresse IP config." "$DHCP_STATE"
-            WEB_PORT=$(grep -oP '^\s*PORT=\K\d+' "$DOCKER_COMPOSE_FILE")
-            printf "\e[0;36m%-22s : \e[0;32m%s\e[0m\n" "Port interface web" "${WEB_PORT:-Non défini}"
+
+            # Récupération du port de l'interface web
+            local web_port=$(grep -oP '^\s*PORT=\K\d+' "$DOCKER_COMPOSE_FILE")
+
+            # Affichage des informations
+            echo -e "\e[1;36mAdresse IP du poste      : \e[0;33m$ip_address\e[0m"
+            echo -e "\e[0;31mAdresse IP config.       : \e[0;32m$dhcp_state\e[0m"
+            echo -e "\e[0;36mPort interface web       : \e[0;32m${web_port:-Non défini}\e[0m"
         else
             echo -e "\e[2;35m--------------------------------------------------\e[0m"
             echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
@@ -122,6 +122,11 @@ main_menu() {
             echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
             echo -e "\e[5;33m         Veuillez configurer pour continuer.\e[0m"
         fi
+
+
+        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
+        echo -e "\e[1;36mMenu principal de Wireguard Easy Script\e[0m"
+        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
 
         # Construction dynamique du menu
         local labels=()
@@ -164,7 +169,7 @@ main_menu() {
             group_titles+=("📦 Outils & informations")
             labels+=("🐧 Outils système Linux")
             actions+=("debian_tools_menu")
-            labels+=("🛠️ Script & Mises à jour")
+            labels+=("🏴‍☠️ Menu du script")
             actions+=("menu_script_update")
 
         else
@@ -175,7 +180,7 @@ main_menu() {
             actions+=("configure_values")
             labels+=("🐧 Outils système Linux")
             actions+=("debian_tools_menu")
-            labels+=("🛠️ Script & Mises à jour")
+            labels+=("🏴‍☠️ Menu du script")
             actions+=("menu_script_update")
         fi
 
@@ -183,7 +188,7 @@ main_menu() {
         local group_idx=0
         for i in "${!labels[@]}"; do
             if [[ " ${group_separators[@]} " =~ " $i " ]]; then
-                echo -e "\n\e[1;36m--- ${group_titles[$group_idx]} ---\e[0m"
+                echo -e "\n\e[0;36m--- ${group_titles[$group_idx]} ---\e[0m"
                 ((group_idx++))
             fi
             printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
@@ -214,8 +219,8 @@ main_menu() {
                 change_wg_easy_web_port) change_wg_easy_web_port ;;
                 update_wireguard) update_wireguard; SKIP_PAUSE=1 ;;
                 RAZ_docker_compose) RAZ_docker_compose ;;
-                debian_tools_menu) debian_tools_menu ;;
-                menu_script_update) menu_script_update ;;
+                debian_tools_menu) debian_tools_menu; SKIP_PAUSE=1 ;;
+                menu_script_update) menu_script_update; SKIP_PAUSE=1 ;;
                 configure_values) configure_values ;;
                 "") ;; # Option inactive
                 *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
