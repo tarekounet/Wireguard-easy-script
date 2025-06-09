@@ -4,6 +4,21 @@ if [[ "$(basename -- "$0")" == "docker.sh" ]]; then
     echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
     exit 1
 fi
+
+##############################
+#      CONSTANTES            #
+##############################
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+
+# S'assurer que conf.sh est chargé
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
+
+# Récupérer la valeur
+WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION")
+[[ -z "$WG_EASY_VERSION" ]] && WG_EASY_VERSION="inconnu"
+
 ##############################
 #        VERSION MODULE      #
 ##############################
@@ -11,10 +26,13 @@ fi
 DOCKER_VERSION="1.1.0"
 
 ##############################
-#      CONSTANTES            #
+#        LOGS DOCKER         #
 ##############################
 
-DOCKER_COMPOSE_FILE="/mnt/wireguard/docker-compose.yml"
+log_docker_action() {
+    local msg="$1"
+    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
+}
 
 ##############################
 #   CONFIGURATION PRINCIPALE #

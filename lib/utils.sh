@@ -3,6 +3,7 @@ if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
     echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
     exit 1
 fi
+
 ##############################
 #        VERSION MODULE      #
 ##############################
@@ -21,6 +22,39 @@ run_as_root() {
     fi
 }
 
+###############################
+#         LOGS ACTION         #
+###############################
+LOG_FILE="$SCRIPT_DIR/logs/wg-easy-script.log"
+ERROR_LOG="$SCRIPT_DIR/logs/error.log"
+INSTALL_LOG="$SCRIPT_DIR/logs/install.log"
+DOCKER_LOG="$SCRIPT_DIR/logs/docker-actions.log"
+AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
+
+log_action() {
+    local msg="$1"
+    echo "$(date '+%F %T') [ACTION] $msg" >> "$LOG_FILE"
+}
+
+log_error() {
+    local msg="$1"
+    echo "$(date '+%F %T') [ERROR] $msg" >> "$ERROR_LOG"
+}
+
+log_install() {
+    local msg="$1"
+    echo "$(date '+%F %T') [INSTALL] $msg" >> "$INSTALL_LOG"
+}
+
+log_docker() {
+    local msg="$1"
+    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
+}
+
+log_auth() {
+    local msg="$1"
+    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
+}
 ###############################
 #       CENTRAGE BLOCK        # 
 ###############################
@@ -784,13 +818,7 @@ configure_ip_vm() {
 ################################
 
 update_wg_easy_version_only() {
-    # Récupère la version depuis ton GitHub
-    WG_EASY_VERSION=$(curl -fsSL https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/WG_EASY_VERSION)
-    if [[ -z "$WG_EASY_VERSION" ]]; then
-        echo "Impossible de récupérer la version de wg-easy depuis GitHub."
-        return 1
-    fi
-
+    branch=$(get_github_branch)
     # Vérifie si le fichier existe
     if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
         echo "Aucun fichier docker-compose.yml trouvé."
@@ -806,4 +834,21 @@ update_wg_easy_version_only() {
     docker compose -f "$DOCKER_COMPOSE_FILE" up -d
 
     echo "Wireguard mis à jour sans recréer la configuration."
+}
+
+detect_new_wg_easy_version() {
+    branch=$(get_github_branch)
+    WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/WG_EASY_VERSION" | head -n1)
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
+    else
+        WG_EASY_VERSION_LOCAL=""
+    fi
+    if [[ "$WG_EASY_VERSION_LOCAL" != "$WG_EASY_VERSION_DISTANT" && -n "$WG_EASY_VERSION_DISTANT" ]]; then
+        export NEW_WG_EASY_VERSION="$WG_EASY_VERSION_DISTANT"
+        export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
+    else
+        export NEW_WG_EASY_VERSION=""
+        export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
+    fi
 }

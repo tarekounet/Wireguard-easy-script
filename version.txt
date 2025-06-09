@@ -1,2 +1,1 @@
-1.7lib/menu.sh: ligne 11: lib/menu_script.sh: Aucun fichier ou dossier de ce type
-Ce script doit être lancé en root..0
+1.7.0

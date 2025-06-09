@@ -1,2 +1,3 @@
-wg-easy.conf
+config/
+logs/
 Makefile

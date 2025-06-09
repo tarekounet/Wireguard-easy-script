@@ -3,19 +3,30 @@ if [[ "$(basename -- "$0")" == "conf.sh" ]]; then
     echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
     exit 1
 fi
-
+##############################
+#      CONSTANTES            #
+##############################
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-CONF_VERSION="1.0.0"
+CONF_VERSION="1.1.0"
 
 ##############################
-#      CONSTANTES            #
+#        LOGS CONF           #
 ##############################
+log_config() {
+    local msg="$1"
+    echo "$(date '+%F %T') [CONFIG] $msg" >> "$CONFIG_LOG"
+}
 
-# Le chemin du fichier de configuration principal
-CONF_FILE="wg-easy.conf"
+log_auth() {
+    local msg="$1"
+    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
+}
 
 ##############################
 #   GESTION DE LA CONF       #
@@ -66,6 +77,7 @@ ask_tech_password() {
     EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
     if [[ -z "$EXPECTED_HASH" ]]; then
         msg_error "Le mot de passe technique est introuvable dans le fichier de configuration."
+        log_auth "Échec : hash attendu introuvable"
         return 1
     fi
     read -sp $'\e[1;33mEntrez le mot de passe technique : \e[0m' PASS
@@ -74,8 +86,10 @@ ask_tech_password() {
     ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
     if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
         msg_error "Mot de passe incorrect."
+        log_auth "Échec : mot de passe incorrect"
         return 1
     fi
+    log_auth "Succès : authentification réussie"
     return 0
 }
 
