@@ -12,7 +12,6 @@ for dir in lib config logs; do
     if [[ $EUID -eq 0 ]]; then
         chown -R "$SUDO_USER":"$SUDO_USER" "$dir" 2>/dev/null || chown -R "$USER":"$USER" "$dir"
     fi
-    # Dans tous les cas, on donne les droits à l'utilisateur courant
     chmod -R u+rwX "$dir"
     if [[ ! -w "$dir" || ! -r "$dir" || ! -x "$dir" ]]; then
         echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture/exécution."
@@ -33,6 +32,10 @@ for mod in utils conf docker menu ; do
         curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
         chmod +x "lib/$mod.sh"
     fi
+    if [[ $EUID -eq 0 ]]; then
+        chown "$SUDO_USER":"$SUDO_USER" "lib/$mod.sh" 2>/dev/null || chown "$USER":"$USER" "lib/$mod.sh"
+    fi
+    chmod u+rwX "lib/$mod.sh"
 done
 
 if [[ ! -f "auto_update.sh" ]]; then

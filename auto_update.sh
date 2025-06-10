@@ -74,3 +74,8 @@ case "$AUTO_UPDATE_TARGET" in
 esac
 
 echo "$(date '+%F %T') [AUTO-UPDATE] Fin du script" >> "$UPDATE_LOG"
+
+if [[ $EUID -eq 0 ]]; then
+    chown "$SUDO_USER":"$SUDO_USER" "auto_update.sh" 2>/dev/null || chown "$USER":"$USER" "auto_update.sh"
+fi
+chmod u+rwX "auto_update.sh"
