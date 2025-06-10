@@ -53,6 +53,7 @@ fi
 ##############################
 source lib/conf.sh
 source lib/utils.sh
+source lib/docker.sh
 source lib/menu.sh
 
 ##############################
