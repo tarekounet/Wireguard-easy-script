@@ -42,6 +42,10 @@ if [[ ! -f "auto_update.sh" ]]; then
     echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
     curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
     chmod +x "auto_update.sh"
+    if [[ $EUID -eq 0 ]]; then
+        chown "$SUDO_USER":"$SUDO_USER" "auto_update.sh" 2>/dev/null || chown "$USER":"$USER" "auto_update.sh"
+    fi
+    chmod u+rwX "auto_update.sh"
 fi
 
 ##############################
