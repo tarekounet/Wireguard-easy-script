@@ -1,27 +1,27 @@
 #!/bin/bash
 
 ##############################
-# 1. CRÉATION DES DOSSIERS   #
+# 1. CRÉATION DES DOSSIERS ET DROITS
 ##############################
 for dir in lib config logs; do
     if [[ ! -d "$dir" ]]; then
         mkdir "$dir"
         echo "Dossier $dir créé."
     fi
-    # Attribution des droits à l'utilisateur courant ou à un utilisateur spécifique si root
+    # Si root, on attribue les droits à l'utilisateur réel
     if [[ $EUID -eq 0 ]]; then
-        # $SUDO_USER est l'utilisateur réel si sudo, sinon $USER
         chown -R "$SUDO_USER":"$SUDO_USER" "$dir" 2>/dev/null || chown -R "$USER":"$USER" "$dir"
     fi
+    # Dans tous les cas, on donne les droits à l'utilisateur courant
     chmod -R u+rwX "$dir"
-    if [[ ! -w "$dir" || ! -r "$dir" ]]; then
-        echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
+    if [[ ! -w "$dir" || ! -r "$dir" || ! -x "$dir" ]]; then
+        echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture/exécution."
         exit 1
     fi
 done
-sudo chown -R $USER:$USER lib config logs
+
 ##############################
-# 2. TÉLÉCHARGEMENT DES MODULES #
+# 2. TÉLÉCHARGEMENT DES MODULES
 ##############################
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
@@ -42,14 +42,14 @@ if [[ ! -f "auto_update.sh" ]]; then
 fi
 
 ##############################
-# 3. CHARGEMENT DES MODULES  #
+# 3. CHARGEMENT DES MODULES
 ##############################
 source lib/conf.sh
 source lib/utils.sh
 source lib/menu.sh
 
 ##############################
-# 4. VARIABLES GÉNÉRALES     #
+# 4. VARIABLES GÉNÉRALES
 ##############################
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
@@ -61,7 +61,7 @@ DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 SCRIPT_BASE_VERSION_INIT="1.7.2"
 
 ##############################
-# 5. LECTURE DU CANAL/BRANCHE#
+# 5. LECTURE DU CANAL/BRANCHE
 ##############################
 if [[ -f "$CONF_FILE" ]]; then
     SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
@@ -139,14 +139,14 @@ while [[ -z "$EXPECTED_HASH" ]]; do
 done
 
 ##############################
-# 8. LOGS DE LANCEMENT       #
+# 8. LOGS DE LANCEMENT
 ##############################
 echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
 echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
 echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$LOG_FILE"
 
 ##############################
-# 9. LANCEMENT DU SCRIPT     #
+# 9. LANCEMENT DU SCRIPT
 ##############################
 check_updates
 main_menu
