@@ -8,6 +8,12 @@ for dir in lib config logs; do
         mkdir "$dir"
         echo "Dossier $dir créé."
     fi
+    # Attribution des droits à l'utilisateur courant ou à un utilisateur spécifique si root
+    if [[ $EUID -eq 0 ]]; then
+        # Si tu veux utiliser un utilisateur spécifique (ex: "wireguard"), remplace $USER par ce nom
+        chown -R "$SUDO_USER":"$SUDO_USER" "$dir" 2>/dev/null || chown -R "$USER":"$USER" "$dir"
+    fi
+    chmod -R u+rwX "$dir"
     if [[ ! -w "$dir" || ! -r "$dir" ]]; then
         echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
         exit 1
@@ -52,7 +58,7 @@ LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 DOCKER_COMPOSE_DIR="/mnt/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_BASE_VERSION_INIT="1.7.1"
+SCRIPT_BASE_VERSION_INIT="1.7.2"
 
 ##############################
 # 5. LECTURE DU CANAL/BRANCHE#
