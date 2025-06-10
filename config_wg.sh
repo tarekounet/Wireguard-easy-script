@@ -10,7 +10,7 @@ for dir in lib config logs; do
     fi
     # Attribution des droits à l'utilisateur courant ou à un utilisateur spécifique si root
     if [[ $EUID -eq 0 ]]; then
-        # Si tu veux utiliser un utilisateur spécifique (ex: "wireguard"), remplace $USER par ce nom
+        # $SUDO_USER est l'utilisateur réel si sudo, sinon $USER
         chown -R "$SUDO_USER":"$SUDO_USER" "$dir" 2>/dev/null || chown -R "$USER":"$USER" "$dir"
     fi
     chmod -R u+rwX "$dir"
@@ -19,7 +19,7 @@ for dir in lib config logs; do
         exit 1
     fi
 done
-
+sudo chown -R $USER:$USER lib config logs
 ##############################
 # 2. TÉLÉCHARGEMENT DES MODULES #
 ##############################
