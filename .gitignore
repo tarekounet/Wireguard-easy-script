@@ -1,3 +1,4 @@
 config/
 logs/
 Makefile
+erreur_script.log

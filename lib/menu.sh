@@ -14,6 +14,7 @@ MENU_VERSION="1.4.0"
 #         sources            #
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$SCRIPT_DIR/lib/conf.sh"
 source "$SCRIPT_DIR/lib/utils.sh"
 
 
@@ -37,6 +38,9 @@ main_menu() {
             echo -e "\e[31m[INCONNU ❓]\e[0m"
         fi
 
+        if [[ "$DEBUG" == "1" ]]; then
+            echo -e "\e[6;35m[DEBUG] ⚠️ Le mode débogage est ACTIVÉ ⚠️\e[0m"
+        fi
         # === INFOS MISES À JOUR ===
         if [[ -n "$VERSION_STABLE_CONF" ]]; then
             if version_gt "$VERSION_STABLE_CONF" "$VERSION_LOCAL"; then
@@ -216,7 +220,7 @@ main_menu() {
             fi
         done
         echo -e "\n\e[1;32m0) \e[0m\e[0;31m🚪 Quitter le script\e[0m"
-
+        
         echo
         read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
         if [[ -z "$CHOICE" ]]; then
@@ -226,7 +230,17 @@ main_menu() {
         fi
         clear
         SKIP_PAUSE=0
-
+        if [[ "$CHOICE" == "99" ]]; then
+            if [[ "$DEBUG" == "1" ]]; then
+                disable_debug
+                echo -e "\e[1;35mMode debug désactivé.\e[0m"
+            else
+                enable_debug
+                echo -e "\e[1;35mMode debug activé.\e[0m"
+            fi
+            sleep 1
+            continue
+        fi
         if [[ "$CHOICE" == "0" ]]; then
             clear
             echo -e "\e[1;32mAu revoir ! 👋\e[0m"

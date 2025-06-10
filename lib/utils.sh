@@ -1,14 +1,33 @@
 # Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
-fi
+##############################
+#         DEBUG MODE         #
+###############################
+enable_debug() {
+    export DEBUG=1
+    exec 2>>logs/debug.log
+}
+
+disable_debug() {
+    export DEBUG=0
+    exec 2>/dev/tty
+}
+
+##############################
+#   BRANCHE GITHUB           #
+##############################
+
+get_github_branch() {
+    local channel
+    CONF_FILE="${CONF_FILE:-config/wg-easy.conf}"
+    channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
+    [[ "$channel" == "beta" ]] && echo "beta" || echo "main"
+}
 
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-UTILS_VERSION="1.4.0"
+UTILS_VERSION="1.4.1"
 
 ##############################
 #        acces ROOT          #
@@ -204,15 +223,6 @@ version_gt() {
         fi
     done
     return 1
-}
-
-get_github_branch() {
-    # Utilise la variable globale SCRIPT_CHANNEL
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        echo "beta"
-    else
-        echo "main"
-    fi
 }
 
 get_remote_module_version() {
@@ -446,84 +456,8 @@ setup_script_user() {
 update_script() {
     clear
     echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-    local branch="${SCRIPT_CHANNEL:-main}"
-    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
-
-    if curl -fsSL "$update_url" -o "$0.new"; then
-        if ! cmp -s "$0" "$0.new"; then
-            cp "$0" "$SCRIPT_BACKUP"
-            mv "$0.new" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-            echo -e "\nAppuyez sur une touche pour relancer le script..."
-            read -n 1 -s
-            exec "$0"
-        else
-            rm "$0.new"
-            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
-        fi
-    else
-        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
-    fi
-}
-
-##############################
-#    CHANGEMENT DE CANAL     #
-##############################
-
-switch_channel() {
-    local new_channel url
-    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
-        EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-        read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
-        echo
-        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
-        if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
-            echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
-            sleep 2
-            return
-        fi
-        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
-        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
-        if [[ "$CONFIRM_BETA" =~ ^[oO]$ ]]; then
-            new_channel="beta"
-        else
-            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
-            sleep 1
-            return
-        fi
-    else
-        new_channel="stable"
-    fi
-
-    set_conf_value "SCRIPT_CHANNEL" "$new_channel"
-    set_conf_value "BETA_CONFIRMED" $([[ "$new_channel" == "beta" ]] && echo "1" || echo "0")
-    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${new_channel}/config_wg.sh"
-
-    if curl -fsSL "$url" -o "$0.new"; then
-        mv "$0.new" "$0"
-        chmod +x "$0"
-        if [[ "$new_channel" == "beta" ]]; then
-            echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
-        else
-            echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
-        fi
-        sleep 1
-        exec "$0"
-    else
-        echo -e "\e[1;31mErreur lors du téléchargement du script ($new_channel).\e[0m"
-        sleep 2
-    fi
-}
-
-##############################
-#   MISE À JOUR DU SCRIPT    #
-##############################
-
-update_script() {
-    clear
-    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
-    local branch="${SCRIPT_CHANNEL:-main}"
+    local branch
+    branch=$(get_github_branch)
     local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
 
     if curl -fsSL "$update_url" -o "$0.new"; then
@@ -557,7 +491,7 @@ else
 fi
 }
 switch_channel() {
-    local new_channel url
+    local new_channel url branch
     if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
         EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
         read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
@@ -583,7 +517,8 @@ switch_channel() {
 
     set_conf_value "SCRIPT_CHANNEL" "$new_channel"
     set_conf_value "BETA_CONFIRMED" $([[ "$new_channel" == "beta" ]] && echo "1" || echo "0")
-    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${new_channel}/config_wg.sh"
+    branch=$(get_github_branch)
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
 
     if curl -fsSL "$url" -o "$0.new"; then
         mv "$0.new" "$0"
@@ -703,21 +638,51 @@ ssh_access() {
     fi
 }
 
+list_physical_ethernet() {
+    echo "Cartes Ethernet physiques détectées :"
+    for iface in /sys/class/net/*; do
+        iface_name=$(basename "$iface")
+        # Vérifie que ce n'est pas une interface virtuelle et qu'elle a une adresse MAC
+        if [[ -e "$iface/device" ]] && [[ -f "/sys/class/net/$iface_name/address" ]]; then
+            mac=$(cat "/sys/class/net/$iface_name/address")
+            # Exclut les interfaces loopback et sans MAC valide
+            if [[ "$iface_name" != "lo" && ! "$mac" =~ ^00:00:00:00:00:00$ ]]; then
+                echo " - $iface_name ($mac)"
+            fi
+        fi
+    done
+}
+
 configure_ip_vm() {
     # Modifier l'adresse IP du serveur
     echo -e "\e[1;33mInterfaces réseau physiques détectées :\e[0m"
-    ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print NR-1")",$2}'
+    local phys_ifaces=()
+    local idx=1
+    for iface in /sys/class/net/*; do
+        iface_name=$(basename "$iface")
+        # Vérifie que ce n'est pas une interface virtuelle et qu'elle a une adresse MAC
+        if [[ -e "$iface/device" ]] && [[ -f "/sys/class/net/$iface_name/address" ]]; then
+            mac=$(cat "/sys/class/net/$iface_name/address")
+            if [[ "$iface_name" != "lo" && ! "$mac" =~ ^00:00:00:00:00:00$ ]]; then
+                echo "  $idx) $iface_name ($mac)"
+                phys_ifaces+=("$iface_name")
+                idx=$((idx+1))
+            fi
+        fi
+    done
+
     read -p $'\e[1;33mNuméro de l\'interface à modifier (laisser vide pour annuler) : \e[0m' IFACE_NUM
     if [[ -z "$IFACE_NUM" ]]; then
         echo -e "\e[1;33mModification annulée.\e[0m"
-    SKIP_PAUSE_DEBIAN=0
-        break
+        SKIP_PAUSE_DEBIAN=0
+        return
     fi
-    IFACE=$(ip -o link show | awk -F': ' '$3 ~ /ether/ && $2 ~ /^eth/ {print $2}' | sed -n "$((IFACE_NUM))p")
+
+    IFACE="${phys_ifaces[$((IFACE_NUM-1))]}"
     if [[ -z "$IFACE" ]]; then
         echo -e "\e[1;31mInterface invalide.\e[0m"
         SKIP_PAUSE_DEBIAN=0
-        break
+        return
     fi
 
     # Vérification du mode actuel (DHCP ou statique)
@@ -818,6 +783,7 @@ configure_ip_vm() {
 ################################
 
 update_wg_easy_version_only() {
+    local branch
     branch=$(get_github_branch)
     # Vérifie si le fichier existe
     if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
@@ -837,6 +803,7 @@ update_wg_easy_version_only() {
 }
 
 detect_new_wg_easy_version() {
+    local branch
     branch=$(get_github_branch)
     WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/WG_EASY_VERSION" | head -n1)
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
@@ -851,4 +818,43 @@ detect_new_wg_easy_version() {
         export NEW_WG_EASY_VERSION=""
         export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
     fi
+}
+init_directories() {
+    for dir in lib config logs; do
+        [[ ! -d "$dir" ]] && mkdir "$dir"
+        if [[ ! -w "$dir" || ! -r "$dir" ]]; then
+            echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
+            exit 1
+        fi
+    done
+}
+
+bootstrap_modules() {
+    for mod in utils conf docker menu ; do
+        if [[ ! -f "lib/$mod.sh" ]]; then
+            echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
+            curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
+            chmod +x "lib/$mod.sh"
+        fi
+    done
+    if [[ ! -f "auto_update.sh" ]]; then
+        echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
+        curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
+        chmod +x "auto_update.sh"
+    fi
+}
+
+init_channel_and_branch() {
+    if [[ -f "$CONF_FILE" ]]; then
+        SCRIPT_channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
+        [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
+    else
+        SCRIPT_CHANNEL="stable"
+    fi
+    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+        BRANCH="beta"
+    else
+        BRANCH="main"
+    fi
+    export BRANCH
 }

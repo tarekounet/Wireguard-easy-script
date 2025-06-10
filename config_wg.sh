@@ -1,6 +1,7 @@
 #!/bin/bash
+source lib/conf.sh
+source lib/utils.sh
 # Auto-bootstrap des modules si le dossier lib/ ou des modules sont manquants
-
 for mod in utils conf docker menu ; do
     if [[ ! -f "lib/$mod.sh" ]]; then
         echo "Module manquant : lib/$mod.sh"
@@ -14,32 +15,37 @@ done
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
 CONF_FILE="config/wg-easy.conf"
-AUTO_UPDATE_CONF="config/auto_update.conf"
 VERSION_FILE="version.txt"
-SCRIPT_BACKUP="config_wg.sh.bak"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
-UPDATE_LOG="$LOG_DIR/auto_update.log"
-DOCKER_LOG="$LOG_DIR/docker-actions.log"
-AUTH_LOG="$LOG_DIR/auth.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
-INSTALL_LOG="$LOG_DIR/install.log"
 DOCKER_COMPOSE_DIR="/mnt/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_CHANNEL="stable"
 SCRIPT_BASE_VERSION_INIT="1.7.0"
+
+# Lecture du canal depuis la conf si elle existe
+if [[ -f "$CONF_FILE" ]]; then
+    SCRIPT_channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
+    [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
+else
+    SCRIPT_CHANNEL="stable"
+fi
+
+# Détermination de la branche GitHub à utiliser
+if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
+    BRANCH="beta"
+else
+    BRANCH="main"
+fi
 
 export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
 
-# Détecte le canal si déjà présent dans la conf
-if [[ -f "$CONF_FILE" ]]; then
-    SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" | cut -d'"' -f2)
-    [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
+# Correction : si le canal est "stable", utiliser la branche "main" sur GitHub
+if [[ "$BRANCH" == "stable" ]]; then
+    BRANCH="main"
 fi
-
-BRANCH="${SCRIPT_CHANNEL:-main}"
 
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
@@ -92,14 +98,21 @@ WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
 # 2. Création du fichier de conf (si besoin)
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
-    set_tech_password
+    set_tech_password  # <-- Demande et enregistre le hash et le sel dans la conf temporairement
+
+    # Récupère les valeurs après set_tech_password
+    EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
+    TECH_SALT=$(get_conf_value "TECH_SALT")
+
+    # Crée le fichier de conf avec les bonnes valeurs
     cat > "$CONF_FILE" <<EOF
 SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
 SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
-EXPECTED_HASH="$(get_conf_value "EXPECTED_HASH")"
+EXPECTED_HASH="$EXPECTED_HASH"
 BETA_CONFIRMED="0"
 RAZ="1"
 WG_EASY_VERSION="$WG_EASY_VERSION"
+TECH_SALT="$TECH_SALT"
 EOF
     msg_success "Fichier de configuration créé avec succès."
 fi
@@ -127,4 +140,5 @@ echo "$(date '+%F %T') [UPDATE] Nouvelle version détectée : $NEW_VERSION" >> "
 ##############################
 
 check_updates
+
 main_menu
