@@ -94,8 +94,9 @@ WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
 
-    # Demande le mot de passe et stocke les valeurs dans des variables temporaires
-    local PASS1 PASS2 HASH SALT
+    PASS1=""
+    PASS2=""
+    HASH=""
     SALT=$(openssl rand -hex 8)
     while true; do
         read -sp "Entrez le nouveau mot de passe technique : " PASS1
