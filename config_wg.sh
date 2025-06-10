@@ -52,7 +52,7 @@ LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 DOCKER_COMPOSE_DIR="/mnt/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_BASE_VERSION_INIT="1.7.0"
+SCRIPT_BASE_VERSION_INIT="1.7.1"
 
 ##############################
 # 5. LECTURE DU CANAL/BRANCHE#
@@ -87,19 +87,34 @@ WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
 
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
-    set_tech_password
 
-    EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-    TECH_SALT=$(get_conf_value "TECH_SALT")
+    # Demande le mot de passe et stocke les valeurs dans des variables temporaires
+    local PASS1 PASS2 HASH SALT
+    SALT=$(openssl rand -hex 8)
+    while true; do
+        read -sp "Entrez le nouveau mot de passe technique : " PASS1
+        echo
+        read -sp "Confirmez le nouveau mot de passe technique : " PASS2
+        echo
+        if [[ -z "$PASS1" ]]; then
+            echo "Le mot de passe ne peut pas être vide."
+        elif [[ "$PASS1" != "$PASS2" ]]; then
+            echo "Les mots de passe ne correspondent pas."
+        else
+            HASH=$(openssl passwd -6 -salt "$SALT" "$PASS1")
+            break
+        fi
+    done
 
+    # Crée le fichier de conf AVEC les bonnes valeurs
     cat > "$CONF_FILE" <<EOF
 SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
 SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
-EXPECTED_HASH="$EXPECTED_HASH"
+EXPECTED_HASH="$HASH"
 BETA_CONFIRMED="0"
 RAZ="1"
 WG_EASY_VERSION="$WG_EASY_VERSION"
-TECH_SALT="$TECH_SALT"
+TECH_SALT="$SALT"
 EOF
     msg_success "Fichier de configuration créé avec succès."
 fi
