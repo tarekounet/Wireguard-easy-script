@@ -585,59 +585,6 @@ shutdown_wireguard() {
 ################################
 #         Debian Tools         #
 ################################
-shutdown_vm() {
-    clear
-    if ask_tech_password; then
-        echo -e "\e[1;33mExtinction de la VM...\e[0m"
-            run_as_root /sbin/poweroff
-    else
-        echo -e "\e[1;31mExtinction annulée.\e[0m"
-    fi
-}
-
-reboot_vm() {
-    clear
-    if ask_tech_password; then
-        echo -e "\e[1;33mRedémarrage de la VM...\e[0m"
-        run_as_root /sbin/reboot
-    else
-        echo -e "\e[1;31mExtinction annulée.\e[0m"
-    fi
-}
-
-rename_vm() {
-    clear
-    if ask_tech_password; then
-        read -p $'\e[1;33mEntrez le nouveau nom de la VM : \e[0m' new_name
-        if [[ -z "$new_name" ]]; then
-            echo -e "\e[1;31mNom invalide.\e[0m"
-            return 1
-        fi
-        run_as_root hostnamectl set-hostname "$new_name"
-        echo -e "\e[1;32mNom de la VM modifié avec succès en : $new_name\e[0m"
-    else
-        echo -e "\e[1;31mChangement de nom annulé.\e[0m"
-    fi
-}
-
-ssh_access() {
-    clear
-    echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
-    CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
-    CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
-    echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
-    read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
-    if [[ -n "$NEW_SSH_PORT" ]]; then
-        if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
-                sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
-                systemctl restart sshd
-            echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
-        else
-            echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
-        fi
-    fi
-}
-
 list_physical_ethernet() {
     echo "Cartes Ethernet physiques détectées :"
     for iface in /sys/class/net/*; do
@@ -778,6 +725,118 @@ configure_ip_vm() {
     fi
 }
 
+show_debian_version () {
+    clear
+    echo -e "\e[1;36m===== Version de Debian =====\e[0m"
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        echo -e "\e[1;33mNom :\e[0m $NAME"
+        echo -e "\e[1;33mVersion :\e[0m $VERSION"
+        echo -e "\e[1;33mID :\e[0m $ID"
+        echo -e "\e[1;33mVersion ID :\e[0m $VERSION_ID"
+    else
+        echo -e "\e[1;31mImpossible de déterminer la version de Debian.\e[0m"
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_disk_space () {
+    clear
+    echo -e "\e[1;36m===== Espace disque =====\e[0m"
+    df -h --output=source,size,used,avail,pcent,target | grep -v '^tmpfs\|^udev\|^overlay\|^Filesystem'
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_docker_status () {
+    clear
+    echo -e "\e[1;36m===== État de Docker =====\e[0m"
+    if systemctl is-active --quiet docker; then
+        echo -e "\e[1;32mDocker est actif.\e[0m"
+        docker ps -a --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"
+    else
+        echo -e "\e[1;31mDocker n'est pas actif.\e[0m"
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_system_monitor () {
+    clear
+    echo -e "\e[1;36m===== Moniteur système (btop) =====\e[0m"
+    if command -v btop >/dev/null 2>&1; then
+        btop
+    else
+        echo -e "\e[1;31mbtop n'est pas installé. Veuillez l'installer pour utiliser cette fonctionnalité.\e[0m"
+        run_as_root apt update && run_as_root apt install -y btop
+        btop
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+update_system () {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du système =====\e[0m"
+    run_as_root apt update && run_as_root apt upgrade -y
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+rename_vm () {
+    clear
+    current_name=$(hostname)
+    echo -e "\e[1;33mNom actuel de la VM :\e[0m $current_name"
+    read -p $'\e[1;33mEntrez le nouveau nom de la VM : \e[0m' new_name
+    if [[ -z "$new_name" ]]; then
+        echo -e "\e[1;31mNom invalide.\e[0m"
+        SKIP_PAUSE_DEBIAN=0
+        return 1
+    fi
+    run_as_root hostnamectl set-hostname "$new_name"
+    echo -e "\e[1;32mNom de la VM modifié avec succès en : $new_name\e[0m"
+}
+
+ssh_access() {
+    clear
+    echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
+    CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
+    CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
+    echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
+    read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
+    if [[ -n "$NEW_SSH_PORT" ]]; then
+        if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
+            sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
+            systemctl restart sshd
+            echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
+        else
+            echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
+        fi
+    fi
+}
+
+reboot_vm() {
+    clear
+    echo -e "\e[1;36m===== Redémarrage de la VM =====\e[0m"
+    if ask_tech_password; then
+        run_as_root reboot
+    else
+        echo -e "\e[1;31mRedémarrage annulé.\e[0m"
+    fi
+}
+
+shutdown_vm() {
+    clear
+    echo -e "\e[1;36m===== Extinction de la VM =====\e[0m"
+    if ask_tech_password; then
+        run_as_root shutdown now
+    else
+        echo -e "\e[1;31mExtinction annulée.\e[0m"
+    fi
+}
+
+
 ################################
 #    UPDATE DOCKER COMPOSE     #
 ################################
@@ -791,15 +850,25 @@ update_wg_easy_version_only() {
         return 1
     fi
 
+    # Récupère l'ancienne version
+    local old_version
+    old_version=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
+
     # Met à jour la ligne image: dans le docker-compose.yml
     sed -i "s#image: ghcr.io/wg-easy/wg-easy:.*#image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION#" "$DOCKER_COMPOSE_FILE"
     echo "docker-compose.yml mis à jour avec la version $WG_EASY_VERSION."
 
-    # Relance le conteneur avec la nouvelle image
-    docker compose -f "$DOCKER_COMPOSE_FILE" pull
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-
-    echo "Wireguard mis à jour sans recréer la configuration."
+    if [[ "$old_version" != "$WG_EASY_VERSION" ]]; then
+        # Purge les images obsolètes et les volumes non utilisés
+        docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
+        docker compose -f "$DOCKER_COMPOSE_FILE" pull
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        echo "Wireguard mis à jour et purgé avec succès !"
+    else
+        # Si pas de changement de version, simple redémarrage
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        echo "Wireguard déjà à jour, redémarrage effectué."
+    fi
 }
 
 detect_new_wg_easy_version() {

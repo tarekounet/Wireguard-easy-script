@@ -1,6 +1,60 @@
 #!/bin/bash
 
 ##############################
+# 0. INSTALLATION OFFICIELLE DE DOCKER ET DOCKER COMPOSE (Debian/Ubuntu)
+##############################
+
+install_docker_official() {
+    echo "Installation officielle de Docker (dépôt Docker)..."
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      > /etc/apt/sources.list.d/docker.list
+
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    systemctl enable --now docker
+}
+
+# Vérifie et installe curl (si besoin)
+if ! command -v curl &>/dev/null; then
+    echo "Installation de curl..."
+    if [[ $EUID -ne 0 ]]; then
+        echo "Ce script doit être lancé en root pour installer curl."
+        exit 1
+    fi
+    apt-get update && apt-get install -y curl
+fi
+
+# Vérifie et installe docker et docker compose (méthode officielle)
+if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
+    if [[ $EUID -ne 0 ]]; then
+        echo "Ce script doit être lancé en root pour installer Docker."
+        exit 1
+    fi
+    install_docker_official
+fi
+
+echo "Tous les prérequis (curl, docker, docker compose) sont installés."
+
+# Vérifie et installe vim et btop (si besoin)
+for pkg in vim btop; do
+    if ! command -v "$pkg" &>/dev/null; then
+        echo "Installation de $pkg..."
+        if [[ $EUID -ne 0 ]]; then
+            echo "Ce script doit être lancé en root pour installer $pkg."
+            exit 1
+        fi
+        apt-get update && apt-get install -y "$pkg"
+    fi
+done
+
+##############################
 # 1. CRÉATION DES DOSSIERS ET DROITS
 ##############################
 for dir in lib config logs; do
@@ -60,7 +114,9 @@ if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
         echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
 
         # Copie le script dans le home du nouvel utilisateur
-        cp -r "$(pwd)" "/home/$NEWUSER/wireguard-easy-script"
+        if [[ ! -d "/home/$NEWUSER/wireguard-easy-script" ]]; then
+            cp -r "$(pwd)" "/home/$NEWUSER/wireguard-easy-script"
+        fi
         chown -R "$NEWUSER:$NEWUSER" "/home/$NEWUSER/wireguard-easy-script"
 
         # Ajoute le lancement auto du script à la connexion

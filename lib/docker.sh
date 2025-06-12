@@ -67,7 +67,9 @@ configure_values() {
         trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
-        mkdir -p /mnt/wireguard/config
+        # Vérifier et créer /mnt/wireguard et /mnt/wireguard/config si nécessaire
+        [[ -d /mnt/wireguard ]] || mkdir -p /mnt/wireguard
+        [[ -d /mnt/wireguard/config ]] || mkdir -p /mnt/wireguard/config
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
   etc_wireguard:
