@@ -184,9 +184,6 @@ main_menu() {
             actions+=("menu_script_update")
             labels+=("🔑 Mot de passe technique")
             actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
-
         else
             # Groupe unique si pas de docker-compose
             group_separators+=(0)
@@ -199,8 +196,6 @@ main_menu() {
             actions+=("menu_script_update")
             labels+=("🔑 Mot de passe technique")
             actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
         fi
 
         # Affichage du menu dynamique avec séparateurs de groupes
@@ -273,7 +268,6 @@ main_menu() {
                 menu_script_update) menu_script_update; SKIP_PAUSE=1 ;;
                 configure_values) configure_values ;;
                 change_tech_password) change_tech_password ;;
-                auto_update_menu) auto_update_menu; SKIP_PAUSE=1 ;;
                 "") ;; # Option inactive
                 *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
             esac

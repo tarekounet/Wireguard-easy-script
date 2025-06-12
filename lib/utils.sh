@@ -906,11 +906,6 @@ bootstrap_modules() {
             chmod +x "lib/$mod.sh"
         fi
     done
-    if [[ ! -f "auto_update.sh" ]]; then
-        echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-        curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
-        chmod +x "auto_update.sh"
-    fi
 }
 
 init_channel_and_branch() {

@@ -1,84 +1,120 @@
 #!/bin/bash
 
-##############################
-# 0. INSTALLATION OFFICIELLE DE DOCKER ET DOCKER COMPOSE (Debian/Ubuntu)
-##############################
+# --- 0. INSTALLATION DOCKER & CRÉATION UTILISATEUR (ROOT SEULEMENT) ---
+FLAG_FILE="/etc/wireguard-script-manager.first_run_done"
+USER_SETUP_FLAG="/etc/wireguard-script-manager.user_created"
 
-install_docker_official() {
-    echo "Installation officielle de Docker (dépôt Docker)..."
-    apt-get update
-    apt-get install -y ca-certificates curl gnupg lsb-release
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-      > /etc/apt/sources.list.d/docker.list
-
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    systemctl enable --now docker
-}
-
-# Vérifie et installe curl (si besoin)
-if ! command -v curl &>/dev/null; then
-    echo "Installation de curl..."
-    if [[ $EUID -ne 0 ]]; then
-        echo "Ce script doit être lancé en root pour installer curl."
-        exit 1
+if [[ $EUID -eq 0 ]]; then
+    # Si déjà fait, on quitte
+    if [[ -f "$FLAG_FILE" ]]; then
+        echo "Installation déjà réalisée. Connectez-vous avec l'utilisateur créé."
+        exit 0
     fi
-    apt-get update && apt-get install -y curl
-fi
 
-# Vérifie et installe docker et docker compose (méthode officielle)
-if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
-    if [[ $EUID -ne 0 ]]; then
-        echo "Ce script doit être lancé en root pour installer Docker."
-        exit 1
+    # Installation Docker officielle
+    install_docker_official() {
+        echo "Installation officielle de Docker (dépôt Docker)..."
+        apt-get update
+        apt-get install -y ca-certificates curl gnupg lsb-release
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+          > /etc/apt/sources.list.d/docker.list
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        systemctl enable --now docker
+    }
+
+    # Vérifie et installe curl (si besoin)
+    if ! command -v curl &>/dev/null; then
+        echo "Installation de curl..."
+        apt-get update && apt-get install -y curl
     fi
-    install_docker_official
-fi
-
-echo "Tous les prérequis (curl, docker, docker compose) sont installés."
-
-# Vérifie et installe vim et btop (si besoin)
-for pkg in vim btop; do
-    if ! command -v "$pkg" &>/dev/null; then
-        echo "Installation de $pkg..."
-        if [[ $EUID -ne 0 ]]; then
-            echo "Ce script doit être lancé en root pour installer $pkg."
-            exit 1
+    # Vérifie et installe docker et docker compose (méthode officielle)
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
+        install_docker_official
+    fi
+    echo "Tous les prérequis (curl, docker, docker compose) sont installés."
+    for pkg in vim btop; do
+        if ! command -v "$pkg" &>/dev/null; then
+            echo "Installation de $pkg..."
+            apt-get update && apt-get install -y "$pkg"
         fi
-        apt-get update && apt-get install -y "$pkg"
-    fi
-done
+    done
 
-##############################
-# 1. CRÉATION DES DOSSIERS ET DROITS
-##############################
-for dir in lib config logs; do
-    if [[ ! -d "$dir" ]]; then
-        mkdir "$dir"
-        echo "Dossier $dir créé."
-    fi
-    chmod -R u+rwX "$dir"
-    if [[ ! -w "$dir" || ! -r "$dir" || ! -x "$dir" ]]; then
-        echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture/exécution."
-        exit 1
-    fi
-done
+    # Création du nouvel utilisateur
+    while true; do
+        read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
+        if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
+            echo "Nom invalide. 2 caractères minimum."
+            continue
+        elif id "$NEWUSER" &>/dev/null; then
+            echo "Ce nom existe déjà. Veuillez en choisir un autre."
+            continue
+        fi
+        while true; do
+            read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
+            echo
+            read -s -p "Confirmez le mot de passe : " NEWPASS2
+            echo
+            if [[ ${#NEWPASS} -lt 8 ]]; then
+                echo "Mot de passe trop court."
+            elif [[ "$NEWPASS" != "$NEWPASS2" ]]; then
+                echo "Les mots de passe ne correspondent pas."
+            else
+                break
+            fi
+        done
+        useradd -m -s /bin/bash -G docker "$NEWUSER"
+        echo "$NEWUSER:$NEWPASS" | chpasswd
+        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+        break
+    done
+    touch "$FLAG_FILE"
+    echo "Installation terminée. Connectez-vous avec l'utilisateur '$NEWUSER' pour continuer."
+    exit 0
+fi
+
+# --- 1. STRUCTURE ET TÉLÉCHARGEMENT (UTILISATEUR SEULEMENT) ---
+USER_HOME="$HOME/wireguard-script-manager"
+USER_FLAG="$USER_HOME/.structure_done"
+if [[ ! -f "$USER_FLAG" ]]; then
+    mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
+    cp "$(dirname "$0")/config_wg.sh" "$USER_HOME/"
+    cp "$(dirname "$0")/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
+    cp "$(dirname "$0")/README.md" "$USER_HOME/" 2>/dev/null || true
+    # Téléchargement des modules
+    GITHUB_USER="tarekounet"
+    GITHUB_REPO="Wireguard-easy-script"
+    BRANCH="main"
+    for mod in utils conf docker menu ; do
+        if [[ ! -f "$USER_HOME/lib/$mod.sh" ]]; then
+            echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
+            curl -fsSL -o "$USER_HOME/lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
+            chmod +x "$USER_HOME/lib/$mod.sh"
+        fi
+        chmod u+rwX "$USER_HOME/lib/$mod.sh"
+    done
+    touch "$USER_FLAG"
+    echo -e "\e[1;32mStructure et modules téléchargés dans $USER_HOME.\e[0m"
+fi
 
 ##############################
 # 2. INITIALISATION UTILISATEUR (root uniquement, une seule fois)
 ##############################
-USER_SETUP_FLAG="config/.user_setup_done"
-
 if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
     echo -e "\e[1;33mVous exécutez ce script en tant que root.\e[0m"
-    echo "Configuration de l'utilisateur pour l'exécution automatique du script."
 
-    # Demander le nom de l'utilisateur à créer
+    # Désactive l'utilisateur 'system' si présent
+    if id "system" &>/dev/null; then
+        echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
+        usermod -L -s /usr/sbin/nologin system
+        echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
+    fi
+
+    # Création du nouvel utilisateur
     while true; do
         read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
         if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
@@ -89,7 +125,6 @@ if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
             continue
         fi
 
-        # Demander le mot de passe
         while true; do
             read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
             echo
@@ -104,40 +139,29 @@ if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
             fi
         done
 
-        # Créer l'utilisateur
-        useradd -m -s /bin/bash "$NEWUSER"
+        useradd -m -s /bin/bash -G docker "$NEWUSER"
         echo "$NEWUSER:$NEWPASS" | chpasswd
-        echo -e "\e[1;32mUtilisateur '$NEWUSER' créé avec succès.\e[0m"
-        # Ajouter l'utilisateur au groupe docker
-        if ! id -nG "$NEWUSER" | grep -qw docker; then
-            usermod -aG docker "$NEWUSER"
-            echo -e "\e[1;32mUtilisateur '$NEWUSER' ajouté au groupe docker.\e[0m"
-        else
-            echo -e "\e[1;34mL'utilisateur '$NEWUSER' est déjà membre du groupe docker.\e[0m"
+        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+
+        # Copie le script dans le home du nouvel utilisateur
+        if [[ ! -d "/home/$NEWUSER/wireguard-easy-script" ]]; then
+            cp -r "$(pwd)" "/home/$NEWUSER/wireguard-easy-script"
         fi
+        chown -R "$NEWUSER:$NEWUSER" "/home/$NEWUSER/wireguard-easy-script"
+
+        # Ajoute le lancement auto du script à la connexion
+        PROFILE="/home/$NEWUSER/.bash_profile"
+        SCRIPT_PATH="/home/$NEWUSER/wireguard-easy-script/$(basename "$0")"
+        if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
+            echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
+            echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
+        fi
+
         break
     done
 
-    # Configurer l'architecture dans le répertoire personnel de l'utilisateur
-    USER_HOME="/home/$NEWUSER/wireguard-easy-script"
-    mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
-    cp config_wg.sh "$USER_HOME/"
-    cp auto_update.sh "$USER_HOME/"
-    cp CHANGELOG.md "$USER_HOME/"
-    cp README.md "$USER_HOME/"
-    chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
-
-    # Ajouter le lancement automatique du script à la connexion
-    PROFILE_FILE="/home/$NEWUSER/.bash_profile"
-    SCRIPT_PATH="$USER_HOME/config_wg.sh"
-    echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE_FILE"
-    chown "$NEWUSER:$NEWUSER" "$PROFILE_FILE"
-
-    # Créer le fichier témoin pour éviter de répéter cette étape
+    # Crée le flag pour ne plus proposer ce choix
     touch "$USER_SETUP_FLAG"
-    chown "$NEWUSER:$NEWUSER" "$USER_SETUP_FLAG"
-
-    echo -e "\e[1;32mConfiguration terminée pour l'utilisateur '$NEWUSER'.\e[0m"
 fi
 
 ##############################
@@ -156,13 +180,6 @@ for mod in utils conf docker menu ; do
     chmod u+rwX "lib/$mod.sh"
 done
 
-if [[ ! -f "auto_update.sh" ]]; then
-    echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-    curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
-    chmod +x "auto_update.sh"
-    chmod u+rwX "auto_update.sh"
-fi
-
 ##############################
 # 4. CHARGEMENT DES MODULES
 ##############################
@@ -179,7 +196,7 @@ VERSION_FILE="version.txt"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
-DOCKER_COMPOSE_DIR="$HOME/wireguard"
+DOCKER_COMPOSE_DIR="/mnt/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 SCRIPT_BASE_VERSION_INIT="1.7.3"
 
