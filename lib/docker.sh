@@ -9,6 +9,8 @@ fi
 #      CONSTANTES            #
 ##############################
 
+DOCKER_COMPOSE_DIR="$HOME/wireguard"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 
@@ -43,7 +45,7 @@ cancel_config() {
     if [[ "$DOCKER_COMPOSE_CREATED" == "1" && -f "$DOCKER_COMPOSE_FILE" ]]; then
         read -p $'Voulez-vous supprimer le fichier docker-compose.yml créé ? (o/N) : ' CONFIRM_DEL
         if [[ "$CONFIRM_DEL" =~ ^[oO]$ ]]; then
-            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
+            rm -rf "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_DIR/config"
             echo -e "\e[1;31mLe fichier docker-compose.yml créé a été supprimé.\e[0m"
         else
             echo -e "\e[1;33mLe fichier docker-compose.yml a été conservé.\e[0m"
@@ -67,16 +69,16 @@ configure_values() {
         trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
-        # Vérifier et créer /mnt/wireguard et /mnt/wireguard/config si nécessaire
-        [[ -d /mnt/wireguard ]] || mkdir -p /mnt/wireguard
-        [[ -d /mnt/wireguard/config ]] || mkdir -p /mnt/wireguard/config
+        # Vérifier et créer $HOME/wireguard et $HOME/wireguard/config si nécessaire
+        [[ -d "$DOCKER_COMPOSE_DIR" ]] || mkdir -p "$DOCKER_COMPOSE_DIR"
+        [[ -d "$DOCKER_COMPOSE_DIR/config" ]] || mkdir -p "$DOCKER_COMPOSE_DIR/config"
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
   etc_wireguard:
     driver: local
     driver_opts:
       type: none
-      device: /mnt/wireguard/config
+      device: ${DOCKER_COMPOSE_DIR}/wireguard/config
       o: bind
 services:
   wg-easy:
@@ -174,10 +176,10 @@ RAZ_docker_compose() {
     else
         msg_error "Aucun fichier docker-compose.yml trouvé."
     fi
-    if [[ -d "/mnt/wireguard" ]]; then
-        rm -rf "/mnt/wireguard"
-        msg_success "Le dossier /mnt/wireguard a été supprimé."
+    if [[ -d "$DOCKER_COMPOSE_DIR" ]]; then
+        rm -rf "$DOCKER_COMPOSE_DIR"
+        msg_success "Le dossier wireguard a été supprimé."
     else
-        msg_error "Aucun dossier /mnt/wireguard trouvé."
+        msg_error "Aucun dossier wireguard trouvé."
     fi
 }

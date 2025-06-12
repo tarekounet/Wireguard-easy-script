@@ -69,22 +69,16 @@ for dir in lib config logs; do
     fi
 done
 
-USER_SETUP_FLAG="config/.user_setup_done"
-
 ##############################
 # 2. INITIALISATION UTILISATEUR (root uniquement, une seule fois)
 ##############################
+USER_SETUP_FLAG="config/.user_setup_done"
+
 if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
     echo -e "\e[1;33mVous exécutez ce script en tant que root.\e[0m"
+    echo "Configuration de l'utilisateur pour l'exécution automatique du script."
 
-    # Désactive l'utilisateur 'system' si présent
-    if id "system" &>/dev/null; then
-        echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
-        usermod -L -s /usr/sbin/nologin system
-        echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
-    fi
-
-    # Création du nouvel utilisateur
+    # Demander le nom de l'utilisateur à créer
     while true; do
         read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
         if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
@@ -95,6 +89,7 @@ if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
             continue
         fi
 
+        # Demander le mot de passe
         while true; do
             read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
             echo
@@ -109,29 +104,40 @@ if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
             fi
         done
 
-        useradd -m -s /bin/bash -G docker "$NEWUSER"
+        # Créer l'utilisateur
+        useradd -m -s /bin/bash "$NEWUSER"
         echo "$NEWUSER:$NEWPASS" | chpasswd
-        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
-
-        # Copie le script dans le home du nouvel utilisateur
-        if [[ ! -d "/home/$NEWUSER/wireguard-easy-script" ]]; then
-            cp -r "$(pwd)" "/home/$NEWUSER/wireguard-easy-script"
+        echo -e "\e[1;32mUtilisateur '$NEWUSER' créé avec succès.\e[0m"
+        # Ajouter l'utilisateur au groupe docker
+        if ! id -nG "$NEWUSER" | grep -qw docker; then
+            usermod -aG docker "$NEWUSER"
+            echo -e "\e[1;32mUtilisateur '$NEWUSER' ajouté au groupe docker.\e[0m"
+        else
+            echo -e "\e[1;34mL'utilisateur '$NEWUSER' est déjà membre du groupe docker.\e[0m"
         fi
-        chown -R "$NEWUSER:$NEWUSER" "/home/$NEWUSER/wireguard-easy-script"
-
-        # Ajoute le lancement auto du script à la connexion
-        PROFILE="/home/$NEWUSER/.bash_profile"
-        SCRIPT_PATH="/home/$NEWUSER/wireguard-easy-script/$(basename "$0")"
-        if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
-            echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
-            echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
-        fi
-
         break
     done
 
-    # Crée le flag pour ne plus proposer ce choix
+    # Configurer l'architecture dans le répertoire personnel de l'utilisateur
+    USER_HOME="/home/$NEWUSER/wireguard-easy-script"
+    mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
+    cp config_wg.sh "$USER_HOME/"
+    cp auto_update.sh "$USER_HOME/"
+    cp CHANGELOG.md "$USER_HOME/"
+    cp README.md "$USER_HOME/"
+    chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
+
+    # Ajouter le lancement automatique du script à la connexion
+    PROFILE_FILE="/home/$NEWUSER/.bash_profile"
+    SCRIPT_PATH="$USER_HOME/config_wg.sh"
+    echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE_FILE"
+    chown "$NEWUSER:$NEWUSER" "$PROFILE_FILE"
+
+    # Créer le fichier témoin pour éviter de répéter cette étape
     touch "$USER_SETUP_FLAG"
+    chown "$NEWUSER:$NEWUSER" "$USER_SETUP_FLAG"
+
+    echo -e "\e[1;32mConfiguration terminée pour l'utilisateur '$NEWUSER'.\e[0m"
 fi
 
 ##############################
@@ -173,7 +179,7 @@ VERSION_FILE="version.txt"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
-DOCKER_COMPOSE_DIR="/mnt/wireguard"
+DOCKER_COMPOSE_DIR="$HOME/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 SCRIPT_BASE_VERSION_INIT="1.7.3"
 
