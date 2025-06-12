@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # --- 0. INSTALLATION DOCKER & CRÉATION UTILISATEUR (ROOT SEULEMENT) ---
-FLAG_FILE="/etc/wireguard-script-manager.first_run_done"
-USER_SETUP_FLAG="/etc/wireguard-script-manager.user_created"
+FLAG_FILE="/etc/wireguard-script-manager/.first_run_done"
 
 if [[ $EUID -eq 0 ]]; then
     # Si déjà fait, on quitte
@@ -46,6 +45,12 @@ if [[ $EUID -eq 0 ]]; then
 
     # Création du nouvel utilisateur
     while true; do
+            # Désactive l'utilisateur 'system' si présent
+        if id "system" &>/dev/null; then
+            echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
+            usermod -L -s /usr/sbin/nologin system
+            echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
+        fi
         read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
         if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
             echo "Nom invalide. 2 caractères minimum."
@@ -70,6 +75,19 @@ if [[ $EUID -eq 0 ]]; then
         useradd -m -s /bin/bash -G docker "$NEWUSER"
         echo "$NEWUSER:$NEWPASS" | chpasswd
         echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+        # Copier le script principal dans le dossier wireguard-script-manager du nouvel utilisateur
+        USER_HOME="/home/$NEWUSER/wireguard-script-manager"
+        mkdir -p "$USER_HOME"
+        cp "$0" "$USER_HOME/"
+        chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
+        # Ajouter le lancement auto du script à la connexion
+        PROFILE="/home/$NEWUSER/.bash_profile"
+        SCRIPT_PATH="$USER_HOME/$(basename "$0")"
+        if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
+            echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
+            chown "$NEWUSER:$NEWUSER" "$PROFILE"
+            echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
+        fi
         break
     done
     touch "$FLAG_FILE"
@@ -99,69 +117,6 @@ if [[ ! -f "$USER_FLAG" ]]; then
     done
     touch "$USER_FLAG"
     echo -e "\e[1;32mStructure et modules téléchargés dans $USER_HOME.\e[0m"
-fi
-
-##############################
-# 2. INITIALISATION UTILISATEUR (root uniquement, une seule fois)
-##############################
-if [[ $EUID -eq 0 && ! -f "$USER_SETUP_FLAG" ]]; then
-    echo -e "\e[1;33mVous exécutez ce script en tant que root.\e[0m"
-
-    # Désactive l'utilisateur 'system' si présent
-    if id "system" &>/dev/null; then
-        echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
-        usermod -L -s /usr/sbin/nologin system
-        echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
-    fi
-
-    # Création du nouvel utilisateur
-    while true; do
-        read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
-        if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
-            echo "Nom invalide. 2 caractères minimum."
-            continue
-        elif id "$NEWUSER" &>/dev/null; then
-            echo "Ce nom existe déjà. Veuillez en choisir un autre."
-            continue
-        fi
-
-        while true; do
-            read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
-            echo
-            read -s -p "Confirmez le mot de passe : " NEWPASS2
-            echo
-            if [[ ${#NEWPASS} -lt 8 ]]; then
-                echo "Mot de passe trop court."
-            elif [[ "$NEWPASS" != "$NEWPASS2" ]]; then
-                echo "Les mots de passe ne correspondent pas."
-            else
-                break
-            fi
-        done
-
-        useradd -m -s /bin/bash -G docker "$NEWUSER"
-        echo "$NEWUSER:$NEWPASS" | chpasswd
-        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
-
-        # Copie le script dans le home du nouvel utilisateur
-        if [[ ! -d "/home/$NEWUSER/wireguard-easy-script" ]]; then
-            cp -r "$(pwd)" "/home/$NEWUSER/wireguard-easy-script"
-        fi
-        chown -R "$NEWUSER:$NEWUSER" "/home/$NEWUSER/wireguard-easy-script"
-
-        # Ajoute le lancement auto du script à la connexion
-        PROFILE="/home/$NEWUSER/.bash_profile"
-        SCRIPT_PATH="/home/$NEWUSER/wireguard-easy-script/$(basename "$0")"
-        if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
-            echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
-            echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
-        fi
-
-        break
-    done
-
-    # Crée le flag pour ne plus proposer ce choix
-    touch "$USER_SETUP_FLAG"
 fi
 
 ##############################
