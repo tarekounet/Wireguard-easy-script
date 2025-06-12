@@ -25,7 +25,7 @@ WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION")
 #        VERSION MODULE      #
 ##############################
 
-DOCKER_VERSION="1.1.0"
+DOCKER_VERSION="1.1.5"
 
 ##############################
 #        LOGS DOCKER         #

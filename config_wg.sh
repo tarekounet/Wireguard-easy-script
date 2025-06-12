@@ -198,7 +198,7 @@ LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 DOCKER_COMPOSE_DIR="/mnt/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_BASE_VERSION_INIT="1.7.3"
+SCRIPT_BASE_VERSION_INIT="1.8.0"
 
 ##############################
 # 6. LECTURE DU CANAL/BRANCHE
