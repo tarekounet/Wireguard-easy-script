@@ -9,7 +9,7 @@ fi
 #      CONSTANTES            #
 ##############################
 
-DOCKER_COMPOSE_DIR="$HOME/wireguard"
+DOCKER_COMPOSE_DIR="/mnt/wireguard"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
@@ -78,8 +78,9 @@ volumes:
     driver: local
     driver_opts:
       type: none
-      device: ${DOCKER_COMPOSE_DIR}/wireguard/config
+      device: ${DOCKER_COMPOSE_DIR}/config
       o: bind
+
 services:
   wg-easy:
     environment:

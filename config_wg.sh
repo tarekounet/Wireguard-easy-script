@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # --- 0. INSTALLATION DOCKER & CRÉATION UTILISATEUR (ROOT SEULEMENT) ---
-FLAG_FILE="/etc/wireguard-script-manager/.first_run_done"
+mkdir -p /etc/wireguard-script-manager
+touch /etc/wireguard-script-manager/.first_run_done
+FLAG_FILE="/etc/wireguard-script-manager.first_run_done"
+USER_SETUP_FLAG="/etc/wireguard-script-manager.user_created"
 
 if [[ $EUID -eq 0 ]]; then
     # Si déjà fait, on quitte
@@ -36,7 +39,7 @@ if [[ $EUID -eq 0 ]]; then
         install_docker_official
     fi
     echo "Tous les prérequis (curl, docker, docker compose) sont installés."
-    for pkg in vim btop; do
+    for pkg in vim btop sudo openssl; do
         if ! command -v "$pkg" &>/dev/null; then
             echo "Installation de $pkg..."
             apt-get update && apt-get install -y "$pkg"
@@ -88,6 +91,24 @@ if [[ $EUID -eq 0 ]]; then
             chown "$NEWUSER:$NEWUSER" "$PROFILE"
             echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
         fi
+
+        # Vérification et création des dossiers /mnt/wireguard et /mnt/wireguard/config
+        WG_DIR="/mnt/wireguard"
+        WG_CONFIG_DIR="$WG_DIR/config"
+
+        # Création des dossiers si besoin
+        if [[ ! -d "$WG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        elif [[ ! -d "$WG_CONFIG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        fi
+
+        # Attribution des droits lecture/écriture à l'utilisateur
+        chown -R "$NEWUSER":"$NEWUSER" "$WG_DIR"
+        chmod -R u+rwX "$WG_DIR"
+
         break
     done
     touch "$FLAG_FILE"
@@ -99,6 +120,7 @@ fi
 USER_HOME="$HOME/wireguard-script-manager"
 USER_FLAG="$USER_HOME/.structure_done"
 if [[ ! -f "$USER_FLAG" ]]; then
+    mkdir -p "$HOME/wireguard-script-manager"
     mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
     cp "$(dirname "$0")/config_wg.sh" "$USER_HOME/"
     cp "$(dirname "$0")/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
@@ -120,38 +142,23 @@ if [[ ! -f "$USER_FLAG" ]]; then
 fi
 
 ##############################
-# 3. TÉLÉCHARGEMENT DES MODULES
-##############################
-GITHUB_USER="tarekounet"
-GITHUB_REPO="Wireguard-easy-script"
-BRANCH="main" # Valeur par défaut pour bootstrap
-
-for mod in utils conf docker menu ; do
-    if [[ ! -f "lib/$mod.sh" ]]; then
-        echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-        chmod +x "lib/$mod.sh"
-    fi
-    chmod u+rwX "lib/$mod.sh"
-done
-
-##############################
 # 4. CHARGEMENT DES MODULES
 ##############################
-source lib/conf.sh
-source lib/utils.sh
-source lib/docker.sh
-source lib/menu.sh
+SCRIPT_DIR="$HOME/wireguard-script-manager"
+source "$SCRIPT_DIR/lib/conf.sh"
+source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/docker.sh"
+source "$SCRIPT_DIR/lib/menu.sh"
 
 ##############################
 # 5. VARIABLES GÉNÉRALES
 ##############################
-CONF_FILE="config/wg-easy.conf"
-VERSION_FILE="version.txt"
-LOG_DIR="logs"
+CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+VERSION_FILE="$SCRIPT_DIR/version.txt"
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
-DOCKER_COMPOSE_DIR="/mnt/wireguard"
+DOCKER_COMPOSE_DIR="$HOME/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 SCRIPT_BASE_VERSION_INIT="1.8.0"
 
