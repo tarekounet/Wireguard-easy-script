@@ -44,7 +44,6 @@ cancel_config() {
             echo -e "\e[1;33mLe fichier docker-compose.yml a été conservé.\e[0m"
         fi
     fi
-    ...
     exit 1
 }
 
@@ -185,3 +184,5 @@ RAZ_docker_compose() {
         msg_error "Aucun dossier config trouvé dans $DOCKER_COMPOSE_DIR."
     fi
 }
+
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés

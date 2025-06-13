@@ -123,3 +123,5 @@ init_tech_password() {
         EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
     done
 }
+
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés

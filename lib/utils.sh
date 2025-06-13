@@ -207,10 +207,6 @@ change_wg_easy_web_port() {
 #         LOGGING            #
 ##############################
 
-log_action() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/wg-easy-script.log
-}
-
 ##############################
 #     GESTION DES VERSIONS   #
 ##############################
@@ -345,112 +341,6 @@ update_modules() {
         msg_warn "Relance le script pour charger les nouveaux modules."
     else
         msg_info "Tous les modules sont déjà à jour."
-    fi
-}
-
-##############################
-#     Check des prerequis    #
-############################## 
-
-check_and_install_prerequisites() {
-    local missing=0
-
-    # Docker
-    if ! command -v docker >/dev/null 2>&1; then
-        msg_warn "Docker n'est pas installé. Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y docker.io
-        missing=1
-    fi
-
-    # docker compose (plugin ou standalone)
-    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-        msg_warn "docker compose n'est pas installé. Installation en cours..."
-        run_as_root apt install -y docker-compose-plugin
-        missing=1
-    fi
-
-    # sudo
-    if ! command -v sudo >/dev/null 2>&1; then
-        msg_warn "sudo n'est pas installé. Installation en cours..."
-        apt update
-        apt install -y sudo
-        missing=1
-    fi
-
-    # curl
-    if ! command -v curl >/dev/null 2>&1; then
-        msg_warn "curl n'est pas installé. Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y curl
-        missing=1
-    fi
-
-    # btop (optionnel)
-    if ! command -v btop >/dev/null 2>&1; then
-        msg_warn "btop n'est pas installé (optionnel, pour le monitoring). Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y btop
-    fi
-
-    if [[ "$missing" -eq 1 ]]; then
-        msg_success "Les prérequis manquants ont été installés. Veuillez relancer le script si besoin."
-    else
-        msg_success "Tous les prérequis sont présents."
-    fi
-}
-
-################################
-#   Création de l'user + acl   #
-################################
-
-setup_script_user() {
-    local user="system"
-    # Utilise le dossier où est lancé config_wg.sh comme cible
-    local target_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    local script_name="config_wg.sh"
-    local script_entry="$target_dir/$script_name"
-    local password
-
-    # Demande le mot de passe à l'utilisateur (en masqué)
-    read -s -p "Entrez le mot de passe à définir pour l'utilisateur '$user' : " password
-    echo
-
-    # Crée l'utilisateur s'il n'existe pas
-    if ! id "$user" &>/dev/null; then
-        run_as_root useradd -m -s /bin/bash "$user"
-        echo "$user:$password" | run_as_root chpasswd
-        msg_success "Utilisateur '$user' créé avec succès."
-    else
-        msg_info "L'utilisateur '$user' existe déjà."
-    fi
-
-    # Ajoute au groupe docker
-    if ! id -nG "$user" | grep -qw docker; then
-        run_as_root usermod -aG docker "$user"
-        msg_success "Utilisateur '$user' ajouté au groupe docker."
-    fi
-
-    # Crée le dossier cible si besoin
-    run_as_root mkdir -p "$target_dir"
-
-    # Copie le script principal si absent
-    if [[ ! -f "$script_entry" ]]; then
-        # Trouve le chemin absolu du script courant
-        local current_script_path="$(realpath "$0")"
-        run_as_root cp "$current_script_path" "$script_entry"
-        msg_success "Script principal copié dans $target_dir."
-    fi
-
-    # Donne les droits d'écriture sur le dossier du script
-    run_as_root chown -R "$user":"$user" "$target_dir"
-    run_as_root chmod -R u+rwX "$target_dir"
-
-    # Ajoute le lancement auto du script à la connexion (dans .bash_profile)
-    local profile="/home/$user/.bash_profile"
-    if ! grep -q "$script_entry" "$profile" 2>/dev/null; then
-        echo "[[ \$- == *i* ]] && bash \"$script_entry\"" | run_as_root tee -a "$profile" >/dev/null
-        msg_success "Le script sera lancé automatiquement à la connexion de $user."
     fi
 }
 
@@ -893,37 +783,4 @@ detect_new_wg_easy_version() {
         export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
     fi
 }
-init_directories() {
-    for dir in lib config logs; do
-        [[ ! -d "$dir" ]] && mkdir "$dir"
-        if [[ ! -w "$dir" || ! -r "$dir" ]]; then
-            echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
-            exit 1
-        fi
-    done
-}
-
-bootstrap_modules() {
-    for mod in utils conf docker menu ; do
-        if [[ ! -f "lib/$mod.sh" ]]; then
-            echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-            curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-            chmod +x "lib/$mod.sh"
-        fi
-    done
-}
-
-init_channel_and_branch() {
-    if [[ -f "$CONF_FILE" ]]; then
-        SCRIPT_channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
-        [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
-    else
-        SCRIPT_CHANNEL="stable"
-    fi
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        BRANCH="beta"
-    else
-        BRANCH="main"
-    fi
-    export BRANCH
-}
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés

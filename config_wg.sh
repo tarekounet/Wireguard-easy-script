@@ -265,3 +265,5 @@ echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$
 check_updates
 main_menu
 export CONFIG_WG_SOURCED=1
+
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés
