@@ -94,6 +94,7 @@ if [[ $EUID -eq 0 ]]; then
         # Copier le script principal dans le dossier wireguard-script-manager du nouvel utilisateur
         USER_HOME="/home/$NEWUSER/wireguard-script-manager"
         mkdir -p "$USER_HOME"
+        chmod u+rwX "$USER_HOME"
         cp "$0" "$USER_HOME/"
         chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
         # Ajouter le lancement auto du script à la connexion
@@ -265,5 +266,3 @@ echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$
 check_updates
 main_menu
 export CONFIG_WG_SOURCED=1
-
-# Nettoyage : suppression des fonctions, variables et helpers non utilisés

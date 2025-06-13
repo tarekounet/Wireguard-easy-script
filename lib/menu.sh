@@ -307,17 +307,11 @@ menu_script_update() {
             labels+=("🔼 Mettre à jour le script (nouvelle version dispo)")
             actions+=("update_script")
         fi
-        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
-            labels+=("⬆️  Mettre à jour les modules (mise à jour dispo)")
-            actions+=("update_modules")
-        fi
         labels+=("🔀 Changer de canal (stable/beta)")
         actions+=("switch_channel")
         # Groupe 2 : Informations
         group_separators+=(${#labels[@]})
         group_titles+=("⁉️ Informations et version")
-        labels+=("📦 Afficher les versions des modules")
-        actions+=("show_modules_versions")
         labels+=("📝 Voir le changelog")
         actions+=("show_changelog")
 
@@ -347,8 +341,6 @@ menu_script_update() {
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
                 update_script) update_script ;;
-                update_modules) update_modules ;;
-                show_modules_versions) show_modules_versions ;;
                 switch_channel) switch_channel ;;
                 change_tech_password) change_tech_password ;;
                 show_changelog) show_changelog ;;

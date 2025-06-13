@@ -9,11 +9,15 @@ log_info "Module utils chargé"
 ###############################
 enable_debug() {
     export DEBUG=1
-    exec 2>>logs/debug.log
+    # Utilise le chemin du dossier logs du script principal si défini
+    local log_dir="${SCRIPT_DIR:-.}/logs"
+    mkdir -p "$log_dir"
+    exec 2>>"$log_dir/debug.log"
 }
 
 disable_debug() {
     export DEBUG=0
+    # Restaure la sortie d'erreur vers le terminal courant
     exec 2>/dev/tty
 }
 
@@ -243,42 +247,6 @@ get_remote_module_version() {
 #   AFFICHAGE DES VERSIONS   #
 ##############################
 
-show_modules_versions() {
-    clear
-    msg_info "Versions des modules chargés :"
-    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
-        mod=$(basename "$file" .sh)
-        local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var:-inconnue}"
-        remote_version=$(get_remote_module_version "$mod.sh")
-        if [[ -z "$remote_version" ]]; then
-            status="\e[33m(Version distante inconnue)\e[0m"
-        elif [[ "$local_version" != "$remote_version" ]]; then
-            status="\e[33m(Mise à jour dispo: $remote_version)\e[0m"
-        else
-            status="\e[32m(à jour)\e[0m"
-        fi
-        printf "  %-16s : %s %b\n" "$mod.sh" "$local_version" "$status"
-    done
-    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-    read
-}
-
-show_modules_versions_fancy() {
-    clear
-    echo -e "\e[1;36m===== Versions des modules chargés =====\e[0m"
-    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
-        mod_name=$(basename "$file" .sh)
-        # Ignore utils.sh si tu ne veux pas l'afficher
-        [[ "$mod_name" == "utils" ]] && continue
-        # Cherche la variable VERSION dans le fichier
-        version=$(grep -m1 -E 'VERSION="?([0-9.]+)"?' "$file" | grep -oE '[0-9]+\.[0-9.]+' || echo "inconnue")
-        printf "\e[0;36m%-30s : \e[0;32m%s\e[0m\n" "$mod_name" "$version"
-    done
-    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-    read
-}
-
 show_changelog() {
     clear
     if [[ -f "CHANGELOG.md" ]]; then
@@ -288,7 +256,6 @@ show_changelog() {
         sleep 2
     fi
 }
-
 ##############################
 #     MISE À JOUR MODULES    #
 ##############################
@@ -318,59 +285,77 @@ check_updates() {
     fi
 }
 
-update_modules() {
-    local branch
-    branch=$(get_github_branch)
-    local updated=0
-    for mod in utils conf docker menu debian_tools; do
-        remote_version=$(get_remote_module_version "$mod.sh")
-        local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var}"
-        if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
-            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/$mod.sh"; then
-                msg_success "Module \"$mod\" mis à jour (v$local_version → v$remote_version)"
-                updated=1
-            else
-                msg_error "Échec de la mise à jour du module \"$mod\""
-            fi
-        else
-            msg_info "Module \"$mod\" est déjà à jour (v$local_version)."
-        fi
-    done
-    if [[ "$updated" -eq 1 ]]; then
-        msg_warn "Relance le script pour charger les nouveaux modules."
-    else
-        msg_info "Tous les modules sont déjà à jour."
-    fi
-}
-
 ##############################
 #   MISE À JOUR DU SCRIPT    #
 ##############################
 
-update_script() {
+update_script_and_libs() {
     clear
-    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    echo -e "\e[1;36m===== Vérification des mises à jour du script et des modules =====\e[0m"
+    check_updates
+
+    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 0 && "$SCRIPT_UPDATE_AVAILABLE" -eq 0 ]]; then
+        echo -e "\e[32mAucune mise à jour disponible pour le script ou les modules.\e[0m"
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+        return
+    fi
+
+    echo -e "\e[33mDes mises à jour sont disponibles.\e[0m"
     local branch
     branch=$(get_github_branch)
     local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+    local lib_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib"
+    local script_dir="$(dirname "$0")"
+    local lib_dir="$script_dir/lib"
 
-    if curl -fsSL "$update_url" -o "$0.new"; then
-        if ! cmp -s "$0" "$0.new"; then
-            cp "$0" "$SCRIPT_BACKUP"
-            mv "$0.new" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-            echo -e "\nAppuyez sur une touche pour relancer le script..."
-            read -n 1 -s
-            exec "$0"
+    # Sauvegarde du script principal
+    if [[ -f "$0" ]]; then
+        cp "$0" "$SCRIPT_BACKUP"
+    fi
+
+    # Mise à jour du script principal si nécessaire
+    if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
+        if curl -fsSL "$update_url" -o "$0.new"; then
+            if ! cmp -s "$0" "$0.new"; then
+                mv "$0.new" "$0"
+                chmod +x "$0"
+                echo -e "\e[32mScript principal mis à jour avec succès !\e[0m"
+            else
+                rm "$0.new"
+                echo -e "\e[33mAucune mise à jour du script principal.\e[0m"
+            fi
         else
-            rm "$0.new"
-            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+            echo -e "\e[31mLa mise à jour du script principal a échoué.\e[0m"
         fi
     else
-        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+        echo -e "\e[32mLe script principal est déjà à jour.\e[0m"
     fi
+
+    # Mise à jour des modules si nécessaire
+    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 && -d "$lib_dir" ]]; then
+        for mod in utils conf docker menu debian_tools; do
+            remote_mod_url="$lib_url/$mod.sh"
+            local_mod_file="$lib_dir/$mod.sh"
+            if curl -fsSL "$remote_mod_url" -o "$local_mod_file.new"; then
+                if ! cmp -s "$local_mod_file" "$local_mod_file.new"; then
+                    mv "$local_mod_file.new" "$local_mod_file"
+                    chmod +x "$local_mod_file"
+                    echo -e "\e[32mModule $mod mis à jour.\e[0m"
+                else
+                    rm "$local_mod_file.new"
+                fi
+            else
+                echo -e "\e[31mÉchec de la mise à jour du module $mod.\e[0m"
+            fi
+        done
+    else
+        echo -e "\e[32mTous les modules sont déjà à jour.\e[0m"
+    fi
+
+    echo -e "\nAppuyez sur une touche pour relancer le script..."
+    read -n 1 -s
+    exec "$0"
 }
 
 ##############################
@@ -379,7 +364,7 @@ update_script() {
 
 canal_blocage() {
     if [[ "$CURRENT_CHANNEL" == "stable" && -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
-    echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
+    echo -e "\e[31mLa vE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
     SKIP_PAUSE=0
 else
     switch_channel
