@@ -1,14 +1,27 @@
 #!/bin/bash
 
-# --- 0. INSTALLATION DOCKER & CRÉATION UTILISATEUR (ROOT SEULEMENT) ---
-mkdir -p /etc/wireguard-script-manager
-touch /etc/wireguard-script-manager/.first_run_done
-FLAG_FILE="/etc/wireguard-script-manager.first_run_done"
-USER_SETUP_FLAG="/etc/wireguard-script-manager.user_created"
+
+# Gestion du flag de premier lancement (first_run_flag)
+FIRST_RUN_DIR="/var/tmp/wireguard-script-manager"
+FIRST_RUN_FLAG="$FIRST_RUN_DIR/.first_run_done"
+
+if [[ ! -d "$FIRST_RUN_DIR" ]]; then
+    sudo mkdir -p "$FIRST_RUN_DIR"
+    sudo chmod 1777 "$FIRST_RUN_DIR"
+fi
+
+if [[ ! -f "$FIRST_RUN_FLAG" ]]; then
+    # Place ici les actions à exécuter uniquement lors du premier lancement
+    touch "$FIRST_RUN_FLAG"
+    echo "Premier lancement : initialisation effectuée."
+fi
+
+# Redirige toutes les erreurs du script vers le fichier de log
+exec 2>>"logs/wg-easy-script.log"
 
 if [[ $EUID -eq 0 ]]; then
     # Si déjà fait, on quitte
-    if [[ -f "$FLAG_FILE" ]]; then
+    if [[ -f "$FIRST_RUN_FLAG" ]]; then
         echo "Installation déjà réalisée. Connectez-vous avec l'utilisateur créé."
         exit 0
     fi
@@ -144,12 +157,11 @@ fi
 ##############################
 # 4. CHARGEMENT DES MODULES
 ##############################
-SCRIPT_DIR="$HOME/wireguard-script-manager"
-source "$SCRIPT_DIR/lib/conf.sh"
-source "$SCRIPT_DIR/lib/utils.sh"
-source "$SCRIPT_DIR/lib/docker.sh"
-source "$SCRIPT_DIR/lib/menu.sh"
 
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
+fi
 ##############################
 # 5. VARIABLES GÉNÉRALES
 ##############################
@@ -252,3 +264,4 @@ echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$
 ##############################
 check_updates
 main_menu
+export CONFIG_WG_SOURCED=1

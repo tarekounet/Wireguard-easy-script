@@ -1,4 +1,9 @@
-# Protection : ce module ne doit être chargé que par config_wg.sh
+# Sourcing du script principal si besoin
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
+fi
+log_info "Module utils chargé"
 ##############################
 #         DEBUG MODE         #
 ###############################

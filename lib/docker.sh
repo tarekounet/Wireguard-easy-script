@@ -1,8 +1,7 @@
 #!/bin/bash
-# Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "docker.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
 fi
 
 ##############################
@@ -11,14 +10,8 @@ fi
 
 DOCKER_COMPOSE_DIR="/mnt/wireguard"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
-
-# S'assurer que conf.sh est chargé
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
-
-# Récupérer la valeur
-WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION")
+# Récupérer la valeur depuis le bon fichier de conf
+WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION" "$CONF_FILE")
 [[ -z "$WG_EASY_VERSION" ]] && WG_EASY_VERSION="inconnu"
 
 ##############################
@@ -171,16 +164,24 @@ RAZ_docker_compose() {
         msg_warn "Réinitialisation annulée."
         return
     fi
+    # Stopper le conteneur docker s'il est en cours d'exécution
+    if docker ps -a --format '{{.Names}}' | grep -q '^wg-easy$'; then
+        docker stop wg-easy
+        docker rm wg-easy
+        msg_success "Le conteneur wg-easy a été arrêté et supprimé."
+    fi
+    # Supprimer le docker-compose.yml
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         rm -f "$DOCKER_COMPOSE_FILE"
         msg_success "Le fichier docker-compose.yml a été supprimé."
     else
         msg_error "Aucun fichier docker-compose.yml trouvé."
     fi
-    if [[ -d "$DOCKER_COMPOSE_DIR" ]]; then
-        rm -rf "$DOCKER_COMPOSE_DIR"
-        msg_success "Le dossier wireguard a été supprimé."
+    # Supprimer le contenu du dossier config dans /mnt/wireguard
+    if [[ -d "$DOCKER_COMPOSE_DIR/config" ]]; then
+        rm -rf "$DOCKER_COMPOSE_DIR/config"/*
+        msg_success "Le contenu du dossier config a été supprimé."
     else
-        msg_error "Aucun dossier wireguard trouvé."
+        msg_error "Aucun dossier config trouvé dans $DOCKER_COMPOSE_DIR."
     fi
 }
