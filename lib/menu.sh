@@ -336,7 +336,7 @@ menu_script_update() {
         elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
-                update_script) update_script ;;
+                update_script) check_and_update_from_version_txt ;;
                 switch_channel) switch_channel ;;
                 change_tech_password) change_tech_password ;;
                 show_changelog) show_changelog ;;

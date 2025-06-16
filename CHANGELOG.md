@@ -34,7 +34,6 @@ Il propose une interface en ligne de commande colorée, des sauvegardes automati
     - `conf.sh` : Fonctions pour la gestion de la configuration et du mot de passe technique
     - `docker.sh` : Fonctions pour la configuration et la gestion de Wireguard via Docker
     - `menu.sh` : Affichage du menu principal et gestion des actions utilisateur
-    - `debian_tools.sh` : Outils système pour Debian/Linux
 
 ---
 

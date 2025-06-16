@@ -10,11 +10,10 @@ else
 fi
 
 # Vérifie et installe curl (si besoin)
-
-echo "Installation des prérequis (curl, docker, etc.)..."
-apt-get update
-apt-get install -y curl vim btop sudo openssl unzip
-
+if ! command -v curl &>/dev/null; then
+    echo "Installation de curl..."
+    apt-get update && apt-get install -y curl
+fi
 # Vérifie et installe docker et docker compose (méthode officielle)
 if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
     install_docker_official
@@ -48,7 +47,7 @@ fi
 #############################################
 # Variables GitHub (à adapter)
 #############################################
-GITHUB_USER="tarekounet"
+GITHUB_USER="TON_GITHUB_USER"
 GITHUB_REPO="Wireguard-easy-script"
 
 #############################################
@@ -102,7 +101,7 @@ update_if_new_version() {
 install_prerequisites() {
     echo "Installation des prérequis (curl, docker, etc.)..."
     apt-get update
-    apt-get install -y curl vim btop sudo openssl unzip
+    apt-get install -y curl vim btop sudo openssl
 }
 
 install_docker_official() {
@@ -257,20 +256,16 @@ add_script_autostart_to_user() {
     list_real_users
     read -p "Nom de l'utilisateur auquel ajouter le lancement auto : " TARGET_USER
     USER_HOME="/home/$TARGET_USER/wireguard-easy-script/script"
-    SCRIPT_PATH="$USER_HOME/config_wg.sh"
+    SCRIPT_PATH="$USER_HOME/new_config_wg.sh"
     PROFILE="/home/$TARGET_USER/.bash_profile"
-    mkdir -p "$USER_HOME"
     if [[ ! -f "$SCRIPT_PATH" ]]; then
         echo -e "\e[33mScript non trouvé dans $USER_HOME. Téléchargement depuis GitHub...\e[0m"
         BRANCH="main"  # ou récupère la branche depuis la conf si besoin
-        SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/config_wg.sh"
-        if curl -fsSL "$SCRIPT_URL" -o "$SCRIPT_PATH"; then
-            chmod +x "$SCRIPT_PATH"
-            chown "$TARGET_USER:$TARGET_USER" "$SCRIPT_PATH"
-        else
-            echo -e "\e[31mErreur lors du téléchargement du script depuis GitHub.\e[0m"
-            return 1
-        fi
+        mkdir -p "$USER_HOME"
+        SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/new_config_wg.sh"
+        curl -fsSL "$SCRIPT_URL" -o "$SCRIPT_PATH"
+        chmod +x "$SCRIPT_PATH"
+        chown "$TARGET_USER:$TARGET_USER" "$SCRIPT_PATH"
     fi
     if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
         echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"

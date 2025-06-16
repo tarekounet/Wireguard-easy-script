@@ -1,6 +1,8 @@
 # Sourcing du script principal si besoin
-CONFIG_WG_PATH="$HOME/wireguard-easy-script/config_wg.sh"
-if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+# Recherche dynamique du chemin du script principal et sourcing si besoin
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_WG_PATH="$SCRIPT_DIR/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" && -f "$CONFIG_WG_PATH" ]]; then
     source "$CONFIG_WG_PATH"
 fi
 ##############################
@@ -52,36 +54,6 @@ run_as_root() {
 ###############################
 #         LOGS ACTION         #
 ###############################
-LOG_FILE="$SCRIPT_DIR/logs/wg-easy-script.log"
-ERROR_LOG="$SCRIPT_DIR/logs/error.log"
-INSTALL_LOG="$SCRIPT_DIR/logs/install.log"
-DOCKER_LOG="$SCRIPT_DIR/logs/docker-actions.log"
-AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
-
-log_action() {
-    local msg="$1"
-    echo "$(date '+%F %T') [ACTION] $msg" >> "$LOG_FILE"
-}
-
-log_error() {
-    local msg="$1"
-    echo "$(date '+%F %T') [ERROR] $msg" >> "$ERROR_LOG"
-}
-
-log_install() {
-    local msg="$1"
-    echo "$(date '+%F %T') [INSTALL] $msg" >> "$INSTALL_LOG"
-}
-
-log_docker() {
-    local msg="$1"
-    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
-}
-
-log_auth() {
-    local msg="$1"
-    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
-}
 ###############################
 #       CENTRAGE BLOCK        # 
 ###############################
@@ -209,7 +181,6 @@ change_wg_easy_web_port() {
 ##############################
 #         LOGGING            #
 ##############################
-
 ##############################
 #     GESTION DES VERSIONS   #
 ##############################
@@ -229,18 +200,6 @@ version_gt() {
     return 1
 }
 
-get_remote_module_version() {
-    local module="$1"
-    local branch url version
-    branch=$(get_github_branch)
-    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/${module}"
-    version=$(curl -fsSL "$url" | grep -m1 -E 'VERSION="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
-    if [[ -z "$version" ]]; then
-        echo "inconnue"
-    else
-        echo "$version"
-    fi
-}
 
 ##############################
 #   AFFICHAGE DES VERSIONS   #
@@ -258,103 +217,51 @@ show_changelog() {
 ##############################
 #     MISE À JOUR MODULES    #
 ##############################
-
-check_updates() {
-    MODULE_UPDATE_AVAILABLE=0
-    SCRIPT_UPDATE_AVAILABLE=0
-
-    local branch
+check_and_update_from_version_txt() {
+    local branch remote_version local_version
     branch=$(get_github_branch)
+    local_version=""
+    remote_version=""
 
-    # Vérification des modules
-    for mod in utils conf docker menu; do
-        local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var}"
-        remote_version=$(get_remote_module_version "$mod.sh")
-        if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
-            MODULE_UPDATE_AVAILABLE=1
-            break
-        fi
-    done
+    # Chemin du fichier version.txt local et distant
+    LOCAL_TXT_FILE="version.txt"
+    REMOTE_TXT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/version.txt"
 
-    # Vérification du script principal
-    remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
-    if [[ -n "$remote_script_version" && "$SCRIPT_BASE_VERSION_INIT" != "$remote_script_version" ]]; then
-        SCRIPT_UPDATE_AVAILABLE=1
-    fi
-}
-
-##############################
-#   MISE À JOUR DU SCRIPT    #
-##############################
-
-update_script_and_libs() {
-    clear
-    echo -e "\e[1;36m===== Vérification des mises à jour du script et des modules =====\e[0m"
-    check_updates
-
-    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 0 && "$SCRIPT_UPDATE_AVAILABLE" -eq 0 ]]; then
-        echo -e "\e[32mAucune mise à jour disponible pour le script ou les modules.\e[0m"
-        echo -e "\nAppuyez sur une touche pour revenir au menu..."
-        read -n 1 -s
-        return
+    # Récupère la version locale (fichier version.txt en local)
+    if [[ -f "$LOCAL_TXT_FILE" ]]; then
+        local_version=$(head -n1 "$LOCAL_TXT_FILE" | tr -d '\r\n')
     fi
 
-    echo -e "\e[33mDes mises à jour sont disponibles.\e[0m"
-    local branch
-    branch=$(get_github_branch)
-    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
-    local lib_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib"
-    local script_dir="$(dirname "$0")"
-    local lib_dir="$script_dir/lib"
+    # Récupère la version distante (valeur dans le github)
+    remote_version=$(curl -fsSL "$REMOTE_TXT_URL" | head -n1 | tr -d '\r\n')
 
-    # Sauvegarde du script principal
-    if [[ -f "$0" ]]; then
-        cp "$0" "$SCRIPT_BACKUP"
-    fi
-
-    # Mise à jour du script principal si nécessaire
-    if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
-        if curl -fsSL "$update_url" -o "$0.new"; then
-            if ! cmp -s "$0" "$0.new"; then
-                mv "$0.new" "$0"
-                chmod +x "$0"
-                echo -e "\e[32mScript principal mis à jour avec succès !\e[0m"
-            else
-                rm "$0.new"
-                echo -e "\e[33mAucune mise à jour du script principal.\e[0m"
-            fi
+    # Compare les versions
+    if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
+        echo -e "\e[33mNouvelle version disponible ($remote_version), mise à jour en cours...\e[0m"
+        # Télécharge tout le repo (zip) et extrait
+        TMP_UPDATE_DIR="/tmp/wg-easy-update"
+        rm -rf "$TMP_UPDATE_DIR"
+        mkdir -p "$TMP_UPDATE_DIR"
+        ZIP_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/archive/refs/heads/${branch}.zip"
+        curl -fsSL "$ZIP_URL" -o "$TMP_UPDATE_DIR/update.zip"
+        unzip -q "$TMP_UPDATE_DIR/update.zip" -d "$TMP_UPDATE_DIR"
+        # Trouve le dossier extrait
+        EXTRACTED_DIR=$(find "$TMP_UPDATE_DIR" -maxdepth 1 -type d -name "${GITHUB_REPO}-*")
+        if [[ -d "$EXTRACTED_DIR" ]]; then
+            cp -r "$EXTRACTED_DIR"/* .
+            chmod -R +x ./lib/*.sh 2>/dev/null
+            echo -e "\e[32mMise à jour appliquée avec succès !\e[0m"
+            rm -rf "$TMP_UPDATE_DIR"
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
         else
-            echo -e "\e[31mLa mise à jour du script principal a échoué.\e[0m"
+            echo -e "\e[31mErreur lors de l'extraction de la mise à jour.\e[0m"
+            rm -rf "$TMP_UPDATE_DIR"
         fi
     else
-        echo -e "\e[32mLe script principal est déjà à jour.\e[0m"
+        echo -e "\e[32mAucune mise à jour disponible (version $local_version).\e[0m"
     fi
-
-    # Mise à jour des modules si nécessaire
-    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 && -d "$lib_dir" ]]; then
-        for mod in utils conf docker menu; do
-            remote_mod_url="$lib_url/$mod.sh"
-            local_mod_file="$lib_dir/$mod.sh"
-            if curl -fsSL "$remote_mod_url" -o "$local_mod_file.new"; then
-                if ! cmp -s "$local_mod_file" "$local_mod_file.new"; then
-                    mv "$local_mod_file.new" "$local_mod_file"
-                    chmod +x "$local_mod_file"
-                    echo -e "\e[32mModule $mod mis à jour.\e[0m"
-                else
-                    rm "$local_mod_file.new"
-                fi
-            else
-                echo -e "\e[31mÉchec de la mise à jour du module $mod.\e[0m"
-            fi
-        done
-    else
-        echo -e "\e[32mTous les modules sont déjà à jour.\e[0m"
-    fi
-
-    echo -e "\nAppuyez sur une touche pour relancer le script..."
-    read -n 1 -s
-    exec "$0"
 }
 
 ##############################
@@ -767,4 +674,3 @@ detect_new_wg_easy_version() {
         export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
     fi
 }
-# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés
