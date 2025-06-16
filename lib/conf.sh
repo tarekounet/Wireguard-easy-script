@@ -9,26 +9,12 @@ fi
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
-AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
 
 ##############################
 #        VERSION MODULE      #
 ##############################
 
 CONF_VERSION="1.1.0"
-
-##############################
-#        LOGS CONF           #
-##############################
-log_config() {
-    local msg="$1"
-    echo "$(date '+%F %T') [CONFIG] $msg" >> "$CONFIG_LOG"
-}
-
-log_auth() {
-    local msg="$1"
-    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
-}
 
 ##############################
 #   GESTION DE LA CONF       #
@@ -83,7 +69,6 @@ ask_tech_password() {
     SALT=$(get_conf_value "TECH_SALT")
     if [[ -z "$EXPECTED_HASH" || -z "$SALT" ]]; then
         msg_error "Le mot de passe technique ou le sel est introuvable dans le fichier de configuration."
-        log_auth "Échec : hash attendu ou sel introuvable"
         return 1
     fi
     read -sp $'\e[1;33mEntrez le mot de passe technique : \e[0m' PASS
@@ -92,10 +77,8 @@ ask_tech_password() {
     ENTERED_HASH=$(openssl passwd -6 -salt "$SALT" "$PASS")
     if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
         msg_error "Mot de passe incorrect."
-        log_auth "Échec : mot de passe incorrect"
         return 1
     fi
-    log_auth "Succès : authentification réussie"
     return 0
 }
 

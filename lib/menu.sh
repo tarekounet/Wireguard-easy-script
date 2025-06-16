@@ -82,10 +82,6 @@ main_menu() {
             *)
                 if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
                 echo -e "\e[31m❌ Wireguard n'est pas actif\e[0m"
-                echo -e "\e[1;33m📋 Derniers logs Wireguard :\e[0m"
-                docker logs --tail 10 wg-easy 2>&1 | while read -r line; do
-                    echo -e "\e[0;37m> $line\e[0m"
-                done
                 LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
                 if [[ "$LAST_EXIT_CODE" != "0" ]]; then
                     echo -e "\e[31m⚠️  Échec du dernier lancement (Code : $LAST_EXIT_CODE)\e[0m\n"
@@ -430,16 +426,37 @@ debian_tools_menu() {
         elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
-                show_debian_version)show_debian_version ;;
-                show_disk_space)show_disk_space ;;
-                show_docker_status)show_docker_status ;;
-                show_system_monitor)show_system_monitor ;;
-                configure_ip_vm)configure_ip_vm ;;
-                update_system)update_system ;;
-                modify_vm_name)rename_vm ;;
-                modify_ssh_port)ssh_access ;;
-                reboot_vm)reboot_vm ;;
-                shutdown_vm)shutdown_vm ;;
+                show_debian_version)
+                    if [[ -f /etc/debian_version ]]; then
+                        echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
+                    else
+                        echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
+                    fi
+                    ;;
+                show_disk_space)
+                    df -h
+                    ;;
+                show_docker_status)
+                    systemctl status docker --no-pager
+                    ;;
+                show_system_monitor)
+                    if command -v btop >/dev/null 2>&1; then
+                        btop
+                    else
+                        echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
+                        run_as_root apt update && run_as_root apt install -y btop
+                        btop
+                    fi
+                    ;;
+                configure_ip_vm) configure_ip_vm ;;
+                update_system)
+                    echo -e "\e[1;33mMise à jour du système...\e[0m"
+                    run_as_root apt update && run_as_root apt upgrade -y
+                    ;;
+                modify_vm_name) modify_vm_name ;;
+                modify_ssh_port) modify_ssh_port ;;
+                reboot_vm) reboot_vm ;;
+                shutdown_vm) shutdown_vm ;;
                 *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
             esac
         else
@@ -448,4 +465,3 @@ debian_tools_menu() {
         fi
     done
 }
-# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés

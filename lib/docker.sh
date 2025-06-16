@@ -21,15 +21,6 @@ WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION" "$CONF_FILE")
 DOCKER_VERSION="1.1.5"
 
 ##############################
-#        LOGS DOCKER         #
-##############################
-
-log_docker_action() {
-    local msg="$1"
-    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
-}
-
-##############################
 #   CONFIGURATION PRINCIPALE #
 ##############################
 cancel_config() {

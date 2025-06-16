@@ -1,29 +1,57 @@
 #!/bin/bash
 
+# Empêche le sourcing infini du script principal
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    export CONFIG_WG_SOURCED=1
+else
+    return 0 2>/dev/null || exit 0
+fi
 
-# Gestion du flag de premier lancement (first_run_flag)
-FIRST_RUN_DIR="/$HOME/wireguard-easy-script"
+# Inclusion du module de gestion de la conf et du mot de passe technique
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/conf.sh"
+source "$SCRIPT_DIR/lib/utils.sh"
+source "$SCRIPT_DIR/lib/docker.sh"
+source "$SCRIPT_DIR/lib/menu.sh"
+
+########################################
+# 1. INITIALISATION & VARIABLES GLOBALES
+########################################
+CONF_DIR="$SCRIPT_DIR/config"
+CONF_FILE="$CONF_DIR/wg-easy.conf"
+VERSION_FILE="$SCRIPT_DIR/version.txt"
+FIRST_RUN_DIR="/var/tmp/wireguard"
 FIRST_RUN_FLAG="$FIRST_RUN_DIR/.first_run_done"
+USER_HOME="$HOME/wireguard-easy-script"
+USER_FLAG="$USER_HOME/.structure_done"
+GITHUB_USER="tarekounet"
+GITHUB_REPO="Wireguard-easy-script"
+BRANCH="main"
 
-if [[ ! -d "$FIRST_RUN_DIR" ]]; then
-    sudo mkdir -p "$FIRST_RUN_DIR"
-    sudo chmod 1777 "$FIRST_RUN_DIR"
-fi
+# Définition du chemin du log
+LOG_FILE="$SCRIPT_DIR/wg-easy-script.log"
 
-if [[ ! -f "$FIRST_RUN_FLAG" ]]; then
-    # Place ici les actions à exécuter uniquement lors du premier lancement
-    touch "$FIRST_RUN_FLAG"
-    echo "Premier lancement : initialisation effectuée."
-fi
+# Fonction utilitaire pour écrire dans le log
+log_action() {
+    echo "$(date '+%F %T') [LOG] $1" >> "$LOG_FILE"
+}
 
-# # Détermine le chemin absolu du dossier du script
-# SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# mkdir -p "$SCRIPT_DIR/logs"
-# # Redirige toutes les erreurs du script vers le fichier de log
-# exec 2>>"$SCRIPT_DIR/logs/wg-easy-script.log"
+# Exemple d'utilisation : log du lancement du script
+log_action "Script principal lancé par $USER (UID=$EUID)"
+log_action "Début du script principal"
 
+########################################
+# 2. FONCTIONS UTILITAIRES
+########################################
+msg_success() { echo -e "\e[1;32m$1\e[0m"; }
+msg_warn()    { echo -e "\e[1;33m$1\e[0m"; }
+msg_error()   { echo -e "\e[1;31m$1\e[0m"; }
+
+########################################
+# 3. GESTION DU FLAG DE PREMIÈRE CRÉATION UTILISATEUR (ROOT)
+########################################
 if [[ $EUID -eq 0 ]]; then
-    # Si déjà fait, on quitte
+    FIRST_RUN_FLAG="/var/tmp/wireguard/.first_user_created"
     if [[ -f "$FIRST_RUN_FLAG" ]]; then
         echo "Installation déjà réalisée. Connectez-vous avec l'utilisateur créé."
         exit 0
@@ -65,11 +93,11 @@ if [[ $EUID -eq 0 ]]; then
     # Création du nouvel utilisateur
     while true; do
             # Désactive l'utilisateur 'system' si présent
-        if id "system" &>/dev/null; then
-            echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
-            usermod -L -s /usr/sbin/nologin system
-            echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
-        fi
+        # if id "system" &>/dev/null; then
+        #     echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
+        #     usermod -L -s /usr/sbin/nologin system
+        #     echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
+        # fi
         read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
         if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
             echo "Nom invalide. 2 caractères minimum."
@@ -94,6 +122,7 @@ if [[ $EUID -eq 0 ]]; then
         useradd -m -s /bin/bash -G docker "$NEWUSER"
         echo "$NEWUSER:$NEWPASS" | chpasswd
         echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+        log_action "Nouvel utilisateur créé : $NEWUSER"
         # Copier le script principal dans le dossier wireguard-easy-script du nouvel utilisateur
         USER_HOME="/home/$NEWUSER/wireguard-easy-script"
         mkdir -p "$USER_HOME"
@@ -128,58 +157,53 @@ if [[ $EUID -eq 0 ]]; then
 
         break
     done
-    touch "$FLAG_FILE"
+    touch "$FIRST_RUN_FLAG"
     echo "Installation terminée. Connectez-vous avec l'utilisateur '$NEWUSER' pour continuer."
+    log_action "Fin de l'installation, prêt à l'emploi."
     exit 0
 fi
 
-# --- 1. STRUCTURE ET TÉLÉCHARGEMENT (UTILISATEUR SEULEMENT) ---
-USER_HOME="$HOME/wireguard-easy-script"
-USER_FLAG="$USER_HOME/.structure_done"
+########################################
+# 5. STRUCTURE UTILISATEUR & MODULES
+########################################
 if [[ ! -f "$USER_FLAG" ]]; then
-    mkdir -p "$HOME/wireguard-easy-script"
     mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
-    cp "$(dirname "$0")/config_wg.sh" "$USER_HOME/"
-    cp "$(dirname "$0")/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
-    cp "$(dirname "$0")/README.md" "$USER_HOME/" 2>/dev/null || true
-    # Téléchargement des modules
-    GITHUB_USER="tarekounet"
-    GITHUB_REPO="Wireguard-easy-script"
-    BRANCH="main"
-    for mod in utils conf docker menu ; do
-        if [[ ! -f "$USER_HOME/lib/$mod.sh" ]]; then
+    cp "$SCRIPT_DIR/config_wg.sh" "$USER_HOME/"
+    cp "$SCRIPT_DIR/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
+    cp "$SCRIPT_DIR/README.md" "$USER_HOME/" 2>/dev/null || true
+    for mod in utils conf docker menu; do
+        MOD_PATH="$USER_HOME/lib/$mod.sh"
+        if [[ ! -f "$MOD_PATH" ]]; then
             echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-            curl -fsSL -o "$USER_HOME/lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-            chmod +x "$USER_HOME/lib/$mod.sh"
+            curl -fsSL -o "$MOD_PATH" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
         fi
-        chmod u+rwX "$USER_HOME/lib/$mod.sh"
+        chmod u+rwX "$MOD_PATH"
+        chmod +x "$MOD_PATH"
     done
     touch "$USER_FLAG"
-    echo -e "\e[1;32mStructure et modules téléchargés dans $USER_HOME.\e[0m"
+    log_action "Modules téléchargés/copés dans $USER_HOME/lib"
+    msg_success "Structure et modules téléchargés dans $USER_HOME."
 fi
 
-##############################
-# 4. CHARGEMENT DES MODULES
-##############################
-
-CONFIG_WG_PATH="$HOME/wireguard-easy-script/config_wg.sh"
+########################################
+# 6. CHARGEMENT DES MODULES
+########################################
+CONFIG_WG_PATH="$USER_HOME/config_wg.sh"
 if [[ -z "$CONFIG_WG_SOURCED" ]]; then
     source "$CONFIG_WG_PATH"
 fi
-##############################
-# 5. VARIABLES GÉNÉRALES
-##############################
+
+########################################
+# 7. CONFIGURATION & LECTURE DES FICHIERS
+########################################
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 VERSION_FILE="$SCRIPT_DIR/version.txt"
-LOG_DIR="$SCRIPT_DIR/logs"
-LOG_FILE="$LOG_DIR/wg-easy-script.log"
-CONFIG_LOG="$LOG_DIR/config-actions.log"
 DOCKER_COMPOSE_DIR="$HOME/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
 SCRIPT_BASE_VERSION_INIT="1.8.0"
 
 ##############################
-# 6. LECTURE DU CANAL/BRANCHE
+# 7. LECTURE DU CANAL/BRANCHE
 ##############################
 if [[ -f "$CONF_FILE" ]]; then
     SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
@@ -194,16 +218,12 @@ else
     BRANCH="main"
 fi
 
-export GITHUB_USER
-export GITHUB_REPO
-export BRANCH
-
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
 
 ##############################
-# 7. INITIALISATION DE LA CONF
+# 8. INITIALISATION DE LA CONF
 ##############################
 WG_EASY_VERSION_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/WG_EASY_VERSION"
 WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
@@ -247,7 +267,7 @@ fi
 set_conf_value "WG_EASY_VERSION" "$WG_EASY_VERSION"
 
 ##############################
-# 8. VÉRIFICATION DU MOT DE PASSE
+# 9. VÉRIFICATION DU MOT DE PASSE
 ##############################
 EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
 while [[ -z "$EXPECTED_HASH" ]]; do
@@ -256,16 +276,9 @@ while [[ -z "$EXPECTED_HASH" ]]; do
     EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
 done
 
-##############################
-# 9. LOGS DE LANCEMENT
-##############################
-echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
-echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
-echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$LOG_FILE"
-
-##############################
-# 10. LANCEMENT DU SCRIPT
-##############################
+########################################
+# 11. LANCEMENT DU MENU PRINCIPAL OU LOGIQUE UTILISATEUR
+########################################
 check_updates
 main_menu
 export CONFIG_WG_SOURCED=1

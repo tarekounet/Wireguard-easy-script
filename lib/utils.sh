@@ -3,7 +3,6 @@ CONFIG_WG_PATH="$HOME/wireguard-easy-script/config_wg.sh"
 if [[ -z "$CONFIG_WG_SOURCED" ]]; then
     source "$CONFIG_WG_PATH"
 fi
-log_info "Module utils chargé"
 ##############################
 #         DEBUG MODE         #
 ###############################
@@ -268,7 +267,7 @@ check_updates() {
     branch=$(get_github_branch)
 
     # Vérification des modules
-    for mod in utils conf docker menu debian_tools; do
+    for mod in utils conf docker menu; do
         local_var=$(echo "${mod^^}_VERSION")
         local_version="${!local_var}"
         remote_version=$(get_remote_module_version "$mod.sh")
@@ -334,7 +333,7 @@ update_script_and_libs() {
 
     # Mise à jour des modules si nécessaire
     if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 && -d "$lib_dir" ]]; then
-        for mod in utils conf docker menu debian_tools; do
+        for mod in utils conf docker menu; do
             remote_mod_url="$lib_url/$mod.sh"
             local_mod_file="$lib_dir/$mod.sh"
             if curl -fsSL "$remote_mod_url" -o "$local_mod_file.new"; then
