@@ -11,12 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 
 ##############################
-#        VERSION MODULE      #
-##############################
-
-CONF_VERSION="1.1.0"
-
-##############################
 #   GESTION DE LA CONF       #
 ##############################
 
@@ -57,7 +51,6 @@ set_tech_password() {
             set_conf_value "EXPECTED_HASH" "$HASH"
             set_conf_value "TECH_SALT" "$SALT"
             msg_success "Mot de passe technique enregistré avec succès."
-            log_action "Mot de passe technique modifié"
             break
         fi
     done
@@ -106,5 +99,3 @@ init_tech_password() {
         EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
     done
 }
-
-# Nettoyage : suppression des fonctions, variables et helpers non utilisés

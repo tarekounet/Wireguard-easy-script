@@ -7,6 +7,12 @@ set -euo pipefail
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
+CONF_DIR="$SCRIPT_DIR/config"
+CONF_FILE="$CONF_DIR/wg-easy.conf"
+SCRIPT_CHANNEL="main"
+SCRIPT_BASE_VERSION_INIT="1.8.0"
+WG_EASY_VERSION="15.0.0"
+SALT="$(openssl rand -hex 8)"
 
 # =====================
 # Fonctions admin (root)
@@ -203,6 +209,30 @@ if [ "$(id -u)" -eq 0 ]; then
     fi
     admin_menu
     exit 0
+fi
+
+# =====================
+# Création auto du fichier de conf si absent (mode utilisateur uniquement)
+if [ "$(id -u)" -ne 0 ]; then
+    CONF_DIR="$SCRIPT_DIR/config"
+    CONF_FILE="$CONF_DIR/wg-easy.conf"
+    if [ ! -f "$CONF_FILE" ]; then
+        mkdir -p "$CONF_DIR"
+        # Charger les fonctions nécessaires
+        source "$SCRIPT_DIR/lib/conf.sh"
+        # Utiliser la fonction set_tech_password pour demander et enregistrer le mot de passe technique
+        cat > "$CONF_FILE" <<EOF
+SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
+SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
+EXPECTED_HASH=""
+BETA_CONFIRMED="0"
+RAZ="1"
+WG_EASY_VERSION="$WG_EASY_VERSION"
+TECH_SALT=""
+EOF
+        set_tech_password
+        echo "Fichier de configuration créé avec succès : $CONF_FILE"
+    fi
 fi
 
 # =====================
