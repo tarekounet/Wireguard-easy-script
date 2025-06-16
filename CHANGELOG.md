@@ -7,6 +7,22 @@ Il propose une interface en ligne de commande colorée, des sauvegardes automati
 
 ---
 
+## [1.7.2] - 2025-06-10
+### Ajouté
+- Création automatique de toute la structure du projet (lib, config, logs) au premier lancement.
+- Attribution automatique des droits de lecture/écriture sur tous les dossiers pour l’utilisateur courant ou un utilisateur spécifique si root.
+- Téléchargement intelligent des modules manquants depuis GitHub, avec gestion du canal stable/beta.
+- Initialisation robuste du mot de passe technique dès le premier lancement.
+
+### Modifié
+- Suppression des messages d’erreur lors de la lecture de la conf si le fichier n’existe pas encore.
+- Optimisation du sourcing des modules pour éviter les erreurs de fonctions introuvables.
+- Vérification et correction automatique des droits sur les dossiers à chaque lancement.
+
+### Corrigé
+- Correction des bugs liés à la création du fichier de conf et à la gestion des droits.
+- Correction de la gestion du mot de passe technique (plus besoin de double saisie au premier lancement).
+
 ## 🏗️ Nouvelle structure (v1.5.0)
 
 - **Script principal** : `config_wg.sh`

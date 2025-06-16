@@ -1,37 +1,190 @@
 #!/bin/bash
-source lib/conf.sh
-source lib/utils.sh
-# Auto-bootstrap des modules si le dossier lib/ ou des modules sont manquants
-for mod in utils conf docker menu ; do
-    if [[ ! -f "lib/$mod.sh" ]]; then
-        echo "Module manquant : lib/$mod.sh"
-        exit 1
+
+
+# Gestion du flag de premier lancement (first_run_flag)
+FIRST_RUN_DIR="/var/tmp/wireguard-script-manager"
+FIRST_RUN_FLAG="$FIRST_RUN_DIR/.first_run_done"
+
+if [[ ! -d "$FIRST_RUN_DIR" ]]; then
+    sudo mkdir -p "$FIRST_RUN_DIR"
+    sudo chmod 1777 "$FIRST_RUN_DIR"
+fi
+
+if [[ ! -f "$FIRST_RUN_FLAG" ]]; then
+    # Place ici les actions à exécuter uniquement lors du premier lancement
+    touch "$FIRST_RUN_FLAG"
+    echo "Premier lancement : initialisation effectuée."
+fi
+
+# Redirige toutes les erreurs du script vers le fichier de log
+exec 2>>"logs/wg-easy-script.log"
+
+if [[ $EUID -eq 0 ]]; then
+    # Si déjà fait, on quitte
+    if [[ -f "$FIRST_RUN_FLAG" ]]; then
+        echo "Installation déjà réalisée. Connectez-vous avec l'utilisateur créé."
+        exit 0
     fi
-done
+
+    # Installation Docker officielle
+    install_docker_official() {
+        echo "Installation officielle de Docker (dépôt Docker)..."
+        apt-get update
+        apt-get install -y ca-certificates curl gnupg lsb-release
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+          > /etc/apt/sources.list.d/docker.list
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        systemctl enable --now docker
+    }
+
+    # Vérifie et installe curl (si besoin)
+    if ! command -v curl &>/dev/null; then
+        echo "Installation de curl..."
+        apt-get update && apt-get install -y curl
+    fi
+    # Vérifie et installe docker et docker compose (méthode officielle)
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
+        install_docker_official
+    fi
+    echo "Tous les prérequis (curl, docker, docker compose) sont installés."
+    for pkg in vim btop sudo openssl; do
+        if ! command -v "$pkg" &>/dev/null; then
+            echo "Installation de $pkg..."
+            apt-get update && apt-get install -y "$pkg"
+        fi
+    done
+
+    # Création du nouvel utilisateur
+    while true; do
+            # Désactive l'utilisateur 'system' si présent
+        if id "system" &>/dev/null; then
+            echo -e "\e[1;31mL'utilisateur 'system' existe. Il va être désactivé.\e[0m"
+            usermod -L -s /usr/sbin/nologin system
+            echo -e "\e[1;32mL'utilisateur 'system' a été désactivé.\e[0m"
+        fi
+        read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
+        if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
+            echo "Nom invalide. 2 caractères minimum."
+            continue
+        elif id "$NEWUSER" &>/dev/null; then
+            echo "Ce nom existe déjà. Veuillez en choisir un autre."
+            continue
+        fi
+        while true; do
+            read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
+            echo
+            read -s -p "Confirmez le mot de passe : " NEWPASS2
+            echo
+            if [[ ${#NEWPASS} -lt 8 ]]; then
+                echo "Mot de passe trop court."
+            elif [[ "$NEWPASS" != "$NEWPASS2" ]]; then
+                echo "Les mots de passe ne correspondent pas."
+            else
+                break
+            fi
+        done
+        useradd -m -s /bin/bash -G docker "$NEWUSER"
+        echo "$NEWUSER:$NEWPASS" | chpasswd
+        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+        # Copier le script principal dans le dossier wireguard-script-manager du nouvel utilisateur
+        USER_HOME="/home/$NEWUSER/wireguard-script-manager"
+        mkdir -p "$USER_HOME"
+        chmod u+rwX "$USER_HOME"
+        cp "$0" "$USER_HOME/"
+        chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
+        # Ajouter le lancement auto du script à la connexion
+        PROFILE="/home/$NEWUSER/.bash_profile"
+        SCRIPT_PATH="$USER_HOME/$(basename "$0")"
+        if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
+            echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
+            chown "$NEWUSER:$NEWUSER" "$PROFILE"
+            echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER.\e[0m"
+        fi
+
+        # Vérification et création des dossiers /mnt/wireguard et /mnt/wireguard/config
+        WG_DIR="/mnt/wireguard"
+        WG_CONFIG_DIR="$WG_DIR/config"
+
+        # Création des dossiers si besoin
+        if [[ ! -d "$WG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        elif [[ ! -d "$WG_CONFIG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        fi
+
+        # Attribution des droits lecture/écriture à l'utilisateur
+        chown -R "$NEWUSER":"$NEWUSER" "$WG_DIR"
+        chmod -R u+rwX "$WG_DIR"
+
+        break
+    done
+    touch "$FLAG_FILE"
+    echo "Installation terminée. Connectez-vous avec l'utilisateur '$NEWUSER' pour continuer."
+    exit 0
+fi
+
+# --- 1. STRUCTURE ET TÉLÉCHARGEMENT (UTILISATEUR SEULEMENT) ---
+USER_HOME="$HOME/wireguard-script-manager"
+USER_FLAG="$USER_HOME/.structure_done"
+if [[ ! -f "$USER_FLAG" ]]; then
+    mkdir -p "$HOME/wireguard-script-manager"
+    mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
+    cp "$(dirname "$0")/config_wg.sh" "$USER_HOME/"
+    cp "$(dirname "$0")/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
+    cp "$(dirname "$0")/README.md" "$USER_HOME/" 2>/dev/null || true
+    # Téléchargement des modules
+    GITHUB_USER="tarekounet"
+    GITHUB_REPO="Wireguard-easy-script"
+    BRANCH="main"
+    for mod in utils conf docker menu ; do
+        if [[ ! -f "$USER_HOME/lib/$mod.sh" ]]; then
+            echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
+            curl -fsSL -o "$USER_HOME/lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
+            chmod +x "$USER_HOME/lib/$mod.sh"
+        fi
+        chmod u+rwX "$USER_HOME/lib/$mod.sh"
+    done
+    touch "$USER_FLAG"
+    echo -e "\e[1;32mStructure et modules téléchargés dans $USER_HOME.\e[0m"
+fi
+
 ##############################
-#   VARIABLES GÉNÉRALES      #
+# 4. CHARGEMENT DES MODULES
 ##############################
 
-GITHUB_USER="tarekounet"
-GITHUB_REPO="Wireguard-easy-script"
-CONF_FILE="config/wg-easy.conf"
-VERSION_FILE="version.txt"
-LOG_DIR="logs"
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
+fi
+##############################
+# 5. VARIABLES GÉNÉRALES
+##############################
+CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+VERSION_FILE="$SCRIPT_DIR/version.txt"
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
-DOCKER_COMPOSE_DIR="/mnt/wireguard"
+DOCKER_COMPOSE_DIR="$HOME/wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_BASE_VERSION_INIT="1.7.0"
+SCRIPT_BASE_VERSION_INIT="1.8.0"
 
-# Lecture du canal depuis la conf si elle existe
+##############################
+# 6. LECTURE DU CANAL/BRANCHE
+##############################
 if [[ -f "$CONF_FILE" ]]; then
-    SCRIPT_channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
+    SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
     [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
 else
     SCRIPT_CHANNEL="stable"
 fi
 
-# Détermination de la branche GitHub à utiliser
 if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
     BRANCH="beta"
 else
@@ -42,103 +195,74 @@ export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
 
-# Correction : si le canal est "stable", utiliser la branche "main" sur GitHub
-if [[ "$BRANCH" == "stable" ]]; then
-    BRANCH="main"
-fi
-
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
 
 ##############################
-#   AUTO-BOOTSTRAP MODULES   #
+# 7. INITIALISATION DE LA CONF
 ##############################
-
-for dir in lib config logs; do
-    if [[ ! -d "$dir" ]]; then
-        mkdir "$dir"
-    fi
-    if [[ ! -w "$dir" || ! -r "$dir" ]]; then
-        echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
-        exit 1
-    fi
-done
-
-# Téléchargement des modules principaux
-for mod in utils conf docker menu ; do
-    if [[ ! -f "lib/$mod.sh" ]]; then
-        echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-        chmod +x "lib/$mod.sh"
-    fi
-done
-
-# Téléchargement de auto_update.sh à la racine si absent
-if [[ ! -f "auto_update.sh" ]]; then
-    echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-    curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
-    chmod +x "auto_update.sh"
-fi
-
-# Chargement des modules
-for f in lib/*.sh; do
-    source "$f"
-done
-
-##############################
-#   INITIALISATION DE LA CONF
-##############################
-
-# 1. Récupération depuis GitHub
 WG_EASY_VERSION_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/WG_EASY_VERSION"
 WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
 [[ -z "$WG_EASY_VERSION" ]] && WG_EASY_VERSION="inconnu"
 
-# 2. Création du fichier de conf (si besoin)
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
-    set_tech_password  # <-- Demande et enregistre le hash et le sel dans la conf temporairement
 
-    # Récupère les valeurs après set_tech_password
-    EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-    TECH_SALT=$(get_conf_value "TECH_SALT")
+    PASS1=""
+    PASS2=""
+    HASH=""
+    SALT=$(openssl rand -hex 8)
+    while true; do
+        read -sp "Entrez le nouveau mot de passe technique : " PASS1
+        echo
+        read -sp "Confirmez le nouveau mot de passe technique : " PASS2
+        echo
+        if [[ -z "$PASS1" ]]; then
+            echo "Le mot de passe ne peut pas être vide."
+        elif [[ "$PASS1" != "$PASS2" ]]; then
+            echo "Les mots de passe ne correspondent pas."
+        else
+            HASH=$(openssl passwd -6 -salt "$SALT" "$PASS1")
+            break
+        fi
+    done
 
-    # Crée le fichier de conf avec les bonnes valeurs
+    # Crée le fichier de conf AVEC les bonnes valeurs
     cat > "$CONF_FILE" <<EOF
 SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
 SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
-EXPECTED_HASH="$EXPECTED_HASH"
+EXPECTED_HASH="$HASH"
 BETA_CONFIRMED="0"
 RAZ="1"
 WG_EASY_VERSION="$WG_EASY_VERSION"
-TECH_SALT="$TECH_SALT"
+TECH_SALT="$SALT"
 EOF
     msg_success "Fichier de configuration créé avec succès."
 fi
 
-# 3. Mise à jour de la version dans la conf à chaque lancement
 set_conf_value "WG_EASY_VERSION" "$WG_EASY_VERSION"
 
-# verification du mot de passe technique
+##############################
+# 8. VÉRIFICATION DU MOT DE PASSE
+##############################
 EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
 while [[ -z "$EXPECTED_HASH" ]]; do
     msg_warn "Aucun mot de passe technique enregistré. Veuillez en définir un."
     set_tech_password
     EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
 done
-##############################
-#           LOGS             #
-##############################
 
+##############################
+# 9. LOGS DE LANCEMENT
+##############################
 echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
 echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
-echo "$(date '+%F %T') [UPDATE] Nouvelle version détectée : $NEW_VERSION" >> "$LOG_FILE"
+echo "$(date '+%F %T') [UPDATE] Version Wireguard Easy : $WG_EASY_VERSION" >> "$LOG_FILE"
 
 ##############################
-#   LANCEMENT DU SCRIPT      #
+# 10. LANCEMENT DU SCRIPT
 ##############################
-
 check_updates
-
 main_menu
+export CONFIG_WG_SOURCED=1

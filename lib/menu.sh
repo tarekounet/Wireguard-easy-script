@@ -184,9 +184,6 @@ main_menu() {
             actions+=("menu_script_update")
             labels+=("🔑 Mot de passe technique")
             actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
-
         else
             # Groupe unique si pas de docker-compose
             group_separators+=(0)
@@ -199,8 +196,6 @@ main_menu() {
             actions+=("menu_script_update")
             labels+=("🔑 Mot de passe technique")
             actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
         fi
 
         # Affichage du menu dynamique avec séparateurs de groupes
@@ -273,7 +268,6 @@ main_menu() {
                 menu_script_update) menu_script_update; SKIP_PAUSE=1 ;;
                 configure_values) configure_values ;;
                 change_tech_password) change_tech_password ;;
-                auto_update_menu) auto_update_menu; SKIP_PAUSE=1 ;;
                 "") ;; # Option inactive
                 *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
             esac
@@ -313,17 +307,11 @@ menu_script_update() {
             labels+=("🔼 Mettre à jour le script (nouvelle version dispo)")
             actions+=("update_script")
         fi
-        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
-            labels+=("⬆️  Mettre à jour les modules (mise à jour dispo)")
-            actions+=("update_modules")
-        fi
         labels+=("🔀 Changer de canal (stable/beta)")
         actions+=("switch_channel")
         # Groupe 2 : Informations
         group_separators+=(${#labels[@]})
         group_titles+=("⁉️ Informations et version")
-        labels+=("📦 Afficher les versions des modules")
-        actions+=("show_modules_versions")
         labels+=("📝 Voir le changelog")
         actions+=("show_changelog")
 
@@ -353,8 +341,6 @@ menu_script_update() {
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
                 update_script) update_script ;;
-                update_modules) update_modules ;;
-                show_modules_versions) show_modules_versions ;;
                 switch_channel) switch_channel ;;
                 change_tech_password) change_tech_password ;;
                 show_changelog) show_changelog ;;
@@ -444,37 +430,16 @@ debian_tools_menu() {
         elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
-                show_debian_version)
-                    if [[ -f /etc/debian_version ]]; then
-                        echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
-                    else
-                        echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
-                    fi
-                    ;;
-                show_disk_space)
-                    df -h
-                    ;;
-                show_docker_status)
-                    systemctl status docker --no-pager
-                    ;;
-                show_system_monitor)
-                    if command -v btop >/dev/null 2>&1; then
-                        btop
-                    else
-                        echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
-                        run_as_root apt update && run_as_root apt install -y btop
-                        btop
-                    fi
-                    ;;
-                configure_ip_vm) configure_ip_vm ;;
-                update_system)
-                    echo -e "\e[1;33mMise à jour du système...\e[0m"
-                    run_as_root apt update && run_as_root apt upgrade -y
-                    ;;
-                modify_vm_name) modify_vm_name ;;
-                modify_ssh_port) modify_ssh_port ;;
-                reboot_vm) reboot_vm ;;
-                shutdown_vm) shutdown_vm ;;
+                show_debian_version)show_debian_version ;;
+                show_disk_space)show_disk_space ;;
+                show_docker_status)show_docker_status ;;
+                show_system_monitor)show_system_monitor ;;
+                configure_ip_vm)configure_ip_vm ;;
+                update_system)update_system ;;
+                modify_vm_name)rename_vm ;;
+                modify_ssh_port)ssh_access ;;
+                reboot_vm)reboot_vm ;;
+                shutdown_vm)shutdown_vm ;;
                 *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
             esac
         else
@@ -483,3 +448,4 @@ debian_tools_menu() {
         fi
     done
 }
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés

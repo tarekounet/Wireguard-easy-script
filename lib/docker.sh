@@ -1,29 +1,24 @@
 #!/bin/bash
-# Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "docker.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
 fi
 
 ##############################
 #      CONSTANTES            #
 ##############################
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+DOCKER_COMPOSE_DIR="/mnt/wireguard"
 
-# S'assurer que conf.sh est chargé
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
-
-# Récupérer la valeur
-WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION")
+# Récupérer la valeur depuis le bon fichier de conf
+WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION" "$CONF_FILE")
 [[ -z "$WG_EASY_VERSION" ]] && WG_EASY_VERSION="inconnu"
 
 ##############################
 #        VERSION MODULE      #
 ##############################
 
-DOCKER_VERSION="1.1.0"
+DOCKER_VERSION="1.1.5"
 
 ##############################
 #        LOGS DOCKER         #
@@ -43,13 +38,12 @@ cancel_config() {
     if [[ "$DOCKER_COMPOSE_CREATED" == "1" && -f "$DOCKER_COMPOSE_FILE" ]]; then
         read -p $'Voulez-vous supprimer le fichier docker-compose.yml créé ? (o/N) : ' CONFIRM_DEL
         if [[ "$CONFIRM_DEL" =~ ^[oO]$ ]]; then
-            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
+            rm -rf "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_DIR/config"
             echo -e "\e[1;31mLe fichier docker-compose.yml créé a été supprimé.\e[0m"
         else
             echo -e "\e[1;33mLe fichier docker-compose.yml a été conservé.\e[0m"
         fi
     fi
-    ...
     exit 1
 }
 
@@ -67,15 +61,18 @@ configure_values() {
         trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
-        mkdir -p /mnt/wireguard/config
+        # Vérifier et créer $HOME/wireguard et $HOME/wireguard/config si nécessaire
+        [[ -d "$DOCKER_COMPOSE_DIR" ]] || mkdir -p "$DOCKER_COMPOSE_DIR"
+        [[ -d "$DOCKER_COMPOSE_DIR/config" ]] || mkdir -p "$DOCKER_COMPOSE_DIR/config"
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
   etc_wireguard:
     driver: local
     driver_opts:
       type: none
-      device: /mnt/wireguard/config
+      device: ${DOCKER_COMPOSE_DIR}/config
       o: bind
+
 services:
   wg-easy:
     environment:
@@ -166,16 +163,26 @@ RAZ_docker_compose() {
         msg_warn "Réinitialisation annulée."
         return
     fi
+    # Stopper le conteneur docker s'il est en cours d'exécution
+    if docker ps -a --format '{{.Names}}' | grep -q '^wg-easy$'; then
+        docker stop wg-easy
+        docker rm wg-easy
+        msg_success "Le conteneur wg-easy a été arrêté et supprimé."
+    fi
+    # Supprimer le docker-compose.yml
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         rm -f "$DOCKER_COMPOSE_FILE"
         msg_success "Le fichier docker-compose.yml a été supprimé."
     else
         msg_error "Aucun fichier docker-compose.yml trouvé."
     fi
-    if [[ -d "/mnt/wireguard" ]]; then
-        rm -rf "/mnt/wireguard"
-        msg_success "Le dossier /mnt/wireguard a été supprimé."
+    # Supprimer le contenu du dossier config dans /mnt/wireguard
+    if [[ -d "$DOCKER_COMPOSE_DIR/config" ]]; then
+        rm -rf "$DOCKER_COMPOSE_DIR/config"/*
+        msg_success "Le contenu du dossier config a été supprimé."
     else
-        msg_error "Aucun dossier /mnt/wireguard trouvé."
+        msg_error "Aucun dossier config trouvé dans $DOCKER_COMPOSE_DIR."
     fi
 }
+
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés

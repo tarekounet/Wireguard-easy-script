@@ -1,14 +1,23 @@
-# Protection : ce module ne doit être chargé que par config_wg.sh
+# Sourcing du script principal si besoin
+CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+if [[ -z "$CONFIG_WG_SOURCED" ]]; then
+    source "$CONFIG_WG_PATH"
+fi
+log_info "Module utils chargé"
 ##############################
 #         DEBUG MODE         #
 ###############################
 enable_debug() {
     export DEBUG=1
-    exec 2>>logs/debug.log
+    # Utilise le chemin du dossier logs du script principal si défini
+    local log_dir="${SCRIPT_DIR:-.}/logs"
+    mkdir -p "$log_dir"
+    exec 2>>"$log_dir/debug.log"
 }
 
 disable_debug() {
     export DEBUG=0
+    # Restaure la sortie d'erreur vers le terminal courant
     exec 2>/dev/tty
 }
 
@@ -202,10 +211,6 @@ change_wg_easy_web_port() {
 #         LOGGING            #
 ##############################
 
-log_action() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/wg-easy-script.log
-}
-
 ##############################
 #     GESTION DES VERSIONS   #
 ##############################
@@ -242,42 +247,6 @@ get_remote_module_version() {
 #   AFFICHAGE DES VERSIONS   #
 ##############################
 
-show_modules_versions() {
-    clear
-    msg_info "Versions des modules chargés :"
-    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
-        mod=$(basename "$file" .sh)
-        local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var:-inconnue}"
-        remote_version=$(get_remote_module_version "$mod.sh")
-        if [[ -z "$remote_version" ]]; then
-            status="\e[33m(Version distante inconnue)\e[0m"
-        elif [[ "$local_version" != "$remote_version" ]]; then
-            status="\e[33m(Mise à jour dispo: $remote_version)\e[0m"
-        else
-            status="\e[32m(à jour)\e[0m"
-        fi
-        printf "  %-16s : %s %b\n" "$mod.sh" "$local_version" "$status"
-    done
-    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-    read
-}
-
-show_modules_versions_fancy() {
-    clear
-    echo -e "\e[1;36m===== Versions des modules chargés =====\e[0m"
-    for file in "$(dirname "${BASH_SOURCE[0]}")"/*.sh; do
-        mod_name=$(basename "$file" .sh)
-        # Ignore utils.sh si tu ne veux pas l'afficher
-        [[ "$mod_name" == "utils" ]] && continue
-        # Cherche la variable VERSION dans le fichier
-        version=$(grep -m1 -E 'VERSION="?([0-9.]+)"?' "$file" | grep -oE '[0-9]+\.[0-9.]+' || echo "inconnue")
-        printf "\e[0;36m%-30s : \e[0;32m%s\e[0m\n" "$mod_name" "$version"
-    done
-    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
-    read
-}
-
 show_changelog() {
     clear
     if [[ -f "CHANGELOG.md" ]]; then
@@ -287,7 +256,6 @@ show_changelog() {
         sleep 2
     fi
 }
-
 ##############################
 #     MISE À JOUR MODULES    #
 ##############################
@@ -317,165 +285,77 @@ check_updates() {
     fi
 }
 
-update_modules() {
-    local branch
-    branch=$(get_github_branch)
-    local updated=0
-    for mod in utils conf docker menu debian_tools; do
-        remote_version=$(get_remote_module_version "$mod.sh")
-        local_var=$(echo "${mod^^}_VERSION")
-        local_version="${!local_var}"
-        if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
-            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/$mod.sh"; then
-                msg_success "Module \"$mod\" mis à jour (v$local_version → v$remote_version)"
-                updated=1
-            else
-                msg_error "Échec de la mise à jour du module \"$mod\""
-            fi
-        else
-            msg_info "Module \"$mod\" est déjà à jour (v$local_version)."
-        fi
-    done
-    if [[ "$updated" -eq 1 ]]; then
-        msg_warn "Relance le script pour charger les nouveaux modules."
-    else
-        msg_info "Tous les modules sont déjà à jour."
-    fi
-}
-
-##############################
-#     Check des prerequis    #
-############################## 
-
-check_and_install_prerequisites() {
-    local missing=0
-
-    # Docker
-    if ! command -v docker >/dev/null 2>&1; then
-        msg_warn "Docker n'est pas installé. Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y docker.io
-        missing=1
-    fi
-
-    # docker compose (plugin ou standalone)
-    if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-        msg_warn "docker compose n'est pas installé. Installation en cours..."
-        run_as_root apt install -y docker-compose-plugin
-        missing=1
-    fi
-
-    # sudo
-    if ! command -v sudo >/dev/null 2>&1; then
-        msg_warn "sudo n'est pas installé. Installation en cours..."
-        apt update
-        apt install -y sudo
-        missing=1
-    fi
-
-    # curl
-    if ! command -v curl >/dev/null 2>&1; then
-        msg_warn "curl n'est pas installé. Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y curl
-        missing=1
-    fi
-
-    # btop (optionnel)
-    if ! command -v btop >/dev/null 2>&1; then
-        msg_warn "btop n'est pas installé (optionnel, pour le monitoring). Installation en cours..."
-        run_as_root apt update
-        run_as_root apt install -y btop
-    fi
-
-    if [[ "$missing" -eq 1 ]]; then
-        msg_success "Les prérequis manquants ont été installés. Veuillez relancer le script si besoin."
-    else
-        msg_success "Tous les prérequis sont présents."
-    fi
-}
-
-################################
-#   Création de l'user + acl   #
-################################
-
-setup_script_user() {
-    local user="system"
-    # Utilise le dossier où est lancé config_wg.sh comme cible
-    local target_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    local script_name="config_wg.sh"
-    local script_entry="$target_dir/$script_name"
-    local password
-
-    # Demande le mot de passe à l'utilisateur (en masqué)
-    read -s -p "Entrez le mot de passe à définir pour l'utilisateur '$user' : " password
-    echo
-
-    # Crée l'utilisateur s'il n'existe pas
-    if ! id "$user" &>/dev/null; then
-        run_as_root useradd -m -s /bin/bash "$user"
-        echo "$user:$password" | run_as_root chpasswd
-        msg_success "Utilisateur '$user' créé avec succès."
-    else
-        msg_info "L'utilisateur '$user' existe déjà."
-    fi
-
-    # Ajoute au groupe docker
-    if ! id -nG "$user" | grep -qw docker; then
-        run_as_root usermod -aG docker "$user"
-        msg_success "Utilisateur '$user' ajouté au groupe docker."
-    fi
-
-    # Crée le dossier cible si besoin
-    run_as_root mkdir -p "$target_dir"
-
-    # Copie le script principal si absent
-    if [[ ! -f "$script_entry" ]]; then
-        # Trouve le chemin absolu du script courant
-        local current_script_path="$(realpath "$0")"
-        run_as_root cp "$current_script_path" "$script_entry"
-        msg_success "Script principal copié dans $target_dir."
-    fi
-
-    # Donne les droits d'écriture sur le dossier du script
-    run_as_root chown -R "$user":"$user" "$target_dir"
-    run_as_root chmod -R u+rwX "$target_dir"
-
-    # Ajoute le lancement auto du script à la connexion (dans .bash_profile)
-    local profile="/home/$user/.bash_profile"
-    if ! grep -q "$script_entry" "$profile" 2>/dev/null; then
-        echo "[[ \$- == *i* ]] && bash \"$script_entry\"" | run_as_root tee -a "$profile" >/dev/null
-        msg_success "Le script sera lancé automatiquement à la connexion de $user."
-    fi
-}
-
 ##############################
 #   MISE À JOUR DU SCRIPT    #
 ##############################
 
-update_script() {
+update_script_and_libs() {
     clear
-    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    echo -e "\e[1;36m===== Vérification des mises à jour du script et des modules =====\e[0m"
+    check_updates
+
+    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 0 && "$SCRIPT_UPDATE_AVAILABLE" -eq 0 ]]; then
+        echo -e "\e[32mAucune mise à jour disponible pour le script ou les modules.\e[0m"
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+        return
+    fi
+
+    echo -e "\e[33mDes mises à jour sont disponibles.\e[0m"
     local branch
     branch=$(get_github_branch)
     local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+    local lib_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib"
+    local script_dir="$(dirname "$0")"
+    local lib_dir="$script_dir/lib"
 
-    if curl -fsSL "$update_url" -o "$0.new"; then
-        if ! cmp -s "$0" "$0.new"; then
-            cp "$0" "$SCRIPT_BACKUP"
-            mv "$0.new" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
-            echo -e "\nAppuyez sur une touche pour relancer le script..."
-            read -n 1 -s
-            exec "$0"
+    # Sauvegarde du script principal
+    if [[ -f "$0" ]]; then
+        cp "$0" "$SCRIPT_BACKUP"
+    fi
+
+    # Mise à jour du script principal si nécessaire
+    if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
+        if curl -fsSL "$update_url" -o "$0.new"; then
+            if ! cmp -s "$0" "$0.new"; then
+                mv "$0.new" "$0"
+                chmod +x "$0"
+                echo -e "\e[32mScript principal mis à jour avec succès !\e[0m"
+            else
+                rm "$0.new"
+                echo -e "\e[33mAucune mise à jour du script principal.\e[0m"
+            fi
         else
-            rm "$0.new"
-            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+            echo -e "\e[31mLa mise à jour du script principal a échoué.\e[0m"
         fi
     else
-        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+        echo -e "\e[32mLe script principal est déjà à jour.\e[0m"
     fi
+
+    # Mise à jour des modules si nécessaire
+    if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 && -d "$lib_dir" ]]; then
+        for mod in utils conf docker menu debian_tools; do
+            remote_mod_url="$lib_url/$mod.sh"
+            local_mod_file="$lib_dir/$mod.sh"
+            if curl -fsSL "$remote_mod_url" -o "$local_mod_file.new"; then
+                if ! cmp -s "$local_mod_file" "$local_mod_file.new"; then
+                    mv "$local_mod_file.new" "$local_mod_file"
+                    chmod +x "$local_mod_file"
+                    echo -e "\e[32mModule $mod mis à jour.\e[0m"
+                else
+                    rm "$local_mod_file.new"
+                fi
+            else
+                echo -e "\e[31mÉchec de la mise à jour du module $mod.\e[0m"
+            fi
+        done
+    else
+        echo -e "\e[32mTous les modules sont déjà à jour.\e[0m"
+    fi
+
+    echo -e "\nAppuyez sur une touche pour relancer le script..."
+    read -n 1 -s
+    exec "$0"
 }
 
 ##############################
@@ -484,7 +364,7 @@ update_script() {
 
 canal_blocage() {
     if [[ "$CURRENT_CHANNEL" == "stable" && -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
-    echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
+    echo -e "\e[31mLa vE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
     SKIP_PAUSE=0
 else
     switch_channel
@@ -585,59 +465,6 @@ shutdown_wireguard() {
 ################################
 #         Debian Tools         #
 ################################
-shutdown_vm() {
-    clear
-    if ask_tech_password; then
-        echo -e "\e[1;33mExtinction de la VM...\e[0m"
-            run_as_root /sbin/poweroff
-    else
-        echo -e "\e[1;31mExtinction annulée.\e[0m"
-    fi
-}
-
-reboot_vm() {
-    clear
-    if ask_tech_password; then
-        echo -e "\e[1;33mRedémarrage de la VM...\e[0m"
-        run_as_root /sbin/reboot
-    else
-        echo -e "\e[1;31mExtinction annulée.\e[0m"
-    fi
-}
-
-rename_vm() {
-    clear
-    if ask_tech_password; then
-        read -p $'\e[1;33mEntrez le nouveau nom de la VM : \e[0m' new_name
-        if [[ -z "$new_name" ]]; then
-            echo -e "\e[1;31mNom invalide.\e[0m"
-            return 1
-        fi
-        run_as_root hostnamectl set-hostname "$new_name"
-        echo -e "\e[1;32mNom de la VM modifié avec succès en : $new_name\e[0m"
-    else
-        echo -e "\e[1;31mChangement de nom annulé.\e[0m"
-    fi
-}
-
-ssh_access() {
-    clear
-    echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
-    CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
-    CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
-    echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
-    read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
-    if [[ -n "$NEW_SSH_PORT" ]]; then
-        if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
-                sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
-                systemctl restart sshd
-            echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
-        else
-            echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
-        fi
-    fi
-}
-
 list_physical_ethernet() {
     echo "Cartes Ethernet physiques détectées :"
     for iface in /sys/class/net/*; do
@@ -778,6 +605,118 @@ configure_ip_vm() {
     fi
 }
 
+show_debian_version () {
+    clear
+    echo -e "\e[1;36m===== Version de Debian =====\e[0m"
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        echo -e "\e[1;33mNom :\e[0m $NAME"
+        echo -e "\e[1;33mVersion :\e[0m $VERSION"
+        echo -e "\e[1;33mID :\e[0m $ID"
+        echo -e "\e[1;33mVersion ID :\e[0m $VERSION_ID"
+    else
+        echo -e "\e[1;31mImpossible de déterminer la version de Debian.\e[0m"
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_disk_space () {
+    clear
+    echo -e "\e[1;36m===== Espace disque =====\e[0m"
+    df -h --output=source,size,used,avail,pcent,target | grep -v '^tmpfs\|^udev\|^overlay\|^Filesystem'
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_docker_status () {
+    clear
+    echo -e "\e[1;36m===== État de Docker =====\e[0m"
+    if systemctl is-active --quiet docker; then
+        echo -e "\e[1;32mDocker est actif.\e[0m"
+        docker ps -a --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"
+    else
+        echo -e "\e[1;31mDocker n'est pas actif.\e[0m"
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+show_system_monitor () {
+    clear
+    echo -e "\e[1;36m===== Moniteur système (btop) =====\e[0m"
+    if command -v btop >/dev/null 2>&1; then
+        btop
+    else
+        echo -e "\e[1;31mbtop n'est pas installé. Veuillez l'installer pour utiliser cette fonctionnalité.\e[0m"
+        run_as_root apt update && run_as_root apt install -y btop
+        btop
+    fi
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+update_system () {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du système =====\e[0m"
+    run_as_root apt update && run_as_root apt upgrade -y
+    echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
+    read
+}
+
+rename_vm () {
+    clear
+    current_name=$(hostname)
+    echo -e "\e[1;33mNom actuel de la VM :\e[0m $current_name"
+    read -p $'\e[1;33mEntrez le nouveau nom de la VM : \e[0m' new_name
+    if [[ -z "$new_name" ]]; then
+        echo -e "\e[1;31mNom invalide.\e[0m"
+        SKIP_PAUSE_DEBIAN=0
+        return 1
+    fi
+    run_as_root hostnamectl set-hostname "$new_name"
+    echo -e "\e[1;32mNom de la VM modifié avec succès en : $new_name\e[0m"
+}
+
+ssh_access() {
+    clear
+    echo -e "\n\e[1;36m------ Modifier le port SSH ------\e[0m"
+    CURRENT_SSH_PORT=$(grep -E '^Port ' /etc/ssh/sshd_config | head -n1 | awk '{print $2}')
+    CURRENT_SSH_PORT=${CURRENT_SSH_PORT:-22}
+    echo -e "\e[1;33mPort SSH actuel : $CURRENT_SSH_PORT\e[0m"
+    read -p $'\e[1;33mNouveau port SSH (laisser vide pour aucune modification) : \e[0m' NEW_SSH_PORT
+    if [[ -n "$NEW_SSH_PORT" ]]; then
+        if [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] && (( NEW_SSH_PORT >= 1 && NEW_SSH_PORT <= 65535 )); then
+            sed -i "s/^#\?Port .*/Port $NEW_SSH_PORT/" /etc/ssh/sshd_config
+            systemctl restart sshd
+            echo -e "\e[1;32mPort SSH modifié à $NEW_SSH_PORT. Attention, la connexion SSH peut être interrompue.\e[0m"
+        else
+            echo -e "\e[1;31mPort SSH invalide. Aucune modification appliquée.\e[0m"
+        fi
+    fi
+}
+
+reboot_vm() {
+    clear
+    echo -e "\e[1;36m===== Redémarrage de la VM =====\e[0m"
+    if ask_tech_password; then
+        run_as_root reboot
+    else
+        echo -e "\e[1;31mRedémarrage annulé.\e[0m"
+    fi
+}
+
+shutdown_vm() {
+    clear
+    echo -e "\e[1;36m===== Extinction de la VM =====\e[0m"
+    if ask_tech_password; then
+        run_as_root shutdown now
+    else
+        echo -e "\e[1;31mExtinction annulée.\e[0m"
+    fi
+}
+
+
 ################################
 #    UPDATE DOCKER COMPOSE     #
 ################################
@@ -791,15 +730,25 @@ update_wg_easy_version_only() {
         return 1
     fi
 
+    # Récupère l'ancienne version
+    local old_version
+    old_version=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
+
     # Met à jour la ligne image: dans le docker-compose.yml
     sed -i "s#image: ghcr.io/wg-easy/wg-easy:.*#image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION#" "$DOCKER_COMPOSE_FILE"
     echo "docker-compose.yml mis à jour avec la version $WG_EASY_VERSION."
 
-    # Relance le conteneur avec la nouvelle image
-    docker compose -f "$DOCKER_COMPOSE_FILE" pull
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-
-    echo "Wireguard mis à jour sans recréer la configuration."
+    if [[ "$old_version" != "$WG_EASY_VERSION" ]]; then
+        # Purge les images obsolètes et les volumes non utilisés
+        docker compose -f "$DOCKER_COMPOSE_FILE" down --rmi all --volumes --remove-orphans
+        docker compose -f "$DOCKER_COMPOSE_FILE" pull
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        echo "Wireguard mis à jour et purgé avec succès !"
+    else
+        # Si pas de changement de version, simple redémarrage
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        echo "Wireguard déjà à jour, redémarrage effectué."
+    fi
 }
 
 detect_new_wg_easy_version() {
@@ -819,42 +768,4 @@ detect_new_wg_easy_version() {
         export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
     fi
 }
-init_directories() {
-    for dir in lib config logs; do
-        [[ ! -d "$dir" ]] && mkdir "$dir"
-        if [[ ! -w "$dir" || ! -r "$dir" ]]; then
-            echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
-            exit 1
-        fi
-    done
-}
-
-bootstrap_modules() {
-    for mod in utils conf docker menu ; do
-        if [[ ! -f "lib/$mod.sh" ]]; then
-            echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-            curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-            chmod +x "lib/$mod.sh"
-        fi
-    done
-    if [[ ! -f "auto_update.sh" ]]; then
-        echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-        curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
-        chmod +x "auto_update.sh"
-    fi
-}
-
-init_channel_and_branch() {
-    if [[ -f "$CONF_FILE" ]]; then
-        SCRIPT_channel=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
-        [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
-    else
-        SCRIPT_CHANNEL="stable"
-    fi
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        BRANCH="beta"
-    else
-        BRANCH="main"
-    fi
-    export BRANCH
-}
+# Nettoyage : suppression des fonctions, variables et helpers non utilisés ou jamais appelés
