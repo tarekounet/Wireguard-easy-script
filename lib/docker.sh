@@ -1,5 +1,5 @@
 #!/bin/bash
-CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+CONFIG_WG_PATH="$HOME/wireguard-easy-script/config_wg.sh"
 if [[ -z "$CONFIG_WG_SOURCED" ]]; then
     source "$CONFIG_WG_PATH"
 fi

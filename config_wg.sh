@@ -2,7 +2,7 @@
 
 
 # Gestion du flag de premier lancement (first_run_flag)
-FIRST_RUN_DIR="/var/tmp/wireguard-script-manager"
+FIRST_RUN_DIR="/$HOME/wireguard-easy-script"
 FIRST_RUN_FLAG="$FIRST_RUN_DIR/.first_run_done"
 
 if [[ ! -d "$FIRST_RUN_DIR" ]]; then
@@ -16,8 +16,11 @@ if [[ ! -f "$FIRST_RUN_FLAG" ]]; then
     echo "Premier lancement : initialisation effectuée."
 fi
 
-# Redirige toutes les erreurs du script vers le fichier de log
-exec 2>>"logs/wg-easy-script.log"
+# # Détermine le chemin absolu du dossier du script
+# SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# mkdir -p "$SCRIPT_DIR/logs"
+# # Redirige toutes les erreurs du script vers le fichier de log
+# exec 2>>"$SCRIPT_DIR/logs/wg-easy-script.log"
 
 if [[ $EUID -eq 0 ]]; then
     # Si déjà fait, on quitte
@@ -91,8 +94,8 @@ if [[ $EUID -eq 0 ]]; then
         useradd -m -s /bin/bash -G docker "$NEWUSER"
         echo "$NEWUSER:$NEWPASS" | chpasswd
         echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
-        # Copier le script principal dans le dossier wireguard-script-manager du nouvel utilisateur
-        USER_HOME="/home/$NEWUSER/wireguard-script-manager"
+        # Copier le script principal dans le dossier wireguard-easy-script du nouvel utilisateur
+        USER_HOME="/home/$NEWUSER/wireguard-easy-script"
         mkdir -p "$USER_HOME"
         chmod u+rwX "$USER_HOME"
         cp "$0" "$USER_HOME/"
@@ -131,10 +134,10 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 # --- 1. STRUCTURE ET TÉLÉCHARGEMENT (UTILISATEUR SEULEMENT) ---
-USER_HOME="$HOME/wireguard-script-manager"
+USER_HOME="$HOME/wireguard-easy-script"
 USER_FLAG="$USER_HOME/.structure_done"
 if [[ ! -f "$USER_FLAG" ]]; then
-    mkdir -p "$HOME/wireguard-script-manager"
+    mkdir -p "$HOME/wireguard-easy-script"
     mkdir -p "$USER_HOME/lib" "$USER_HOME/config" "$USER_HOME/logs"
     cp "$(dirname "$0")/config_wg.sh" "$USER_HOME/"
     cp "$(dirname "$0")/CHANGELOG.md" "$USER_HOME/" 2>/dev/null || true
@@ -159,7 +162,7 @@ fi
 # 4. CHARGEMENT DES MODULES
 ##############################
 
-CONFIG_WG_PATH="$HOME/wireguard-script-manager/config_wg.sh"
+CONFIG_WG_PATH="$HOME/wireguard-easy-script/config_wg.sh"
 if [[ -z "$CONFIG_WG_SOURCED" ]]; then
     source "$CONFIG_WG_PATH"
 fi
