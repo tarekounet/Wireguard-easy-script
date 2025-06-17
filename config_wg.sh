@@ -9,6 +9,7 @@ if [[ $EUID -eq 0 ]]; then
             echo "2) Modifier le mot de passe d'un utilisateur"
             echo "3) Supprimer un utilisateur"
             echo "4) Lister les utilisateurs (hors comptes système)"
+            echo "5) Sélectionner un utilisateur pour éditer ou supprimer"
             echo "0) Quitter"
             read -p "Choix : " CHOIX
             case $CHOIX in
@@ -17,7 +18,16 @@ if [[ $EUID -eq 0 ]]; then
                     if id "$NEWUSER" &>/dev/null; then
                         echo "Utilisateur déjà existant."
                     else
-                        adduser "$NEWUSER"
+                        read -s -p "Mot de passe : " NEWPASS; echo
+                        useradd -m "$NEWUSER"
+                        echo "$NEWUSER:$NEWPASS" | chpasswd
+                        echo "Utilisateur $NEWUSER créé."
+                        # Télécharger le script principal dans le dossier utilisateur
+                        # Créer uniquement le dossier wireguard-script-manager dans le home
+                        su - "$NEWUSER" -c 'mkdir -p ~/wireguard-script-manager && cd ~/wireguard-script-manager && curl -fsSL -o config_wg.sh https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh && chmod +x config_wg.sh'
+                        # Ajouter le lancement auto dans .bash_profile
+                        su - "$NEWUSER" -c 'echo "~/wireguard-script-manager/config_wg.sh" >> ~/.bash_profile'
+                        echo "Script principal téléchargé et configuré pour lancement automatique à la connexion."
                     fi
                     read -n1 -r -p "Appuie sur une touche pour continuer..." _
                     ;;
@@ -41,7 +51,39 @@ if [[ $EUID -eq 0 ]]; then
                     ;;
                 4)
                     echo "Utilisateurs non système :"
-                    awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd
+                    awk -F: '($3>=1000)&&($1!="nobody"){print NR ") "$1}' /etc/passwd
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+                5)
+                    echo "Sélectionne un utilisateur :"
+                    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd)
+                    for i in "${!USERS[@]}"; do
+                        printf "%d) %s\n" $((i+1)) "${USERS[$i]}"
+                    done
+                    read -p "Numéro de l'utilisateur : " IDX
+                    IDX=$((IDX-1))
+                    if [[ $IDX -ge 0 && $IDX -lt ${#USERS[@]} ]]; then
+                        SELECTED_USER="${USERS[$IDX]}"
+                        echo "1) Modifier le mot de passe de $SELECTED_USER"
+                        echo "2) Supprimer $SELECTED_USER"
+                        echo "0) Retour"
+                        read -p "Choix : " SUBCHOIX
+                        case $SUBCHOIX in
+                            1)
+                                passwd "$SELECTED_USER"
+                                ;;
+                            2)
+                                deluser --remove-home "$SELECTED_USER"
+                                ;;
+                            0)
+                                ;;
+                            *)
+                                echo "Choix invalide."
+                                ;;
+                        esac
+                    else
+                        echo "Numéro invalide."
+                    fi
                     read -n1 -r -p "Appuie sur une touche pour continuer..." _
                     ;;
                 0)
