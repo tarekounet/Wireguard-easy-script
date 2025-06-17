@@ -22,24 +22,11 @@ CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 # S'assurer que conf.sh est chargé
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
 
-# Récupérer la valeur
-WG_EASY_VERSION=$(get_conf_value "WG_EASY_VERSION")
-[[ -z "$WG_EASY_VERSION" ]] && WG_EASY_VERSION="inconnu"
-
 ##############################
 #        VERSION MODULE      #
 ##############################
 
 DOCKER_VERSION="1.1.0"
-
-##############################
-#        LOGS DOCKER         #
-##############################
-
-log_docker_action() {
-    local msg="$1"
-    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
-}
 
 ##############################
 #   CONFIGURATION PRINCIPALE #

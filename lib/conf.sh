@@ -8,26 +8,6 @@ fi
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
-AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
-##############################
-#        VERSION MODULE      #
-##############################
-
-CONF_VERSION="1.1.0"
-
-##############################
-#        LOGS CONF           #
-##############################
-log_config() {
-    local msg="$1"
-    echo "$(date '+%F %T') [CONFIG] $msg" >> "$CONFIG_LOG"
-}
-
-log_auth() {
-    local msg="$1"
-    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
-}
-
 ##############################
 #   GESTION DE LA CONF       #
 ##############################
@@ -52,7 +32,7 @@ get_conf_value() {
 ##############################
 
 set_tech_password() {
-    local PASS1 PASS2 HASH
+    local PASS1 PASS2 HASH SALT
     while true; do
         read -sp "Entrez le nouveau mot de passe technique : " PASS1
         echo
@@ -63,33 +43,33 @@ set_tech_password() {
         elif [[ "$PASS1" != "$PASS2" ]]; then
             msg_error "Les mots de passe ne correspondent pas."
         else
-            HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS1")
+            # Générer un sel aléatoire
+            SALT=$(head -c 8 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 8)
+            HASH=$(openssl passwd -6 -salt "$SALT" "$PASS1")
             set_conf_value "EXPECTED_HASH" "$HASH"
+            set_conf_value "HASH_SALT" "$SALT"
             msg_success "Mot de passe technique enregistré avec succès."
-            log_action "Mot de passe technique modifié"
             break
         fi
     done
 }
 
 ask_tech_password() {
-    local EXPECTED_HASH
+    local EXPECTED_HASH HASH_SALT
     EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-    if [[ -z "$EXPECTED_HASH" ]]; then
-        msg_error "Le mot de passe technique est introuvable dans le fichier de configuration."
-        log_auth "Échec : hash attendu introuvable"
+    HASH_SALT=$(get_conf_value "HASH_SALT")
+    if [[ -z "$EXPECTED_HASH" || -z "$HASH_SALT" ]]; then
+        msg_error "Le mot de passe technique ou le sel est introuvable dans le fichier de configuration."
         return 1
     fi
     read -sp $'\e[1;33mEntrez le mot de passe technique : \e[0m' PASS
     echo
     local ENTERED_HASH
-    ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+    ENTERED_HASH=$(openssl passwd -6 -salt "$HASH_SALT" "$PASS")
     if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
         msg_error "Mot de passe incorrect."
-        log_auth "Échec : mot de passe incorrect"
         return 1
     fi
-    log_auth "Succès : authentification réussie"
     return 0
 }
 

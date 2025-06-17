@@ -5,12 +5,6 @@ if [[ "$(basename -- "$0")" == "menu.sh" ]]; then
 fi
 
 ##############################
-#        VERSION MODULE      #
-##############################
-
-MENU_VERSION="1.4.0"
-
-##############################
 #         sources            #
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +16,10 @@ WG_CONF_DIR="$DOCKER_WG_DIR/conf"
 # S'assurer que le dossier existe
 mkdir -p "$WG_CONF_DIR"
 
+VERSION_FILE="$SCRIPT_DIR/../version.txt"
+SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
+LATEST_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt" | head -n1)
+
 ##############################
 #      MENU PRINCIPAL        #
 ##############################
@@ -31,10 +29,52 @@ main_menu() {
         detect_new_wg_easy_version
         clear
         show_logo_ascii
+        echo -e "\e[1;36mVersion du script :\e[0m $SCRIPT_VERSION"
+        # Comparer les versions pour n'afficher la mise à jour que si la version en ligne est supérieure
+        version_gt() {
+            [ "$1" = "$2" ] && return 1
+            [ "$(printf '%s\n%s' "$1" "$2" | sort -V | tail -n1)" = "$1" ]
+        }
+        if [[ -n "$LATEST_VERSION" ]] && version_gt "$LATEST_VERSION" "$SCRIPT_VERSION"; then
+            echo -e "\e[33mUne nouvelle version du script est disponible : $LATEST_VERSION\e[0m"
+        fi
 
         # === INFOS MISES À JOUR ===
-        if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
+        WG_CONF_FILE="$SCRIPT_DIR/../config/wg-easy.conf"
+        if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
+            # docker-compose absent, afficher la version du fichier de conf
+            if [[ -f "$WG_CONF_FILE" ]]; then
+            WG_EASY_VERSION_CONF=$(grep '^WG_EASY_VERSION=' "$WG_CONF_FILE" | cut -d'"' -f2)
+            echo -e "\e[36mVersion actuelle du container Wireguard : $WG_EASY_VERSION_CONF\e[0m"
+            else
+            # Si le fichier de conf est absent, essayer de récupérer la version depuis le docker-compose.yml
+            if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+                WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
+                echo -e "\e[36mVersion du container Wireguard : $WG_EASY_VERSION_LOCAL (issue de docker-compose.yml)\e[0m"
+            else
+                echo -e "\e[36mVersion du container Wireguard : inconnue (fichier de conf absent)\e[0m"
+            fi
+            fi
+        else
+            # docker-compose présent, vérifier la nouvelle version
+            if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
             echo -e "\e[35m🐳 Nouvelle version du container disponible : $NEW_WG_EASY_VERSION (actuelle : $CURRENT_WG_EASY_VERSION)\e[0m"
+            else
+            # Afficher la version actuelle du container depuis le fichier de conf si présent, sinon la version locale
+            WG_CONF_FILE="$SCRIPT_DIR/../config/wg-easy.conf"
+            if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+                WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
+                echo -e "\e[36mVersion locale du container Wireguard : $WG_EASY_VERSION_LOCAL\e[0m"
+            elif [[ -f "$WG_CONF_FILE" ]]; then
+                WG_EASY_VERSION_CONF=$(grep '^WG_EASY_VERSION=' "$WG_CONF_FILE" | cut -d'"' -f2)
+                echo -e "\e[36mVersion du container Wireguard (conf) : $WG_EASY_VERSION_CONF\e[0m"
+            elif [[ -f "$WG_EASY_VERSION_FILE" ]]; then
+                WG_EASY_VERSION_LOCAL_FILE=$(head -n1 "$WG_EASY_VERSION_FILE")
+                echo -e "\e[36mVersion du container Wireguard (WG_EASY_VERSION local) : $WG_EASY_VERSION_LOCAL_FILE\e[0m"
+            else
+                echo -e "\e[36mVersion du container Wireguard : inconnue\e[0m"
+            fi
+            fi
         fi
         # === INFOS CONTAINER & CONFIG ===
         if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then

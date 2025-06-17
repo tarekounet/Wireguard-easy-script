@@ -115,20 +115,17 @@ done
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
 CONF_FILE="config/wg-easy.conf"
-AUTO_UPDATE_CONF="config/auto_update.conf"
 VERSION_FILE="version.txt"
+SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
 SCRIPT_BACKUP="config_wg.sh.bak"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
-UPDATE_LOG="$LOG_DIR/auto_update.log"
-DOCKER_LOG="$LOG_DIR/docker-actions.log"
-AUTH_LOG="$LOG_DIR/auth.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 INSTALL_LOG="$LOG_DIR/install.log"
 DOCKER_WG_DIR="$HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/conf"
-SCRIPT_BASE_VERSION_INIT="1.7.0"
+SCRIPT_BASE_VERSION_INIT="1.8.5"
 
 export GITHUB_USER
 export GITHUB_REPO
@@ -188,11 +185,11 @@ WG_EASY_VERSION=$(curl -fsSL "$WG_EASY_VERSION_URL" | head -n1)
 if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
     set_tech_password
+    EXPECTED_HASH="$(get_conf_value "EXPECTED_HASH")"
+    HASH_SALT="$(get_conf_value "HASH_SALT")"
     cat > "$CONF_FILE" <<EOF
-SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
-EXPECTED_HASH="$(get_conf_value "EXPECTED_HASH")"
-BETA_CONFIRMED="0"
-RAZ="1"
+EXPECTED_HASH="$EXPECTED_HASH"
+HASH_SALT="$HASH_SALT"
 WG_EASY_VERSION="$WG_EASY_VERSION"
 EOF
     msg_success "Fichier de configuration créé avec succès."
@@ -201,24 +198,20 @@ fi
 # 3. Mise à jour de la version dans la conf à chaque lancement
 set_conf_value "WG_EASY_VERSION" "$WG_EASY_VERSION"
 
-# verification du mot de passe technique
+# Vérification du mot de passe technique uniquement si le hash est encore vide
 EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-while [[ -z "$EXPECTED_HASH" ]]; do
+if [[ -z "$EXPECTED_HASH" ]]; then
     msg_warn "Aucun mot de passe technique enregistré. Veuillez en définir un."
     set_tech_password
-    EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-done
+fi
 ##############################
 #           LOGS             #
 ##############################
 
-echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
-echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
-echo "$(date '+%F %T') [UPDATE] Nouvelle version détectée : $NEW_VERSION" >> "$LOG_FILE"
+# Suppression des écritures dans les fichiers de logs
 
 ##############################
 #   LANCEMENT DU SCRIPT      #
 ##############################
 
-check_updates
 main_menu

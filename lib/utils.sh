@@ -5,12 +5,6 @@ if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
 fi
 
 ##############################
-#        VERSION MODULE      #
-##############################
-
-UTILS_VERSION="1.4.0"
-
-##############################
 #        acces ROOT          #
 ##############################
 
@@ -20,35 +14,6 @@ run_as_root() {
     else
         "$@"
     fi
-}
-
-###############################
-#         LOGS ACTION         #
-###############################
-LOG_FILE="$SCRIPT_DIR/logs/wg-easy-script.log"
-ERROR_LOG="$SCRIPT_DIR/logs/error.log"
-INSTALL_LOG="$SCRIPT_DIR/logs/install.log"
-DOCKER_LOG="$SCRIPT_DIR/logs/docker-actions.log"
-AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
-
-log_action() {
-    local msg="$1"
-    echo "$(date '+%F %T') [ACTION] $msg" >> "$LOG_FILE"
-}
-
-log_error() {
-    local msg="$1"
-    echo "$(date '+%F %T') [ERROR] $msg" >> "$ERROR_LOG"
-}
-
-log_install() {
-    local msg="$1"
-    echo "$(date '+%F %T') [INSTALL] $msg" >> "$INSTALL_LOG"
-}
-
-log_docker() {
-    local msg="$1"
-    echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
 }
 
 ###############################
@@ -179,9 +144,7 @@ change_wg_easy_web_port() {
 #         LOGGING            #
 ##############################
 
-log_action() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/wg-easy-script.log
-}
+# Suppression des fonctions et appels de log inutiles
 
 ##############################
 #     GESTION DES VERSIONS   #
@@ -909,3 +872,5 @@ DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/conf"
 # S'assurer que le dossier existe
 mkdir -p "$WG_CONF_DIR"
+
+# Nettoyage : suppression des variables de log, version, etc. inutilisées
