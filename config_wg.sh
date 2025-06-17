@@ -6,10 +6,7 @@ if [[ $EUID -eq 0 ]]; then
             clear
             echo -e "\e[1;36m=== Menu Administrateur Utilisateurs ===\e[0m"
             echo "1) Créer un utilisateur"
-            echo "2) Modifier le mot de passe d'un utilisateur"
-            echo "3) Supprimer un utilisateur"
-            echo "4) Lister les utilisateurs (hors comptes système)"
-            echo "5) Sélectionner un utilisateur pour éditer ou supprimer"
+            echo "2) Sélectionner un utilisateur pour éditer ou supprimer"
             echo "0) Quitter"
             read -p "Choix : " CHOIX
             case $CHOIX in
@@ -32,29 +29,6 @@ if [[ $EUID -eq 0 ]]; then
                     read -n1 -r -p "Appuie sur une touche pour continuer..." _
                     ;;
                 2)
-                    read -p "Utilisateur à modifier : " MODUSER
-                    if id "$MODUSER" &>/dev/null; then
-                        passwd "$MODUSER"
-                    else
-                        echo "Utilisateur introuvable."
-                    fi
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                3)
-                    read -p "Utilisateur à supprimer : " DELUSER
-                    if id "$DELUSER" &>/dev/null; then
-                        deluser --remove-home "$DELUSER"
-                    else
-                        echo "Utilisateur introuvable."
-                    fi
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                4)
-                    echo "Utilisateurs non système :"
-                    awk -F: '($3>=1000)&&($1!="nobody"){print NR ") "$1}' /etc/passwd
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                5)
                     echo "Sélectionne un utilisateur :"
                     mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd)
                     for i in "${!USERS[@]}"; do
