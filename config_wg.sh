@@ -115,7 +115,7 @@ echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
 echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
 echo "$(date '+%F %T') [UPDATE] Nouvelle version détectée : $NEW_VERSION" >> "$LOG_FILE"
 
-# === MENU SPÉCIAL ROOT POUR LA GESTION DES UTILISATEURS ===
+# === MENU SPÉCIAL ROOT AUTONOME POUR LA GESTION DES UTILISATEURS ===
 if [[ $EUID -eq 0 ]]; then
     user_admin_menu() {
         while true; do
