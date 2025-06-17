@@ -19,12 +19,16 @@ if [[ $EUID -eq 0 ]]; then
                         useradd -m "$NEWUSER"
                         echo "$NEWUSER:$NEWPASS" | chpasswd
                         echo "Utilisateur $NEWUSER créé."
-                        # Télécharger le script principal dans le dossier utilisateur
-                        # Créer uniquement le dossier wireguard-script-manager dans le home
-                        su - "$NEWUSER" -c 'mkdir -p ~/wireguard-script-manager && cd ~/wireguard-script-manager && curl -fsSL -o config_wg.sh https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh && chmod +x config_wg.sh'
+                        # Télécharger tout le dépôt dans le dossier wireguard-script-manager du nouvel utilisateur
+                        su - "$NEWUSER" -c 'mkdir -p ~/wireguard-script-manager && cd ~/wireguard-script-manager && git clone https://github.com/tarekounet/Wireguard-easy-script.git . || (curl -fsSL -o config_wg.sh https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh && chmod +x config_wg.sh)'
+                        # Télécharger le dossier lib si absent
+                        su - "$NEWUSER" -c 'if [[ ! -d ~/wireguard-script-manager/lib ]]; then mkdir -p ~/wireguard-script-manager/lib; for mod in utils conf docker menu; do curl -fsSL -o ~/wireguard-script-manager/lib/$mod.sh https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib/$mod.sh; chmod +x ~/wireguard-script-manager/lib/$mod.sh; done; fi'
                         # Ajouter le lancement auto dans .bash_profile
                         su - "$NEWUSER" -c 'echo "~/wireguard-script-manager/config_wg.sh" >> ~/.bash_profile'
-                        echo "Script principal téléchargé et configuré pour lancement automatique à la connexion."
+                        # Attribuer tous les droits à l'utilisateur sur wireguard-script-manager
+                        chown -R "$NEWUSER":"$NEWUSER" "/home/$NEWUSER/wireguard-script-manager"
+                        chmod -R u+rwx "/home/$NEWUSER/wireguard-script-manager"
+                        echo "Dépôt complet téléchargé, modules lib installés, droits attribués et script principal configuré pour lancement automatique à la connexion."
                     fi
                     read -n1 -r -p "Appuie sur une touche pour continuer..." _
                     ;;
