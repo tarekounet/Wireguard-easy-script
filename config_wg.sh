@@ -1,4 +1,63 @@
 #!/bin/bash
+# === MENU SPÉCIAL ROOT AUTONOME POUR LA GESTION DES UTILISATEURS ===
+if [[ $EUID -eq 0 ]]; then
+    user_admin_menu() {
+        while true; do
+            clear
+            echo -e "\e[1;36m=== Menu Administrateur Utilisateurs ===\e[0m"
+            echo "1) Créer un utilisateur"
+            echo "2) Modifier le mot de passe d'un utilisateur"
+            echo "3) Supprimer un utilisateur"
+            echo "4) Lister les utilisateurs (hors comptes système)"
+            echo "0) Quitter"
+            read -p "Choix : " CHOIX
+            case $CHOIX in
+                1)
+                    read -p "Nom du nouvel utilisateur : " NEWUSER
+                    if id "$NEWUSER" &>/dev/null; then
+                        echo "Utilisateur déjà existant."
+                    else
+                        adduser "$NEWUSER"
+                    fi
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+                2)
+                    read -p "Utilisateur à modifier : " MODUSER
+                    if id "$MODUSER" &>/dev/null; then
+                        passwd "$MODUSER"
+                    else
+                        echo "Utilisateur introuvable."
+                    fi
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+                3)
+                    read -p "Utilisateur à supprimer : " DELUSER
+                    if id "$DELUSER" &>/dev/null; then
+                        deluser --remove-home "$DELUSER"
+                    else
+                        echo "Utilisateur introuvable."
+                    fi
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+                4)
+                    echo "Utilisateurs non système :"
+                    awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+                0)
+                    exit 0
+                    ;;
+                *)
+                    echo "Choix invalide."
+                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
+                    ;;
+            esac
+        done
+    }
+    user_admin_menu
+    exit 0
+fi
+
 # Auto-bootstrap des modules si le dossier lib/ ou des modules sont manquants
 
 for mod in utils conf docker menu ; do
@@ -114,65 +173,6 @@ done
 echo "$(date '+%F %T') [INFO] Script principal lancé" >> "$LOG_FILE"
 echo "$(date '+%F %T') [CONF] Fichier de configuration créé" >> "$CONFIG_LOG"
 echo "$(date '+%F %T') [UPDATE] Nouvelle version détectée : $NEW_VERSION" >> "$LOG_FILE"
-
-# === MENU SPÉCIAL ROOT AUTONOME POUR LA GESTION DES UTILISATEURS ===
-if [[ $EUID -eq 0 ]]; then
-    user_admin_menu() {
-        while true; do
-            clear
-            echo -e "\e[1;36m=== Menu Administrateur Utilisateurs ===\e[0m"
-            echo "1) Créer un utilisateur"
-            echo "2) Modifier le mot de passe d'un utilisateur"
-            echo "3) Supprimer un utilisateur"
-            echo "4) Lister les utilisateurs (hors comptes système)"
-            echo "0) Quitter"
-            read -p "Choix : " CHOIX
-            case $CHOIX in
-                1)
-                    read -p "Nom du nouvel utilisateur : " NEWUSER
-                    if id "$NEWUSER" &>/dev/null; then
-                        echo "Utilisateur déjà existant."
-                    else
-                        adduser "$NEWUSER"
-                    fi
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                2)
-                    read -p "Utilisateur à modifier : " MODUSER
-                    if id "$MODUSER" &>/dev/null; then
-                        passwd "$MODUSER"
-                    else
-                        echo "Utilisateur introuvable."
-                    fi
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                3)
-                    read -p "Utilisateur à supprimer : " DELUSER
-                    if id "$DELUSER" &>/dev/null; then
-                        deluser --remove-home "$DELUSER"
-                    else
-                        echo "Utilisateur introuvable."
-                    fi
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                4)
-                    echo "Utilisateurs non système :"
-                    awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-                0)
-                    exit 0
-                    ;;
-                *)
-                    echo "Choix invalide."
-                    read -n1 -r -p "Appuie sur une touche pour continuer..." _
-                    ;;
-            esac
-        done
-    }
-    user_admin_menu
-    exit 0
-fi
 
 ##############################
 #   LANCEMENT DU SCRIPT      #
