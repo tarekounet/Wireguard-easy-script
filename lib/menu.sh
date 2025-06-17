@@ -16,6 +16,11 @@ MENU_VERSION="1.4.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/utils.sh"
 
+DOCKER_WG_DIR="$HOME/docker-wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
+WG_CONF_DIR="$DOCKER_WG_DIR/conf"
+# S'assurer que le dossier existe
+mkdir -p "$WG_CONF_DIR"
 
 ##############################
 #      MENU PRINCIPAL        #
@@ -26,30 +31,10 @@ main_menu() {
         detect_new_wg_easy_version
         clear
         show_logo_ascii
-        CURRENT_CHANNEL=$(get_conf_value "SCRIPT_CHANNEL")
-
-        echo -e "\e[1;36mCanal actuel du script:\e[0m"
-        if [[ "$CURRENT_CHANNEL" == "stable" ]]; then
-            echo -e "\e[32m[STABLE 🟢]\e[0m"
-        elif [[ "$CURRENT_CHANNEL" == "beta" ]]; then
-            echo -e "\e[33m[BETA 🟡]\e[0m"
-        else
-            echo -e "\e[31m[INCONNU ❓]\e[0m"
-        fi
 
         # === INFOS MISES À JOUR ===
-        if [[ -n "$VERSION_STABLE_CONF" ]]; then
-            if version_gt "$VERSION_STABLE_CONF" "$VERSION_LOCAL"; then
-                echo -e "\e[33mUne nouvelle version STABLE est disponible : $VERSION_STABLE_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-            fi
-        fi
-        if [[ "$CURRENT_CHANNEL" == "beta" && -n "$VERSION_BETA_CONF" ]]; then
-            if version_gt "$VERSION_BETA_CONF" "$VERSION_LOCAL"; then
-                echo -e "\e[35mUne nouvelle version BETA est disponible : $VERSION_BETA_CONF (actuelle : $VERSION_LOCAL)\e[0m"
-            fi
-        fi
-            if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
-                echo -e "\e[35m🐳 Nouvelle version du container disponible : $NEW_WG_EASY_VERSION (actuelle : $CURRENT_WG_EASY_VERSION)\e[0m"
+        if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
+            echo -e "\e[35m🐳 Nouvelle version du container disponible : $NEW_WG_EASY_VERSION (actuelle : $CURRENT_WG_EASY_VERSION)\e[0m"
         fi
         # === INFOS CONTAINER & CONFIG ===
         if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
@@ -78,10 +63,6 @@ main_menu() {
             *)
                 if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
                 echo -e "\e[31m❌ Wireguard n'est pas actif\e[0m"
-                echo -e "\e[1;33m📋 Derniers logs Wireguard :\e[0m"
-                docker logs --tail 10 wg-easy 2>&1 | while read -r line; do
-                    echo -e "\e[0;37m> $line\e[0m"
-                done
                 LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
                 if [[ "$LAST_EXIT_CODE" != "0" ]]; then
                     echo -e "\e[31m⚠️  Échec du dernier lancement (Code : $LAST_EXIT_CODE)\e[0m\n"

@@ -24,22 +24,16 @@ DOCKER_LOG="$LOG_DIR/docker-actions.log"
 AUTH_LOG="$LOG_DIR/auth.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 INSTALL_LOG="$LOG_DIR/install.log"
-DOCKER_COMPOSE_DIR="/mnt/wireguard"
-DOCKER_COMPOSE_FILE="$DOCKER_COMPOSE_DIR/docker-compose.yml"
-SCRIPT_CHANNEL="stable"
+DOCKER_WG_DIR="$HOME/docker-wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
+WG_CONF_DIR="$DOCKER_WG_DIR/conf"
 SCRIPT_BASE_VERSION_INIT="1.7.0"
 
 export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
 
-# Détecte le canal si déjà présent dans la conf
-if [[ -f "$CONF_FILE" ]]; then
-    SCRIPT_CHANNEL=$(grep '^SCRIPT_CHANNEL=' "$CONF_FILE" | cut -d'"' -f2)
-    [[ -z "$SCRIPT_CHANNEL" ]] && SCRIPT_CHANNEL="stable"
-fi
-
-BRANCH="${SCRIPT_CHANNEL:-main}"
+BRANCH="main"
 
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
@@ -94,7 +88,6 @@ if [[ ! -f "$CONF_FILE" ]]; then
     msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
     set_tech_password
     cat > "$CONF_FILE" <<EOF
-SCRIPT_CHANNEL="$SCRIPT_CHANNEL"
 SCRIPT_BASE_VERSION="$SCRIPT_BASE_VERSION_INIT"
 EXPECTED_HASH="$(get_conf_value "EXPECTED_HASH")"
 BETA_CONFIRMED="0"

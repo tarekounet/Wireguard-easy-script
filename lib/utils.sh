@@ -51,10 +51,6 @@ log_docker() {
     echo "$(date '+%F %T') [DOCKER] $msg" >> "$DOCKER_LOG"
 }
 
-log_auth() {
-    local msg="$1"
-    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
-}
 ###############################
 #       CENTRAGE BLOCK        # 
 ###############################
@@ -207,12 +203,8 @@ version_gt() {
 }
 
 get_github_branch() {
-    # Utilise la variable globale SCRIPT_CHANNEL
-    if [[ "$SCRIPT_CHANNEL" == "beta" ]]; then
-        echo "beta"
-    else
-        echo "main"
-    fi
+    # Suppression de la gestion des canaux, on ne garde que le main
+    echo "main"
 }
 
 get_remote_module_version() {
@@ -266,16 +258,6 @@ show_modules_versions_fancy() {
     done
     echo -e "\n\e[1;33mAppuyez sur une touche pour revenir au menu...\e[0m"
     read
-}
-
-show_changelog() {
-    clear
-    if [[ -f "CHANGELOG.md" ]]; then
-        less -R "CHANGELOG.md"
-    else
-        echo -e "\e[31mAucun changelog trouvé.\e[0m"
-        sleep 2
-    fi
 }
 
 ##############################
@@ -548,14 +530,83 @@ update_script() {
 #    CHANGEMENT DE CANAL     #
 ##############################
 
-canal_blocage() {
-    if [[ "$CURRENT_CHANNEL" == "stable" && -n "$VERSION_STABLE_CONF" && -n "$VERSION_BETA_CONF" && "$VERSION_STABLE_CONF" > "$VERSION_BETA_CONF" ]]; then
-    echo -e "\e[31mLa version STABLE est plus récente que la version BETA. Passage au canal BETA interdit.\e[0m"
-    SKIP_PAUSE=0
-else
-    switch_channel
-fi
+switch_channel() {
+    local new_channel url
+    if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
+        EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
+        read -sp $'\e[1;33mEntrez le mot de passe technique pour passer en beta : \e[0m' PASS
+        echo
+        ENTERED_HASH=$(openssl passwd -6 -salt Qw8n0Qw8 "$PASS")
+        if [[ "$ENTERED_HASH" != "$EXPECTED_HASH" ]]; then
+            echo -e "\e[1;31mMot de passe incorrect. Passage en beta annulé.\e[0m"
+            sleep 2
+            return
+        fi
+        echo -e "\e[1;33m⚠️  Vous allez passer sur le canal beta. Ce canal peut contenir des fonctionnalités instables ou expérimentales.\e[0m"
+        read -p $'\e[1;33mConfirmez-vous vouloir passer en beta et accepter les risques ? (o/N) : \e[0m' CONFIRM_BETA
+        if [[ "$CONFIRM_BETA" =~ ^[oO]$ ]]; then
+            new_channel="beta"
+        else
+            echo -e "\e[1;33mChangement annulé. Retour au menu principal.\e[0m"
+            sleep 1
+            return
+        fi
+    else
+        new_channel="stable"
+    fi
+
+    set_conf_value "SCRIPT_CHANNEL" "$new_channel"
+    set_conf_value "BETA_CONFIRMED" $([[ "$new_channel" == "beta" ]] && echo "1" || echo "0")
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${new_channel}/config_wg.sh"
+
+    if curl -fsSL "$url" -o "$0.new"; then
+        mv "$0.new" "$0"
+        chmod +x "$0"
+        if [[ "$new_channel" == "beta" ]]; then
+            echo -e "\e[1;35mLe script beta a été téléchargé. Redémarrage...\e[0m"
+        else
+            echo -e "\e[1;32mLe script stable a été téléchargé. Redémarrage...\e[0m"
+        fi
+        sleep 1
+        exec "$0"
+    else
+        echo -e "\e[1;31mErreur lors du téléchargement du script ($new_channel).\e[0m"
+        sleep 2
+    fi
 }
+
+##############################
+#   MISE À JOUR DU SCRIPT    #
+##############################
+
+update_script() {
+    clear
+    echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
+    local branch="${SCRIPT_CHANNEL:-main}"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+
+    if curl -fsSL "$update_url" -o "$0.new"; then
+        if ! cmp -s "$0" "$0.new"; then
+            cp "$0" "$SCRIPT_BACKUP"
+            mv "$0.new" "$0"
+            chmod +x "$0"
+            echo -e "\e[32mScript mis à jour avec succès !\e[0m"
+            echo -e "\nAppuyez sur une touche pour relancer le script..."
+            read -n 1 -s
+            exec "$0"
+        else
+            rm "$0.new"
+            echo -e "\e[33mAucune mise à jour disponible.\e[0m"
+        fi
+    else
+        echo -e "\e[31mLa mise à jour du script a échoué.\e[0m"
+    fi
+}
+
+##############################
+#    CHANGEMENT DE CANAL     #
+##############################
+
 switch_channel() {
     local new_channel url
     if [[ "$SCRIPT_CHANNEL" == "stable" ]]; then
@@ -852,3 +903,9 @@ detect_new_wg_easy_version() {
         export CURRENT_WG_EASY_VERSION="$WG_EASY_VERSION_LOCAL"
     fi
 }
+
+DOCKER_WG_DIR="$HOME/docker-wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
+WG_CONF_DIR="$DOCKER_WG_DIR/conf"
+# S'assurer que le dossier existe
+mkdir -p "$WG_CONF_DIR"
