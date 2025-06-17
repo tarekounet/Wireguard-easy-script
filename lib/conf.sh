@@ -8,11 +8,25 @@ fi
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+AUTH_LOG="$SCRIPT_DIR/logs/auth.log"
 ##############################
 #        VERSION MODULE      #
 ##############################
 
 CONF_VERSION="1.1.0"
+
+##############################
+#        LOGS CONF           #
+##############################
+log_config() {
+    local msg="$1"
+    echo "$(date '+%F %T') [CONFIG] $msg" >> "$CONFIG_LOG"
+}
+
+log_auth() {
+    local msg="$1"
+    echo "$(date '+%F %T') [AUTH] $msg" >> "$AUTH_LOG"
+}
 
 ##############################
 #   GESTION DE LA CONF       #
