@@ -174,7 +174,7 @@ get_remote_module_version() {
     local module="$1"
     local branch url version
     branch=$(get_github_branch)
-    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/${module}"
+    url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/lib/${module}"
     version=$(curl -fsSL "$url" | grep -m1 -E 'VERSION="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
     if [[ -z "$version" ]]; then
         echo "inconnue"
@@ -246,7 +246,7 @@ check_updates() {
     done
 
     # Vérification du script principal
-    remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
+    remote_script_version=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/config_wg.sh" | grep -m1 -E 'SCRIPT_BASE_VERSION_INIT="?([0-9.]+)"?' | grep -oE '[0-9]+\.[0-9.]+')
     if [[ -n "$remote_script_version" && "$SCRIPT_BASE_VERSION_INIT" != "$remote_script_version" ]]; then
         SCRIPT_UPDATE_AVAILABLE=1
     fi
@@ -261,7 +261,7 @@ update_modules() {
         local_var=$(echo "${mod^^}_VERSION")
         local_version="${!local_var}"
         if [[ -n "$remote_version" && "$local_version" != "$remote_version" ]]; then
-            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/lib/$mod.sh"; then
+            if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/lib/$mod.sh"; then
                 msg_success "Module \"$mod\" mis à jour (v$local_version → v$remote_version)"
                 updated=1
             else
@@ -392,7 +392,7 @@ update_script() {
     clear
     echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
     local branch="${SCRIPT_CHANNEL:-main}"
-    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/config_wg.sh"
 
     if curl -fsSL "$update_url" -o "$0.new"; then
         if ! cmp -s "$0" "$0.new"; then
@@ -469,7 +469,7 @@ update_script() {
     clear
     echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
     local branch="${SCRIPT_CHANNEL:-main}"
-    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/config_wg.sh"
 
     if curl -fsSL "$update_url" -o "$0.new"; then
         if ! cmp -s "$0" "$0.new"; then
@@ -546,7 +546,7 @@ update_script() {
     clear
     echo -e "\e[1;36m===== Mise à jour du script =====\e[0m"
     local branch="${SCRIPT_CHANNEL:-main}"
-    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/config_wg.sh"
+    local update_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/config_wg.sh"
 
     if curl -fsSL "$update_url" -o "$0.new"; then
         if ! cmp -s "$0" "$0.new"; then
@@ -852,7 +852,7 @@ update_wg_easy_version_only() {
 
 detect_new_wg_easy_version() {
     branch=$(get_github_branch)
-    WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${branch}/WG_EASY_VERSION" | head -n1)
+    WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/WG_EASY_VERSION" | head -n1)
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
     else

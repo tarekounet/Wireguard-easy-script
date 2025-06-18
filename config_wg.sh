@@ -11,45 +11,88 @@ if [[ $EUID -eq 0 ]]; then
             read -p "Choix : " CHOIX
             case $CHOIX in
                 1)
-                    read -p "Nom du nouvel utilisateur : " NEWUSER
-                    if id "$NEWUSER" &>/dev/null; then
-                        echo "Utilisateur déjà existant."
-                    else
-                        read -s -p "Mot de passe : " NEWPASS; echo
-                        # Création de l'utilisateur et définition du mot de passe
-                        useradd -m -s /bin/bash "$NEWUSER"
-                        echo "$NEWUSER:$NEWPASS" | chpasswd
-                        echo "Utilisateur $NEWUSER créé."
-
-                        # Préparer le dossier et télécharger les scripts nécessaires
-                        su - "$NEWUSER" -c '
-                          BASE=~/wireguard-script-manager
-                          mkdir -p "$BASE/lib"
-                          cd "$BASE"
-                          curl -fsSLO https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh
-                          for mod in utils conf docker menu; do
-                            curl -fsSL -o "lib/${mod}.sh" "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib/${mod}.sh"
-                          done
-                          chmod +x config_wg.sh
-                        '
-
-                        # Ajout du script de démarrage dans .profile
-                        su - "$NEWUSER" -c '
-cat <<'"'EOF'"' >> ~/.profile
-BASE=~/wireguard-script-manager
-mkdir -p "\$BASE/lib"
-cd "\$BASE"
-for mod in utils conf docker menu; do
-  if [ ! -f "lib/\${mod}.sh" ]; then
-    curl -fsSL -o "lib/\${mod}.sh" "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib/\${mod}.sh"
-  fi
-done
-./config_wg.sh
-EOF
-                        '
-
-                        echo "Script principal et modules téléchargés/configurés pour lancement automatique à la connexion."
-                    fi
+while true; do
+        read -p "Entrez le nom du nouvel utilisateur : " NEWUSER
+        if [[ -z "$NEWUSER" || ${#NEWUSER} -lt 2 ]]; then
+            echo "Nom invalide. 2 caractères minimum."
+            continue
+        elif id "$NEWUSER" &>/dev/null; then
+            echo "Ce nom existe déjà. Veuillez en choisir un autre."
+            continue
+        fi
+        while true; do
+            read -s -p "Entrez le mot de passe (8 caractères mini) : " NEWPASS
+            echo
+            read -s -p "Confirmez le mot de passe : " NEWPASS2
+            echo
+            if [[ ${#NEWPASS} -lt 8 ]]; then
+                echo "Mot de passe trop court."
+            elif [[ "$NEWPASS" != "$NEWPASS2" ]]; then
+                echo "Les mots de passe ne correspondent pas."
+            else
+                break
+            fi
+        done
+        useradd -m -s /bin/bash -G docker "$NEWUSER"
+        echo "$NEWUSER:$NEWPASS" | chpasswd
+        echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
+        USER_HOME="/home/$NEWUSER/wireguard-script-manager"
+        mkdir -p "$USER_HOME"
+        chmod u+rwX "$USER_HOME"
+        # Télécharger tout le projet depuis GitHub et le copier dans le dossier wireguard-script-manager de l'utilisateur
+        read -p "Souhaitez-vous télécharger et copier tout le projet GitHub dans wireguard-script-manager de l'utilisateur ? (o/N) : " DL_ALL
+        if [[ "$DL_ALL" =~ ^[oO]$ ]]; then
+            BRANCH="main"  # ou récupère la branche depuis la conf si besoin
+            TMP_UPDATE_DIR="/tmp/wg-easy-usercopy"
+            rm -rf "$TMP_UPDATE_DIR"
+            mkdir -p "$TMP_UPDATE_DIR"
+            ZIP_URL="https://github.com/$GITHUB_USER/$GITHUB_REPO/archive/refs/heads/${BRANCH}.zip"
+            curl -fsSL "$ZIP_URL" -o "$TMP_UPDATE_DIR/update.zip"
+            unzip -q "$TMP_UPDATE_DIR/update.zip" -d "$TMP_UPDATE_DIR"
+            EXTRACTED_DIR=$(find "$TMP_UPDATE_DIR" -maxdepth 1 -type d -name "$GITHUB_REPO-*")
+            if [[ -d "$EXTRACTED_DIR" ]]; then
+            # Copier uniquement les fichiers nécessaires au fonctionnement du script
+            cp -r "$EXTRACTED_DIR/lib" "$USER_HOME/"
+            cp "$EXTRACTED_DIR/config_wg.sh" "$USER_HOME/"
+            cp "$EXTRACTED_DIR/version.txt" "$USER_HOME/" 2>/dev/null || true
+            chmod -R +x "$USER_HOME/lib"/*.sh 2>/dev/null
+            chown -R "$NEWUSER:$NEWUSER" "$USER_HOME"
+            echo -e "\e[1;32mFichiers nécessaires copiés dans $USER_HOME.\e[0m"
+            else
+            echo -e "\e[1;31mErreur lors de l'extraction du projet GitHub.\e[0m"
+            fi
+            rm -rf "$TMP_UPDATE_DIR"
+        else
+            cp "$0" "$USER_HOME/"
+            chown "$NEWUSER:$NEWUSER" "$USER_HOME/$(basename "$0")"
+        fi
+        # Proposer le lancement auto à la connexion
+        read -p "Souhaitez-vous lancer ce script automatiquement à la connexion de $NEWUSER ? (o/N) : " AUTOSTART
+        if [[ "$AUTOSTART" =~ ^[oO]$ ]]; then
+            PROFILE="/home/$NEWUSER/.bash_profile"
+            SCRIPT_PATH="$USER_HOME/config_wg.sh"
+            if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
+                echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
+                chown "$NEWUSER:$NEWUSER" "$PROFILE"
+                echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER depuis $SCRIPT_PATH.\e[0m"
+            fi
+        fi
+        # Préparation des dossiers Wireguard
+        WG_DIR="/mnt/wireguard"
+        WG_CONFIG_DIR="$WG_DIR/config"
+        if [[ ! -d "$WG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        elif [[ ! -d "$WG_CONFIG_DIR" ]]; then
+            mkdir -p "$WG_CONFIG_DIR"
+            echo "Dossier $WG_CONFIG_DIR créé."
+        fi
+        chown -R "$NEWUSER":"$NEWUSER" "$WG_DIR"
+        chmod -R 700 "$WG_DIR"
+        add_script_autostart_to_user "$NEWUSER"
+        echo "Script installé et lancement auto configuré pour $NEWUSER."
+        break
+    done
                     read -n1 -r -p "Appuie sur une touche pour continuer..." _
                     ;;
                 2)
