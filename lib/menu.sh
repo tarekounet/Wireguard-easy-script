@@ -469,14 +469,14 @@ debian_tools_menu() {
                         btop
                     else
                         echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
-                        run_as_root apt update && run_as_root apt install -y btop
+                        run_as_root "apt update && apt install -y btop"
                         btop
                     fi
                     ;;
                 configure_ip_vm) configure_ip_vm ;;
                 update_system)
                     echo -e "\e[1;33mMise à jour du système...\e[0m"
-                    run_as_root apt update && run_as_root apt upgrade -y
+                    run_as_root "apt update && apt upgrade -y"
                     ;;
                 modify_vm_name) modify_vm_name ;;
                 modify_ssh_port) modify_ssh_port ;;

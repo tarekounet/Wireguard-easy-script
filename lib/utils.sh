@@ -10,9 +10,9 @@ fi
 
 run_as_root() {
     if [[ $EUID -ne 0 ]]; then
-        sudo "$@"
+        sudo bash -c "$*"
     else
-        "$@"
+        bash -c "$*"
     fi
 }
 
