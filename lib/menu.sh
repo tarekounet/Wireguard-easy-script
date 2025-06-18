@@ -257,7 +257,7 @@ main_menu() {
             action="${actions[$((CHOICE-1))]}"
             case "$action" in
                 start_wireguard) start_wireguard; SKIP_PAUSE=1 ;;
-                shutdown_wireguard) shutdown_wireguard; SKIP_PAUSE=1 ;;
+                shutdown_wireguard) stop_wireguard; SKIP_PAUSE=1 ;;
                 restart_wireguard) restart_wireguard; SKIP_PAUSE=1 ;;
                 change_wg_easy_web_port) change_wg_easy_web_port ;;
                 update_wireguard)

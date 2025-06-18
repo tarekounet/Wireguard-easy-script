@@ -24,7 +24,13 @@ LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
 CONFIG_LOG="$LOG_DIR/config-actions.log"
 INSTALL_LOG="$LOG_DIR/install.log"
-DOCKER_WG_DIR="$HOME/docker-wireguard"
+# Détection du bon HOME utilisateur même en sudo/root
+if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+    USER_HOME="$(getent passwd $SUDO_USER | cut -d: -f6)"
+else
+    USER_HOME="$HOME"
+fi
+DOCKER_WG_DIR="$USER_HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
 SCRIPT_BASE_VERSION_INIT="1.8.5"
@@ -128,7 +134,6 @@ while true; do
             echo "Dossier $WG_CONFIG_DIR créé."
         fi
         chown -R "$NEWUSER":"$NEWUSER" "$WG_DIR"
-        chmod -R 700 "$WG_DIR"
         add_script_autostart_to_user "$NEWUSER"
         echo "Script installé et lancement auto configuré pour $NEWUSER."
         break
