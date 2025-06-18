@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/lib/utils.sh"
 
 DOCKER_WG_DIR="$HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
-WG_CONF_DIR="$DOCKER_WG_DIR/conf"
+WG_CONF_DIR="$DOCKER_WG_DIR/config"
 # S'assurer que le dossier existe
 mkdir -p "$WG_CONF_DIR"
 

@@ -11,7 +11,7 @@ fi
 
 DOCKER_WG_DIR="$HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
-WG_CONF_DIR="$DOCKER_WG_DIR/conf"
+WG_CONF_DIR="$DOCKER_WG_DIR/config"
 
 # S'assurer que le dossier existe
 mkdir -p "$WG_CONF_DIR"
@@ -37,7 +37,7 @@ cancel_config() {
     if [[ "$DOCKER_COMPOSE_CREATED" == "1" && -f "$DOCKER_COMPOSE_FILE" ]]; then
         read -p $'Voulez-vous supprimer le fichier docker-compose.yml créé ? (o/N) : ' CONFIRM_DEL
         if [[ "$CONFIRM_DEL" =~ ^[oO]$ ]]; then
-            rm -rf "$DOCKER_COMPOSE_FILE" /mnt/wireguard/config
+            rm -rf "$DOCKER_COMPOSE_FILE" ${DOCKER_WG_DIR}/config
             echo -e "\e[1;31mLe fichier docker-compose.yml créé a été supprimé.\e[0m"
         else
             echo -e "\e[1;33mLe fichier docker-compose.yml a été conservé.\e[0m"
@@ -61,14 +61,14 @@ configure_values() {
         trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
-        mkdir -p /mnt/wireguard/config
+        mkdir -p ${DOCKER_WG_DIR}/config
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
   etc_wireguard:
     driver: local
     driver_opts:
       type: none
-      device: /mnt/wireguard/config
+      device: ${DOCKER_WG_DIR}/config
       o: bind
 services:
   wg-easy:
@@ -166,10 +166,10 @@ RAZ_docker_compose() {
     else
         msg_error "Aucun fichier docker-compose.yml trouvé."
     fi
-    if [[ -d "/mnt/wireguard" ]]; then
-        rm -rf "/mnt/wireguard"
-        msg_success "Le dossier /mnt/wireguard a été supprimé."
+    if [[ -d "${DOCKER_WG_DIR}" ]]; then
+        rm -rf "${DOCKER_WG_DIR}"
+        msg_success "Le dossier ${DOCKER_WG_DIR} a été supprimé."
     else
-        msg_error "Aucun dossier /mnt/wireguard trouvé."
+        msg_error "Aucun dossier ${DOCKER_WG_DIR} trouvé."
     fi
 }

@@ -1,4 +1,44 @@
 #!/bin/bash
+
+add_script_autostart_to_user() {
+    TARGETUSER="$1"
+    PROFILE="/home/$TARGETUSER/.bash_profile"
+    SCRIPT_PATH="/home/$TARGETUSER/wireguard-script-manager/config_wg.sh"
+    if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
+        echo '[[ $- == *i* ]] && cd ~/wireguard-script-manager && bash ./config_wg.sh' >> "$PROFILE"
+        chown "$TARGETUSER:$TARGETUSER" "$PROFILE"
+    fi
+}
+
+##############################
+#   VARIABLES GÉNÉRALES      #
+##############################
+
+GITHUB_USER="tarekounet"
+GITHUB_REPO="Wireguard-easy-script"
+CONF_FILE="config/wg-easy.conf"
+VERSION_FILE="version.txt"
+SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
+SCRIPT_BACKUP="config_wg.sh.bak"
+LOG_DIR="logs"
+LOG_FILE="$LOG_DIR/wg-easy-script.log"
+CONFIG_LOG="$LOG_DIR/config-actions.log"
+INSTALL_LOG="$LOG_DIR/install.log"
+DOCKER_WG_DIR="$HOME/docker-wireguard"
+DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
+WG_CONF_DIR="$DOCKER_WG_DIR/config"
+SCRIPT_BASE_VERSION_INIT="1.8.5"
+
+export GITHUB_USER
+export GITHUB_REPO
+export BRANCH
+
+BRANCH="main"
+
+if [[ -f "$VERSION_FILE" ]]; then
+    SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
+fi
+
 # === MENU SPÉCIAL ROOT AUTONOME POUR LA GESTION DES UTILISATEURS ===
 if [[ $EUID -eq 0 ]]; then
     user_admin_menu() {
@@ -72,13 +112,13 @@ while true; do
             PROFILE="/home/$NEWUSER/.bash_profile"
             SCRIPT_PATH="$USER_HOME/config_wg.sh"
             if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
-                echo "[[ \$- == *i* ]] && bash \"$SCRIPT_PATH\"" >> "$PROFILE"
+                echo '[[ $- == *i* ]] && cd ~/wireguard-script-manager && bash ./config_wg.sh' >> "$PROFILE"
                 chown "$NEWUSER:$NEWUSER" "$PROFILE"
                 echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER depuis $SCRIPT_PATH.\e[0m"
             fi
         fi
         # Préparation des dossiers Wireguard
-        WG_DIR="/mnt/wireguard"
+        WG_DIR="${DOCKER_WG_DIR}"
         WG_CONFIG_DIR="$WG_DIR/config"
         if [[ ! -d "$WG_DIR" ]]; then
             mkdir -p "$WG_CONFIG_DIR"
@@ -149,34 +189,6 @@ for mod in utils conf docker menu ; do
         exit 1
     fi
 done
-##############################
-#   VARIABLES GÉNÉRALES      #
-##############################
-
-GITHUB_USER="tarekounet"
-GITHUB_REPO="Wireguard-easy-script"
-CONF_FILE="config/wg-easy.conf"
-VERSION_FILE="version.txt"
-SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
-SCRIPT_BACKUP="config_wg.sh.bak"
-LOG_DIR="logs"
-LOG_FILE="$LOG_DIR/wg-easy-script.log"
-CONFIG_LOG="$LOG_DIR/config-actions.log"
-INSTALL_LOG="$LOG_DIR/install.log"
-DOCKER_WG_DIR="$HOME/docker-wireguard"
-DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
-WG_CONF_DIR="$DOCKER_WG_DIR/conf"
-SCRIPT_BASE_VERSION_INIT="1.8.5"
-
-export GITHUB_USER
-export GITHUB_REPO
-export BRANCH
-
-BRANCH="main"
-
-if [[ -f "$VERSION_FILE" ]]; then
-    SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
-fi
 
 ##############################
 #   AUTO-BOOTSTRAP MODULES   #
@@ -255,4 +267,7 @@ fi
 #   LANCEMENT DU SCRIPT      #
 ##############################
 
-main_menu
+# Lancement du menu principal uniquement si le script est exécuté directement
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main_menu
+fi
