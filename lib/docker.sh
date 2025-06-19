@@ -15,6 +15,7 @@ WG_CONF_DIR="$DOCKER_WG_DIR/config"
 
 # S'assurer que le dossier existe
 mkdir -p "$WG_CONF_DIR"
+chown -R $USER:$USER $DOCKER_WG_DIR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"

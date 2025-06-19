@@ -123,17 +123,6 @@ while true; do
                 echo -e "\e[1;32mLe script sera lancé automatiquement à la connexion de $NEWUSER depuis $SCRIPT_PATH.\e[0m"
             fi
         fi
-        # Préparation des dossiers Wireguard
-        WG_DIR="${DOCKER_WG_DIR}"
-        WG_CONFIG_DIR="$WG_DIR/config"
-        if [[ ! -d "$WG_DIR" ]]; then
-            mkdir -p "$WG_CONFIG_DIR"
-            echo "Dossier $WG_CONFIG_DIR créé."
-        elif [[ ! -d "$WG_CONFIG_DIR" ]]; then
-            mkdir -p "$WG_CONFIG_DIR"
-            echo "Dossier $WG_CONFIG_DIR créé."
-        fi
-        chown -R "$NEWUSER":"$NEWUSER" "$WG_DIR"
         add_script_autostart_to_user "$NEWUSER"
         echo "Script installé et lancement auto configuré pour $NEWUSER."
         break
