@@ -83,7 +83,11 @@ while true; do
         echo "$NEWUSER:$NEWPASS" | chpasswd
         echo -e "\e[1;32mNouvel utilisateur '$NEWUSER' créé et ajouté au groupe docker.\e[0m"
         USER_HOME="/home/$NEWUSER/wireguard-script-manager"
+        WG_DIR="/home/$NEWUSER/docker-wireguard"
         mkdir -p "$USER_HOME"
+        mkdir -p "$WG_DIR"
+        chown -R "$NEWUSER:$NEWUSER" "$USER_HOME" "$WG_DIR"
+        chmod -R 700 "$WG_DIR"
         chmod u+rwX "$USER_HOME"
         # Télécharger tout le projet depuis GitHub et le copier dans le dossier wireguard-script-manager de l'utilisateur
         read -p "Souhaitez-vous télécharger et copier tout le projet GitHub dans wireguard-script-manager de l'utilisateur ? (o/N) : " DL_ALL
