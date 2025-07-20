@@ -146,6 +146,32 @@ EOF
     fi
 }
 
+update_wireguard_container() {
+    if [[ "$WG_EASY_UPDATE_AVAILABLE" == "1" ]]; then
+        echo -e "\e[35mUne nouvelle version du container Wireguard Easy est disponible : $WG_EASY_VERSION_DISTANT (actuelle : $WG_EASY_VERSION_LOCAL)\e[0m"
+        # Sauvegarde avant toute modification
+        BACKUP_DIR="$HOME/wg-easy-backup-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$BACKUP_DIR"
+        cp -r "$DOCKER_WG_DIR" "$BACKUP_DIR/" 2>/dev/null
+        echo -e "\e[32mBackup complet du dossier docker-wireguard et config réalisé dans $BACKUP_DIR\e[0m"
+        # Mise à jour du container
+        sed -i "s|image: ghcr.io/wg-easy/wg-easy:.*|image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION_DISTANT|" "$DOCKER_COMPOSE_FILE"
+        echo -e "\e[32mLe docker-compose.yml a été mis à jour avec la version $WG_EASY_VERSION_DISTANT.\e[0m"
+        echo -e "\e[34mTéléchargement de la nouvelle image Docker...\e[0m"
+        docker pull ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION_DISTANT
+        echo -e "\e[34mRedémarrage du service Wireguard...\e[0m"
+        docker compose -f "$DOCKER_COMPOSE_FILE" down
+        docker compose -f "$DOCKER_COMPOSE_FILE" pull
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        echo -e "\e[32mService Wireguard relancé avec la nouvelle version !\e[0m"
+        # Mise à jour du fichier WG_EASY_VERSION local
+        WG_EASY_VERSION_FILE="$SCRIPT_DIR/../WG_EASY_VERSION"
+        echo "$WG_EASY_VERSION_DISTANT" > "$WG_EASY_VERSION_FILE"
+        echo -e "\e[32mLe fichier WG_EASY_VERSION local a été mis à jour avec la version $WG_EASY_VERSION_DISTANT.\e[0m"
+    else
+        echo -e "\e[33mAucune mise à jour disponible ou variable non définie.\e[0m"
+    fi
+}
 ##############################
 #   RÉINITIALISATION CONFIG  #
 ##############################

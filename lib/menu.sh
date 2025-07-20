@@ -29,7 +29,11 @@ main_menu() {
         detect_new_wg_easy_version
         clear
         show_logo_ascii
-        echo -e "\e[1;36mVersion du script :\e[0m $SCRIPT_VERSION"
+        if [[ -z "$SCRIPT_VERSION" || "$SCRIPT_VERSION" == "inconnu" ]]; then
+            echo -e "\e[1;36mVersion du script :\e[0m \e[1;31mNon définie\e[0m"
+        else
+            echo -e "\e[1;36mVersion du script :\e[0m $SCRIPT_VERSION"
+        fi
         # Comparer les versions pour n'afficher la mise à jour que si la version en ligne est supérieure
         version_gt() {
             [ "$1" = "$2" ] && return 1
@@ -40,41 +44,19 @@ main_menu() {
         fi
 
         # === INFOS MISES À JOUR ===
-        WG_CONF_FILE="$SCRIPT_DIR/../config/wg-easy.conf"
-        if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
-            # docker-compose absent, afficher la version du fichier de conf
-            if [[ -f "$WG_CONF_FILE" ]]; then
-            WG_EASY_VERSION_CONF=$(grep '^WG_EASY_VERSION=' "$WG_CONF_FILE" | cut -d'"' -f2)
-            echo -e "\e[36mVersion actuelle du container Wireguard : $WG_EASY_VERSION_CONF\e[0m"
-            else
-            # Si le fichier de conf est absent, essayer de récupérer la version depuis le docker-compose.yml
-            if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-                WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
-                echo -e "\e[36mVersion du container Wireguard : $WG_EASY_VERSION_LOCAL (issue de docker-compose.yml)\e[0m"
-            else
-                echo -e "\e[36mVersion du container Wireguard : inconnue (fichier de conf absent)\e[0m"
-            fi
-            fi
+        WG_EASY_VERSION_FILE="$SCRIPT_DIR/../WG_EASY_VERSION"
+        WG_EASY_VERSION_LOCAL="inconnu"
+        WG_EASY_VERSION_DISTANT="inconnu"
+        if [[ -f "$WG_EASY_VERSION_FILE" ]]; then
+            WG_EASY_VERSION_LOCAL=$(head -n1 "$WG_EASY_VERSION_FILE")
+        fi
+        WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/WG_EASY_VERSION" | head -n1)
+        if [[ "$WG_EASY_VERSION_LOCAL" != "$WG_EASY_VERSION_DISTANT" && "$WG_EASY_VERSION_DISTANT" != "" ]]; then
+            echo -e "\e[5;33m🐳 Nouvelle version Wireguard Easy disponible : $WG_EASY_VERSION_DISTANT (actuelle : $WG_EASY_VERSION_LOCAL)\e[0m"
+            WG_EASY_UPDATE_AVAILABLE=1
         else
-            # docker-compose présent, vérifier la nouvelle version
-            if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
-            echo -e "\e[35m🐳 Nouvelle version du container disponible : $NEW_WG_EASY_VERSION (actuelle : $CURRENT_WG_EASY_VERSION)\e[0m"
-            else
-            # Afficher la version actuelle du container depuis le fichier de conf si présent, sinon la version locale
-            WG_CONF_FILE="$SCRIPT_DIR/../config/wg-easy.conf"
-            if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-                WG_EASY_VERSION_LOCAL=$(grep 'image: ghcr.io/wg-easy/wg-easy:' "$DOCKER_COMPOSE_FILE" | sed 's/.*://')
-                echo -e "\e[36mVersion locale du container Wireguard : $WG_EASY_VERSION_LOCAL\e[0m"
-            elif [[ -f "$WG_CONF_FILE" ]]; then
-                WG_EASY_VERSION_CONF=$(grep '^WG_EASY_VERSION=' "$WG_CONF_FILE" | cut -d'"' -f2)
-                echo -e "\e[36mVersion du container Wireguard (conf) : $WG_EASY_VERSION_CONF\e[0m"
-            elif [[ -f "$WG_EASY_VERSION_FILE" ]]; then
-                WG_EASY_VERSION_LOCAL_FILE=$(head -n1 "$WG_EASY_VERSION_FILE")
-                echo -e "\e[36mVersion du container Wireguard (WG_EASY_VERSION local) : $WG_EASY_VERSION_LOCAL_FILE\e[0m"
-            else
-                echo -e "\e[36mVersion du container Wireguard : inconnue\e[0m"
-            fi
-            fi
+            echo -e "\e[36mVersion locale du container Wireguard : $WG_EASY_VERSION_LOCAL\e[0m"
+            WG_EASY_UPDATE_AVAILABLE=0
         fi
         # === INFOS CONTAINER & CONFIG ===
         if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
@@ -183,12 +165,12 @@ main_menu() {
             group_titles+=("🛠️ Maintenance & configuration")
             labels+=("🌐 Changer le port WEBUI")
             actions+=("change_wg_easy_web_port")
-            if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
-                labels+=("🐳 Mettre à jour le container ✨")
+            if [[ "$WG_EASY_UPDATE_AVAILABLE" == "1" ]]; then
+                labels+=("🐳 Mettre à jour le container (NOUVELLE VERSION DISPONIBLE)")
             else
                 labels+=("🐳 Mettre à jour le container")
             fi
-            actions+=("update_wireguard")
+            actions+=("update_wireguard_container")
             labels+=("♻️ Réinitialiser la configuration")
             actions+=("RAZ_docker_compose")
 
@@ -232,6 +214,9 @@ main_menu() {
             || [[ "${labels[$i]}" == "🚀 Lancer le service (déjà lancé)" ]] \
             || [[ "${labels[$i]}" == "🔄 Redémarrer le service (service arrêté)" ]]; then
                 printf "\e[1;30m%d) %s\e[0m\n" $((i+1)) "${labels[$i]}"
+            elif [[ "${labels[$i]}" =~ "\\e\[5;35m" ]]; then
+                # Affichage spécial pour le label clignotant
+                printf "%d) %b\n" $((i+1)) "${labels[$i]}"
             else
                 printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
             fi
@@ -260,21 +245,7 @@ main_menu() {
                 shutdown_wireguard) stop_wireguard; SKIP_PAUSE=1 ;;
                 restart_wireguard) restart_wireguard; SKIP_PAUSE=1 ;;
                 change_wg_easy_web_port) change_wg_easy_web_port ;;
-                update_wireguard)
-                    if [[ -n "$NEW_WG_EASY_VERSION" ]]; then
-                        echo -e "\e[35mUne nouvelle version du container est disponible : $NEW_WG_EASY_VERSION (actuelle : $CURRENT_WG_EASY_VERSION)\e[0m"
-                        read -p $'Voulez-vous mettre à jour le container sans tout réinitialiser ? (o/N) : ' CONFIRM
-                        if [[ "$CONFIRM" =~ ^[oO]$ ]]; then
-                            update_wg_easy_version_only
-                        else
-                            echo "Mise à jour rapide annulée. Lancement de la mise à jour complète..."
-                            update_wireguard
-                        fi
-                    else
-                        update_wireguard
-                    fi
-                    SKIP_PAUSE=1
-                    ;;
+                update_wireguard_container) update_wireguard_container; SKIP_PAUSE=1 ;;
                 RAZ_docker_compose) RAZ_docker_compose ;;
                 debian_tools_menu) debian_tools_menu; SKIP_PAUSE=1 ;;
                 menu_script_update) menu_script_update; SKIP_PAUSE=1 ;;
