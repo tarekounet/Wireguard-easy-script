@@ -5,20 +5,368 @@ if [[ "$(basename -- "$0")" == "menu.sh" ]]; then
 fi
 
 ##############################
-#         sources            #
+#         VARIABLES          #
 ##############################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/utils.sh"
 
-DOCKER_WG_DIR="$HOME/docker-wireguard"
+# Détection du bon HOME utilisateur même en sudo/root
+if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+    USER_HOME="$(getent passwd $SUDO_USER | cut -d: -f6)"
+else
+    USER_HOME="$HOME"
+fi
+
+# Chemins principaux
+DOCKER_WG_DIR="$USER_HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
-# S'assurer que le dossier existe
+VERSION_FILE="$SCRIPT_DIR/version.txt"
+WG_EASY_VERSION_FILE="$SCRIPT_DIR/WG_EASY_VERSION"
+CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
+
+# URLs GitHub
+GITHUB_BASE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main"
+VERSION_URL="$GITHUB_BASE_URL/version.txt"
+WG_EASY_VERSION_URL="$GITHUB_BASE_URL/WG_EASY_VERSION"
+
+# Variables globales
+WG_EASY_UPDATE_AVAILABLE=0
+
+# S'assurer que les dossiers existent
 mkdir -p "$WG_CONF_DIR"
 
-VERSION_FILE="$SCRIPT_DIR/../version.txt"
-SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
-LATEST_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt" | head -n1)
+##############################
+#      FONCTIONS UTILES      #
+##############################
+
+# Récupération sécurisée des versions
+get_script_version() {
+    cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo ""
+}
+
+get_latest_script_version() {
+    curl -fsSL --connect-timeout 10 "$VERSION_URL" 2>/dev/null | head -n1 | tr -d '\n\r '
+}
+
+get_wg_easy_github_version() {
+    curl -fsSL --connect-timeout 10 "$WG_EASY_VERSION_URL" 2>/dev/null | head -n1 | tr -d '\n\r '
+}
+
+get_wg_easy_local_version() {
+    local version=""
+    
+    # Priorité 1: docker-compose.yml
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        version=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
+    fi
+    
+    # Priorité 2: fichier de configuration
+    if [[ -z "$version" && -f "$CONF_FILE" ]]; then
+        version=$(grep "^WG_EASY_VERSION=" "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
+    fi
+    
+    echo "$version"
+}
+
+# Comparaison de versions
+version_gt() {
+    [ "$1" = "$2" ] && return 1
+    [ "$(printf '%s\n%s' "$1" "$2" | sort -V | tail -n1)" = "$1" ]
+}
+
+# Affichage des informations de version
+display_version_info() {
+    local script_version="$(get_script_version)"
+    local latest_version="$(get_latest_script_version)"
+    local wg_easy_distant="$(get_wg_easy_github_version)"
+    local wg_easy_local="$(get_wg_easy_local_version)"
+    
+    # Sauvegarder la version GitHub
+    [[ -n "$wg_easy_distant" ]] && echo "$wg_easy_distant" > "$WG_EASY_VERSION_FILE"
+    
+
+    echo -e "\e[48;5;237m\e[97m            📋 INFORMATIONS VERSIONS              \e[0m"
+
+    
+    # Affichage version script
+    if [[ -z "$script_version" ]]; then
+        echo -e "\n    \e[90m📄 Script :\e[0m \e[1;31mNon définie\e[0m"
+    else
+        echo -e "\n    \e[90m📄 Script :\e[0m \e[1;36m$script_version\e[0m"
+    fi
+    
+    # Notification mise à jour script
+    if [[ -n "$latest_version" ]] && version_gt "$latest_version" "$script_version"; then
+        echo -e "    \e[1;43m\e[30m ⚡ NOUVEAU \e[0m \e[1;33mVersion $latest_version disponible\e[0m"
+    fi
+    
+    # Affichage version WireGuard Easy
+    if [[ -n "$wg_easy_distant" && -n "$wg_easy_local" && "$wg_easy_local" != "$wg_easy_distant" ]]; then
+        echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m"
+        echo -e "    \e[1;43m\e[30m ⚡ NOUVEAU \e[0m \e[1;33mVersion $wg_easy_distant disponible\e[0m"
+        WG_EASY_UPDATE_AVAILABLE=1
+    elif [[ -n "$wg_easy_local" ]]; then
+        echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m \e[1;32m(à jour)\e[0m"
+    else
+        echo -e "    \e[90m🐳 Container :\e[0m \e[1;31mNon détectée\e[0m"
+    fi
+}
+
+# Affichage des informations container
+display_container_info() {
+    local container_status=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
+    
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        echo -e "\e[48;5;235m\e[97m           📊 ÉTAT DU SERVICE WIREGUARD           \e[0m"
+
+        
+        case "$container_status" in
+            running)
+                local started_at=$(docker inspect -f '{{.State.StartedAt}}' wg-easy 2>/dev/null)
+                if [[ -n "$started_at" ]]; then
+                    local current_time=$(date +%s)
+                    local start_time=$(date -d "$started_at" +%s 2>/dev/null)
+                    if [[ -n "$start_time" && "$start_time" -gt 0 ]]; then
+                        local seconds_up=$((current_time - start_time))
+                        if [[ "$seconds_up" -gt 0 ]]; then
+                            local days=$((seconds_up/86400))
+                            local hours=$(( (seconds_up%86400)/3600 ))
+                            local minutes=$(( (seconds_up%3600)/60 ))
+                            local uptime_str=$(printf "%d jours, %02dh:%02dm" "$days" "$hours" "$minutes")
+                            echo -e "\n    \e[1;42m\e[30m ✓ ACTIF \e[0m \e[97mService Wireguard en fonctionnement\e[0m"
+                            echo -e "    \e[90m⏱️  Uptime :\e[0m \e[1;32m$uptime_str\e[0m"
+                        else
+                            echo -e "\n    \e[1;42m\e[30m ✓ ACTIF \e[0m \e[97mService Wireguard en fonctionnement\e[0m"
+                        fi
+                    else
+                        echo -e "\n    \e[1;42m\e[30m ✓ ACTIF \e[0m \e[97mService Wireguard en fonctionnement\e[0m"
+                    fi
+                else
+                    echo -e "\n    \e[1;42m\e[30m ✓ ACTIF \e[0m \e[97mService Wireguard en fonctionnement\e[0m"
+                fi
+                ;;
+            exited)
+                echo -e "\n    \e[1;43m\e[30m ⏸ ARRÊTÉ \e[0m \e[97mService Wireguard arrêté\e[0m"
+                ;;
+            created)
+                echo -e "\n    \e[1;44m\e[30m ⧗ CRÉÉ \e[0m \e[97mService créé mais non démarré\e[0m"
+                ;;
+            *)
+                if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
+                    echo -e "\n    \e[1;41m\e[97m ✗ ERREUR \e[0m \e[97mService en erreur\e[0m"
+                    local last_exit_code=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
+                    [[ "$last_exit_code" != "0" ]] && echo -e "    \e[90m⚠️  Code d'erreur :\e[0m \e[1;31m$last_exit_code\e[0m"
+                else
+                    echo -e "\n    \e[1;45m\e[97m ⚫ ABSENT \e[0m \e[97mService non configuré\e[0m"
+                fi
+                ;;
+        esac
+        
+        # Informations réseau
+        display_network_info
+    else
+
+        echo -e "\e[48;5;235m\e[97m           ⚠️  CONFIGURATION REQUISE             \e[0m"
+
+        echo -e "\n    \e[1;43m\e[30m ! CONFIG \e[0m \e[97mLe serveur Wireguard n'est pas encore configuré\e[0m"
+        echo -e "    \e[90m📝 Utilisez l'option de configuration pour commencer\e[0m"
+    fi
+    
+    # Export pour les autres fonctions
+    export CONTAINER_STATUS="$container_status"
+}
+
+# Affichage des informations réseau
+display_network_info() {
+    local ip_address=$(hostname -I | awk '{print $1}')
+    local interface=$(ip route | awk '/default/ {print $5; exit}')
+    local web_port=$(grep -oP 'PORT=\K[0-9]+' "$DOCKER_COMPOSE_FILE" 2>/dev/null | head -n1)
+
+    # Détermination du type d'adresse IP
+    local dhcp_state="Statique"
+    if [[ -n "$interface" ]] && (grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || \
+        grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null || \
+        nmcli device show "$interface" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"); then
+        dhcp_state="DHCP"
+    fi
+
+    echo -e "    \e[90m🌐 Adresse IP :\e[0m \e[1;36m$ip_address\e[0m \e[90m($dhcp_state)\e[0m"
+    echo -e "    \e[90m🔗 Port web :\e[0m \e[1;36m${web_port:-Non défini}\e[0m"
+}
+
+# Construction et affichage du menu principal
+display_main_menu() {
+    echo -e "\e[48;5;236m\e[97m           📡 WIREGUARD EASY MANAGER              \e[0m"
+
+    local labels=()
+    local actions=()
+    local group_separators=()
+    local group_titles=()
+
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        build_configured_menu labels actions group_separators group_titles
+    else
+        build_initial_menu labels actions group_separators group_titles
+    fi
+
+    display_menu_items labels group_separators group_titles
+    export MENU_LABELS=("${labels[@]}")
+    export MENU_ACTIONS=("${actions[@]}")
+}
+
+# Construction du menu pour configuration existante
+build_configured_menu() {
+    local -n labels_ref=$1
+    local -n actions_ref=$2
+    local -n separators_ref=$3
+    local -n titles_ref=$4
+
+    # Groupe 1 : Gestion du service
+    separators_ref+=(0)
+    titles_ref+=("🚀 SERVICE WIREGUARD")
+    
+    if [[ "$CONTAINER_STATUS" == "running" ]]; then
+        labels_ref+=("Démarrer le service" "Arrêter le service" "Redémarrer le service")
+        actions_ref+=("" "shutdown_wireguard" "restart_wireguard")
+    else
+        labels_ref+=("Démarrer le service" "Arrêter le service" "Redémarrer le service")
+        actions_ref+=("start_wireguard" "" "")
+    fi
+    
+    # Ajouter l'option de mise à jour du container
+    local update_label="Mettre à jour le container"
+    [[ "$WG_EASY_UPDATE_AVAILABLE" == "1" ]] && update_label+=" ⚡ MISE À JOUR DISPONIBLE"
+    labels_ref+=("$update_label")
+    actions_ref+=("update_wireguard_container")
+
+    # Groupe 2 : Outils
+    separators_ref+=(${#labels_ref[@]})
+    titles_ref+=("🔧 OUTILS & INFORMATIONS")
+    labels_ref+=("Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin" "Configuration auto-update")
+    actions_ref+=("update_script" "show_changelog" "change_tech_password" "auto_update_menu")
+}
+
+# Construction du menu pour configuration initiale
+build_initial_menu() {
+    local -n labels_ref=$1
+    local -n actions_ref=$2
+    local -n separators_ref=$3
+    local -n titles_ref=$4
+
+    separators_ref+=(0)
+    titles_ref+=("🛠️ CONFIGURATION INITIALE")
+    labels_ref+=("Créer la configuration Wireguard" "Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin" "Configuration auto-update")
+    actions_ref+=("configure_values" "update_script" "show_changelog" "change_tech_password" "auto_update_menu")
+}
+
+# Affichage des éléments du menu
+display_menu_items() {
+    local -n labels_ref=$1
+    local -n separators_ref=$2
+    local -n titles_ref=$3
+    
+    local group_idx=0
+    echo ""
+    
+    for i in "${!labels_ref[@]}"; do
+        # Affichage du titre de groupe
+        if [[ " ${separators_ref[@]} " =~ " $i " ]]; then
+            if [[ $group_idx -gt 0 ]]; then
+                echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+                echo ""
+            fi
+            echo -e "\e[48;5;24m\e[97m  ${titles_ref[$group_idx]}  \e[0m"
+            echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+            ((group_idx++))
+        fi
+        
+        # Préparation de l'affichage selon l'état
+        local prefix="├─"
+        local suffix="│"
+        local item_color="\e[97m"  # Blanc
+        local number_color="\e[1;36m"  # Cyan bold
+        local status=""
+        
+        # Détermination du statut et des couleurs
+        if [[ "${labels_ref[$i]}" =~ MISE\ À\ JOUR\ DISPONIBLE ]]; then
+            status=" \e[1;43m\e[30m NOUVEAU \e[0m"
+            item_color="\e[1;33m"  # Jaune bold
+        elif [[ "$CONTAINER_STATUS" == "running" && "${labels_ref[$i]}" == "Démarrer le service" ]]; then
+            status=" \e[1;42m\e[30m ACTIF \e[0m"
+            item_color="\e[90m"  # Gris
+            number_color="\e[90m"  # Gris
+        elif [[ "$CONTAINER_STATUS" != "running" && ("${labels_ref[$i]}" == "Arrêter le service" || "${labels_ref[$i]}" == "Redémarrer le service") ]]; then
+            status=" \e[1;41m\e[97m ARRÊTÉ \e[0m"
+            item_color="\e[90m"  # Gris
+            number_color="\e[90m"  # Gris
+        fi
+        
+        # Affichage de l'option
+        echo -e "\e[90m    $prefix \e[0m$number_color$(printf "%2d" $((i+1)))\e[0m $item_color${labels_ref[$i]}\e[0m$status"
+    done
+    
+    # Fermeture du dernier groupe
+    if [[ ${#labels_ref[@]} -gt 0 ]]; then
+        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+    fi
+    
+    echo ""
+    echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+    echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mQuitter le programme\e[0m \e[1;31m🚪\e[0m"
+    echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+}
+
+# Gestion du choix utilisateur
+handle_user_choice() {
+    echo
+    read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
+    
+    if [[ -z "$CHOICE" ]]; then
+        echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
+        sleep 1
+        return
+    fi
+    
+    clear
+    local skip_pause=0
+
+    if [[ "$CHOICE" == "0" ]]; then
+        clear
+        echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+        exit 0
+    elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#MENU_ACTIONS[@]}" ]]; then
+        local action="${MENU_ACTIONS[$((CHOICE-1))]}"
+        execute_action "$action" skip_pause
+    else
+        echo -e "\e[1;31mChoix invalide.\e[0m"
+    fi
+
+    if [[ "$skip_pause" != "1" ]]; then
+        echo -e "\nAppuyez sur une touche pour revenir au menu..."
+        read -n 1 -s
+    fi
+}
+
+# Exécution des actions
+execute_action() {
+    local action="$1"
+    local -n skip_ref=$2
+    
+    case "$action" in
+        start_wireguard) start_wireguard; skip_ref=1 ;;
+        shutdown_wireguard) stop_wireguard; skip_ref=1 ;;
+        restart_wireguard) restart_wireguard; skip_ref=1 ;;
+        update_wireguard_container) update_wireguard_container; skip_ref=1 ;;
+        update_script) update_script ;;
+        show_changelog) show_changelog ;;
+        configure_values) configure_values ;;
+        change_tech_password) change_tech_password ;;
+        auto_update_menu) auto_update_menu; skip_ref=1 ;;
+        "") ;; # Option inactive
+        *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
+    esac
+}
 
 ##############################
 #      MENU PRINCIPAL        #
@@ -29,435 +377,68 @@ main_menu() {
         detect_new_wg_easy_version
         clear
         show_logo_ascii
-        if [[ -z "$SCRIPT_VERSION" || "$SCRIPT_VERSION" == "inconnu" ]]; then
-            echo -e "\e[1;36mVersion du script :\e[0m \e[1;31mNon définie\e[0m"
-        else
-            echo -e "\e[1;36mVersion du script :\e[0m $SCRIPT_VERSION"
-        fi
-        # Comparer les versions pour n'afficher la mise à jour que si la version en ligne est supérieure
-        version_gt() {
-            [ "$1" = "$2" ] && return 1
-            [ "$(printf '%s\n%s' "$1" "$2" | sort -V | tail -n1)" = "$1" ]
-        }
-        if [[ -n "$LATEST_VERSION" ]] && version_gt "$LATEST_VERSION" "$SCRIPT_VERSION"; then
-            echo -e "\e[33mUne nouvelle version du script est disponible : $LATEST_VERSION\e[0m"
-        fi
-
-        # === INFOS MISES À JOUR ===
-        WG_EASY_VERSION_FILE="$SCRIPT_DIR/../WG_EASY_VERSION"
-        WG_EASY_VERSION_LOCAL="inconnu"
-        WG_EASY_VERSION_DISTANT="inconnu"
-        if [[ -f "$WG_EASY_VERSION_FILE" ]]; then
-            WG_EASY_VERSION_LOCAL=$(head -n1 "$WG_EASY_VERSION_FILE")
-        fi
-        WG_EASY_VERSION_DISTANT=$(curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/WG_EASY_VERSION" | head -n1)
-        if [[ "$WG_EASY_VERSION_LOCAL" != "$WG_EASY_VERSION_DISTANT" && "$WG_EASY_VERSION_DISTANT" != "" ]]; then
-            echo -e "\e[5;33m🐳 Nouvelle version Wireguard Easy disponible : $WG_EASY_VERSION_DISTANT (actuelle : $WG_EASY_VERSION_LOCAL)\e[0m"
-            WG_EASY_UPDATE_AVAILABLE=1
-        else
-            echo -e "\e[36mVersion locale du container Wireguard : $WG_EASY_VERSION_LOCAL\e[0m"
-            WG_EASY_UPDATE_AVAILABLE=0
-        fi
-        # === INFOS CONTAINER & CONFIG ===
-        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-            echo -e "\e[2;35m--------------------------------------------------\e[0m"
-            echo -e "\e[1;36m📄 Informations actuelles de Wireguard :\e[0m"
-            echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-            CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
-            case "$CONTAINER_STATUS" in
-            running)
-                STARTED_AT=$(docker inspect -f '{{.State.StartedAt}}' wg-easy)
-                SECONDS_UP=$(($(date +%s) - $(date -d "$STARTED_AT" +%s)))
-                DAYS=$((SECONDS_UP/86400))
-                HOURS=$(( (SECONDS_UP%86400)/3600 ))
-                MINUTES=$(( (SECONDS_UP%3600)/60 ))
-                SECONDS=$((SECONDS_UP%60))
-                UPTIME_STR=$(printf "%d jours, %02dh:%02dm:%02ds" "$DAYS" "$HOURS" "$MINUTES" "$SECONDS")
-                echo -e "\e[32m✅ Wireguard est actif\e[0m"
-                echo -e "\e[1;37m⏱️  Uptime : \e[0;33m$UPTIME_STR\e[0m\n"
-                ;;
-            exited)
-                echo -e "\e[33m⏸️  Wireguard est arrêté\e[0m\n"
-                ;;
-            created)
-                echo -e "\e[33m🟡 Wireguard est créé mais pas démarré\e[0m\n"
-                ;;
-            *)
-                if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
-                echo -e "\e[31m❌ Wireguard n'est pas actif\e[0m"
-                LAST_EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
-                if [[ "$LAST_EXIT_CODE" != "0" ]]; then
-                    echo -e "\e[31m⚠️  Échec du dernier lancement (Code : $LAST_EXIT_CODE)\e[0m\n"
-                fi
-                else
-                echo -e "\e[31m❌ Wireguard n'est pas configuré ou actif\e[0m\n"
-                fi
-                ;;
-            esac
-        fi
-
-        # === INFOS RÉSEAU & CONFIG ===
-        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-            # Récupération des informations réseau
-            local ip_address=$(hostname -I | awk '{print $1}')
-            local interface=$(ip route | awk '/default/ {print $5; exit}')
-            local dhcp_state="Inconnu"
-
-            # Détermination du type d'adresse IP (DHCP ou statique)
-            if [[ -n "$interface" ]]; then
-            if grep -q "dhcp" "/etc/network/interfaces" 2>/dev/null || grep -q "dhcp" "/etc/netplan/"*.yaml 2>/dev/null; then
-                dhcp_state="DHCP"
-            elif nmcli device show "$interface" 2>/dev/null | grep -q "IP4.DHCP4.OPTION"; then
-                dhcp_state="DHCP"
-            else
-                dhcp_state="Statique"
-            fi
-            fi
-
-            # Récupération du port de l'interface web
-            local web_port=$(grep -oP 'PORT=\K[0-9]+' "$DOCKER_COMPOSE_FILE" | head -n1)
-
-            # Affichage des informations
-            echo -e "\e[0;36mAdresse IP du poste      : \e[0;33m$ip_address\e[0m"
-            echo -e "\e[0;36mAdresse IP config.       : \e[0;32m$dhcp_state\e[0m"
-            echo -e "\e[0;36mPort interface web       : \e[0;32m${web_port:-Non défini}\e[0m"
-        else
-            echo -e "\e[2;35m--------------------------------------------------\e[0m"
-            echo -e "📄\e[2;36m Informations actuelles de Wireguard :\e[0m"
-            echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-            echo -e "\e[1;31m⚠️  Le serveur Wireguard n'est pas encore configuré.\e[0m\n"
-            echo -e "\e[5;33m         Veuillez configurer pour continuer.\e[0m"
-        fi
-
-
-        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "\e[1;36mMenu principal de Wireguard Easy Script\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m\n"
-
-        # Construction dynamique du menu
-        local labels=()
-        local actions=()
-        local group_separators=()
-        local group_titles=()
-
-        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-            # Groupe 1 : Gestion du service
-            group_separators+=(0)
-            group_titles+=("🟢 Gestion du service Wireguard")
-            if [[ "$CONTAINER_STATUS" == "running" ]]; then
-                labels+=("🚀 Lancer le service (déjà lancé)")
-                actions+=("")
-                labels+=("🛑 Arrêter le service")
-                actions+=("shutdown_wireguard")
-                labels+=("🔄 Redémarrer le service")
-                actions+=("restart_wireguard")
-            else
-                labels+=("🚀 Lancer le service")
-                actions+=("start_wireguard")
-                labels+=("🛑 Arrêter le service (déjà arrêté)")
-                actions+=("")
-                labels+=("🔄 Redémarrer le service (service arrêté)")
-                actions+=("")
-            fi
-
-            # Groupe 2 : Maintenance & configuration
-            group_separators+=(${#labels[@]})
-            group_titles+=("🛠️ Maintenance & configuration")
-            labels+=("🌐 Changer le port WEBUI")
-            actions+=("change_wg_easy_web_port")
-            if [[ "$WG_EASY_UPDATE_AVAILABLE" == "1" ]]; then
-                labels+=("🐳 Mettre à jour le container (NOUVELLE VERSION DISPONIBLE)")
-            else
-                labels+=("🐳 Mettre à jour le container")
-            fi
-            actions+=("update_wireguard_container")
-            labels+=("♻️ Réinitialiser la configuration")
-            actions+=("RAZ_docker_compose")
-
-            # Groupe 3 : Outils & informations
-            group_separators+=(${#labels[@]})
-            group_titles+=("📦 Outils & informations")
-            labels+=("🐧 Outils système Linux")
-            actions+=("debian_tools_menu")
-            labels+=("🏴‍☠️ Menu du script")
-            actions+=("menu_script_update")
-            labels+=("🔑 Mot de passe technique")
-            actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
-
-        else
-            # Groupe unique si pas de docker-compose
-            group_separators+=(0)
-            group_titles+=("🛠️ Configuration initiale")
-            labels+=("🛠️ Créer la configuration")
-            actions+=("configure_values")
-            labels+=("🐧 Outils système Linux")
-            actions+=("debian_tools_menu")
-            labels+=("🏴‍☠️ Menu du script")
-            actions+=("menu_script_update")
-            labels+=("🔑 Mot de passe technique")
-            actions+=("change_tech_password")
-            labels+=("⚙️ Paramètres mise à jour auto")
-            actions+=("auto_update_menu")
-        fi
-
-        # Affichage du menu dynamique avec séparateurs de groupes
-        local group_idx=0
-        for i in "${!labels[@]}"; do
-            if [[ " ${group_separators[@]} " =~ " $i " ]]; then
-                echo -e "\n\e[0;36m--- ${group_titles[$group_idx]} ---\e[0m"
-                ((group_idx++))
-            fi
-            # Affichage spécial pour les labels inactifs
-            if [[ "${labels[$i]}" == "🛑 Arrêter le service (déjà arrêté)" ]] \
-            || [[ "${labels[$i]}" == "🚀 Lancer le service (déjà lancé)" ]] \
-            || [[ "${labels[$i]}" == "🔄 Redémarrer le service (service arrêté)" ]]; then
-                printf "\e[1;30m%d) %s\e[0m\n" $((i+1)) "${labels[$i]}"
-            elif [[ "${labels[$i]}" =~ "\\e\[5;35m" ]]; then
-                # Affichage spécial pour le label clignotant
-                printf "%d) %b\n" $((i+1)) "${labels[$i]}"
-            else
-                printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
-            fi
-        done
-        echo -e "\n\e[1;32m0) \e[0m\e[0;31m🚪 Quitter le script\e[0m"
-
-        echo
-        read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
-        if [[ -z "$CHOICE" ]]; then
-            echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
-            sleep 1
-            continue
-        fi
-        clear
-        SKIP_PAUSE=0
-
-        if [[ "$CHOICE" == "0" ]]; then
-            clear
-            echo -e "\e[1;32mAu revoir ! 👋\e[0m"
-            SKIP_PAUSE=1
-            exit 0
-        elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
-            action="${actions[$((CHOICE-1))]}"
-            case "$action" in
-                start_wireguard) start_wireguard; SKIP_PAUSE=1 ;;
-                shutdown_wireguard) stop_wireguard; SKIP_PAUSE=1 ;;
-                restart_wireguard) restart_wireguard; SKIP_PAUSE=1 ;;
-                change_wg_easy_web_port) change_wg_easy_web_port ;;
-                update_wireguard_container) update_wireguard_container; SKIP_PAUSE=1 ;;
-                RAZ_docker_compose) RAZ_docker_compose ;;
-                debian_tools_menu) debian_tools_menu; SKIP_PAUSE=1 ;;
-                menu_script_update) menu_script_update; SKIP_PAUSE=1 ;;
-                configure_values) configure_values ;;
-                change_tech_password) change_tech_password ;;
-                auto_update_menu) auto_update_menu; SKIP_PAUSE=1 ;;
-                "") ;; # Option inactive
-                *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
-            esac
-        else
-            echo -e "\e[1;31mChoix invalide.\e[0m"
-        fi
-
-        if [[ "$SKIP_PAUSE" != "1" ]]; then
-            echo -e "\nAppuyez sur une touche pour revenir au menu..."
-            read -n 1 -s
-        fi
-    done
-}
-
-##############################
-#    MENU SCRIPT FUNCTIONS   #
-##############################
-
-menu_script_update() {
-    while true; do
-        clear
-        show_logo_ascii
-        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "\e[1;36m            📜 MENU OUTILS SCRIPT 📜\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m"
-
-        # Groupes de labels et d'actions
-        local labels=()
-        local actions=()
-        local group_separators=()
-        local group_titles=()
-
-        # Groupe 1 : Mises à jour
-        group_separators+=(0)
-        group_titles+=("🚧 Configuration & 🔄 Mises à jour")
-        if [[ "$SCRIPT_UPDATE_AVAILABLE" -eq 1 ]]; then
-            labels+=("🔼 Mettre à jour le script (nouvelle version dispo)")
-            actions+=("update_script")
-        fi
-        if [[ "$MODULE_UPDATE_AVAILABLE" -eq 1 ]]; then
-            labels+=("⬆️  Mettre à jour les modules (mise à jour dispo)")
-            actions+=("update_modules")
-        fi
-        labels+=("🔀 Changer de canal (stable/beta)")
-        actions+=("switch_channel")
-        # Groupe 2 : Informations
-        group_separators+=(${#labels[@]})
-        group_titles+=("⁉️ Informations et version")
-        labels+=("📦 Afficher les versions des modules")
-        actions+=("show_modules_versions")
-        labels+=("📝 Voir le changelog")
-        actions+=("show_changelog")
-
-        # Affichage du menu dynamique avec séparateurs de groupes
-        local group_idx=0
-        for i in "${!labels[@]}"; do
-            if [[ " ${group_separators[@]} " =~ " $i " ]]; then
-                echo -e "\n\e[1;36m--- ${group_titles[$group_idx]} ---\e[0m"
-                ((group_idx++))
-            fi
-            printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
-        done
-        echo -e "\n\e[1;32m0) \e[0m\e[0;31m🔙 Retour au menu principal\e[0m"
-
-        # Lecture du choix utilisateur
-        echo
-        read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
-        if [[ -z "$CHOICE" ]]; then
-            echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
-            sleep 1
-            continue
-        fi
-
-        if [[ "$CHOICE" == "0" ]]; then
-            break
-        elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
-            action="${actions[$((CHOICE-1))]}"
-            case "$action" in
-                update_script) update_script ;;
-                update_modules) update_modules ;;
-                show_modules_versions) show_modules_versions ;;
-                switch_channel) switch_channel ;;
-                change_tech_password) change_tech_password ;;
-                show_changelog) show_changelog ;;
-                *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
-            esac
-        else
-            echo -e "\e[1;31mChoix invalide.\e[0m"; sleep 1
-        fi
-    done
-}
-
-##############################
-#     MENU DEBIAN TOOLS      #
-##############################
-
-debian_tools_menu() {
-    while true; do
-        clear
-        show_logo_ascii
-        echo -e "\n\e[2;35m--------------------------------------------------\e[0m"
-        echo -e "\e[1;36m            🐧 MENU OUTILS SYSTÈME 🐧\e[0m"
-        echo -e "\e[2;35m--------------------------------------------------\e[0m"
-
-        # Groupes de labels et d'actions
-        local labels=()
-        local actions=()
-        local group_separators=()
-        local group_titles=()
-
-        # Groupe : Informations système
-        group_separators+=(0)
-        group_titles+=("🖥️ Informations système")
-        labels+=("📦 Afficher la version de Debian")
-        actions+=("show_debian_version")
-        labels+=("💾 Afficher l'espace disque")
-        actions+=("show_disk_space")
-        labels+=("📊 Moniteur système : Afficher les performances (btop)")
-        actions+=("show_system_monitor")
-
-        # Groupe : Réseau & Docker
-        group_separators+=(${#labels[@]})
-        group_titles+=("🌐 Réseau & Docker")
-        labels+=("🐳 Afficher l'état du service Docker")
-        actions+=("show_docker_status")
-        labels+=("🌐 Modifier l'adresse IP du serveur")
-        actions+=("configure_ip_vm")
-
-        # Groupe : Administration système
-        group_separators+=(${#labels[@]})
-        group_titles+=("🔧 Administration système")
-        labels+=("🔄 Mettre à jour le système")
-        actions+=("update_system")
-        labels+=("🖥️ Modifier le nom de la VM")
-        actions+=("modify_vm_name")
-        labels+=("🔐 Modifier le port SSH")
-        actions+=("modify_ssh_port")
-
-        # Groupe : Actions sur la VM
-        group_separators+=(${#labels[@]})
-        group_titles+=("🚦 Actions sur la VM")
-        labels+=(" 🔁 Redémarrer la VM")
-        actions+=("reboot_vm")
-        labels+=("💤 Éteindre la VM")
-        actions+=("shutdown_vm")
         
-
-        local group_idx=0
-        for i in "${!labels[@]}"; do
-            if [[ " ${group_separators[@]} " =~ " $i " ]]; then
-                echo -e "\n\e[0;36m--- ${group_titles[$group_idx]} ---\e[0m"
-                ((group_idx++))
-            fi
-            printf "\e[1;32m%d) \e[0m\e[0;37m%s\e[0m\n" $((i+1)) "${labels[$i]}"
-        done
-        echo -e "\n\e[1;32m0) \e[0m\e[0;31m🔙 Retour au menu principal\e[0m"
-
-        echo
-        read -p $'\e[1;33mEntrez votre choix : \e[0m' CHOICE
-        if [[ -z "$CHOICE" ]]; then
-            echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
-            sleep 1
-            continue
-        fi
-
-        if [[ "$CHOICE" == "0" ]]; then
-            break
-        elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#actions[@]}" ]]; then
-            action="${actions[$((CHOICE-1))]}"
-            case "$action" in
-                show_debian_version)
-                    if [[ -f /etc/debian_version ]]; then
-                        echo -e "\e[1;32mVersion Debian :\e[0m $(cat /etc/debian_version)"
-                    else
-                        echo -e "\e[1;31mCe système n'est pas Debian.\e[0m"
-                    fi
-                    ;;
-                show_disk_space)
-                    df -h
-                    ;;
-                show_docker_status)
-                    systemctl status docker --no-pager
-                    ;;
-                show_system_monitor)
-                    if command -v btop >/dev/null 2>&1; then
-                        btop
-                    else
-                        echo -e "\e[1;31mbtop n'est pas installé. Installation...\e[0m"
-                        run_as_root "apt update && apt install -y btop"
-                        btop
-                    fi
-                    ;;
-                configure_ip_vm) configure_ip_vm ;;
-                update_system)
-                    echo -e "\e[1;33mMise à jour du système...\e[0m"
-                    run_as_root "apt update && apt upgrade -y"
-                    ;;
-                modify_vm_name) modify_vm_name ;;
-                modify_ssh_port) modify_ssh_port ;;
-                reboot_vm) reboot_vm ;;
-                shutdown_vm) shutdown_vm ;;
-                *) echo -e "\e[1;31mAction inconnue.\e[0m" ;;
-            esac
-        else
-            echo -e "\e[1;31mChoix invalide.\e[0m"
-            sleep 1
-        fi
+        # Affichage des informations de version
+        display_version_info
+        
+        # Informations container et configuration
+        display_container_info
+        
+        # Menu principal
+        display_main_menu
+        
+        # Traitement du choix utilisateur
+        handle_user_choice
     done
 }
+
+##############################
+#    FONCTIONS ADMIN         #
+##############################
+
+# Affichage du changelog
+show_changelog() {
+    echo -e "\e[1;36m=== CHANGELOG DU SCRIPT ===\e[0m\n"
+    
+    if [[ -f "$SCRIPT_DIR/CHANGELOG.md" ]]; then
+        # Afficher les 30 premières lignes du changelog
+        head -n 30 "$SCRIPT_DIR/CHANGELOG.md" | while IFS= read -r line; do
+            if [[ "$line" =~ ^#[[:space:]] ]]; then
+                # Titre principal en cyan
+                echo -e "\e[1;36m$line\e[0m"
+            elif [[ "$line" =~ ^##[[:space:]] ]]; then
+                # Sous-titre en jaune
+                echo -e "\e[1;33m$line\e[0m"
+            elif [[ "$line" =~ ^-[[:space:]] ]]; then
+                # Éléments de liste en vert
+                echo -e "\e[0;32m$line\e[0m"
+            else
+                # Texte normal
+                echo -e "\e[0;37m$line\e[0m"
+            fi
+        done
+        
+        if [[ $(wc -l < "$SCRIPT_DIR/CHANGELOG.md") -gt 30 ]]; then
+            echo -e "\n\e[1;33m... (voir le fichier CHANGELOG.md complet pour plus d'informations)\e[0m"
+        fi
+    else
+        echo -e "\e[1;31m❌ Fichier CHANGELOG.md non trouvé\e[0m"
+    fi
+}
+
+# Détection de nouvelle version WG-Easy (fonction vide pour compatibilité)
+detect_new_wg_easy_version() {
+    # Cette fonction est maintenant intégrée dans la logique de display_version_info
+    return 0
+}
+
+# Menu de configuration auto-update
+auto_update_menu() {
+    echo -e "\e[1;36m=== CONFIGURATION AUTO-UPDATE ===\e[0m\n"
+    echo -e "\e[1;33mCette fonctionnalité permet de configurer les mises à jour automatiques.\e[0m"
+    echo -e "\e[1;33mFonctionnalité en cours de développement...\e[0m\n"
+    echo -e "\e[1;32mPour l'instant, utilisez l'option de mise à jour manuelle du script.\e[0m"
+}
+
+# Note: Les autres fonctions d'administration système ont été supprimées
+# selon les spécifications du menu simplifié
