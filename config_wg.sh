@@ -16,6 +16,7 @@ add_script_autostart_to_user() {
 
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
+BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 SCRIPT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "inconnu")"
@@ -39,29 +40,19 @@ export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
 
-BRANCH="main"
-
 if [[ -f "$VERSION_FILE" ]]; then
     SCRIPT_BASE_VERSION_INIT=$(cat "$VERSION_FILE")
 fi
-
-
-# Auto-bootstrap des modules si le dossier lib/ ou des modules sont manquants
-
-for mod in utils conf docker menu ; do
-    if [[ ! -f "lib/$mod.sh" ]]; then
-        echo "Module manquant : lib/$mod.sh"
-        exit 1
-    fi
-done
 
 ##############################
 #   AUTO-BOOTSTRAP MODULES   #
 ##############################
 
+# Création des dossiers nécessaires
 for dir in lib config logs; do
     if [[ ! -d "$dir" ]]; then
-        mkdir "$dir"
+        mkdir -p "$dir"
+        echo "Dossier créé : $dir/"
     fi
     if [[ ! -w "$dir" || ! -r "$dir" ]]; then
         echo "Erreur : le dossier '$dir/' n'est pas accessible en lecture/écriture."
@@ -69,26 +60,46 @@ for dir in lib config logs; do
     fi
 done
 
-# Téléchargement des modules principaux
+# Téléchargement automatique des modules manquants
+echo "Vérification et téléchargement des modules..."
 for mod in utils conf docker menu ; do
     if [[ ! -f "lib/$mod.sh" ]]; then
         echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"
-        chmod +x "lib/$mod.sh"
+        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
+            chmod +x "lib/$mod.sh"
+            echo "✓ Module lib/$mod.sh téléchargé avec succès"
+        else
+            echo "✗ Échec du téléchargement de lib/$mod.sh"
+            exit 1
+        fi
+    else
+        echo "✓ Module lib/$mod.sh déjà présent"
     fi
 done
 
 # Téléchargement de auto_update.sh à la racine si absent
 if [[ ! -f "auto_update.sh" ]]; then
     echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-    curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"
-    chmod +x "auto_update.sh"
+    if curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"; then
+        chmod +x "auto_update.sh"
+        echo "✓ auto_update.sh téléchargé avec succès"
+    else
+        echo "✗ Échec du téléchargement de auto_update.sh"
+    fi
 fi
 
 # Chargement des modules
+echo "Chargement des modules..."
 for f in lib/*.sh; do
-    source "$f"
+    if [[ -f "$f" ]]; then
+        echo "Chargement de $f"
+        source "$f"
+    else
+        echo "Erreur : Module $f introuvable après téléchargement"
+        exit 1
+    fi
 done
+echo "✓ Tous les modules sont chargés"
 
 ##############################
 #   INITIALISATION DE LA CONF

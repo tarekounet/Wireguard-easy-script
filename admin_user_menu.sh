@@ -46,23 +46,58 @@ validate_port() {
     [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
 }
 
+# Check if user is a human user (not system/service account)
+is_human_user() {
+    local username="$1"
+    local user_info=$(getent passwd "$username" 2>/dev/null)
+    [[ -n "$user_info" ]] || return 1
+    
+    local uid=$(echo "$user_info" | cut -d: -f3)
+    local shell=$(echo "$user_info" | cut -d: -f7)
+    
+    # Check UID >= 1000 and valid shell
+    [[ "$uid" -ge 1000 ]] || return 1
+    [[ "$shell" != "/usr/sbin/nologin" ]] || return 1
+    [[ "$shell" != "/bin/false" ]] || return 1
+    [[ "$shell" != "/sbin/nologin" ]] || return 1
+    [[ -n "$shell" ]] || return 1
+    
+    # Exclude common system account patterns
+    [[ "$username" != "nobody" ]] || return 1
+    [[ "$username" != _* ]] || return 1
+    [[ "$username" != systemd* ]] || return 1
+    [[ "$username" != daemon* ]] || return 1
+    [[ "$username" != "mail" ]] || return 1
+    [[ "$username" != "ftp" ]] || return 1
+    [[ "$username" != "www-data" ]] || return 1
+    [[ "$username" != "backup" ]] || return 1
+    [[ "$username" != "list" ]] || return 1
+    [[ "$username" != "proxy" ]] || return 1
+    [[ "$username" != "uucp" ]] || return 1
+    [[ "$username" != "news" ]] || return 1
+    [[ "$username" != "gnats" ]] || return 1
+    [[ "$username" != "sshd" ]] || return 1
+    [[ "$username" != "messagebus" ]] || return 1
+    [[ "$username" != "uuidd" ]] || return 1
+    
+    return 0
+}
+
 # Technical administration menu
 technical_admin_menu() {
     while true; do
         clear
         echo -e "${CYAN}==== MENU ADMINISTRATION v${SCRIPT_VERSION} ====${NC}"
-        echo -e "${WHITE}1) Utilisateurs"
-        echo -e "2) Wireguard"
-        echo -e "3) Docker"
-        echo -e "4) Diagnostic"
+        echo -e "${WHITE}1) Gestion des utilisateurs"
+        echo -e "2) Mise à jour du système"
+        echo -e "3) Redémarrage/Arrêt"
         echo -e "0) Quitter${NC}"
         echo -ne "${WHITE}Choix : ${NC}"
         read -r CHOICE
         case $CHOICE in
             1) user_management_menu ;;
-            2) wireguard_infrastructure_menu ;;
-            3) docker_management_menu ;;
-            4) system_diagnostics_menu ;;
+            2) system_update_menu ;;
+            3) power_management_menu ;;
             0)
                 log_action "INFO" "Fin session admin"
                 echo -e "${GREEN}Session terminée.${NC}"
@@ -110,6 +145,9 @@ create_technical_user() {
         elif id "$NEWUSER" &>/dev/null; then
             echo -e "${RED}L'utilisateur '$NEWUSER' existe déjà.${NC}"
             continue
+        elif [[ "$NEWUSER" =~ ^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|ftp|nobody|systemd.*|_.*|sshd|messagebus|uuidd)$ ]]; then
+            echo -e "${RED}Nom d'utilisateur réservé au système. Choisissez un autre nom.${NC}"
+            continue
         fi
         break
     done
@@ -151,17 +189,20 @@ create_technical_user() {
 modify_user_menu() {
     clear
     echo -e "${YELLOW}═══ MODIFICATION D'UN UTILISATEUR ═══${NC}"
-    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd)
+    # Filter only real human users: UID >= 1000, valid shell, exclude system accounts
+    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd)
     if [[ ${#USERS[@]} -eq 0 ]]; then
-        echo -e "${RED}Aucun utilisateur standard trouvé.${NC}"
+        echo -e "${RED}Aucun utilisateur humain trouvé.${NC}"
         read -n1 -r -p "Appuyez sur une touche pour continuer..." _
         return
     fi
-    echo -e "${WHITE}Utilisateurs disponibles :${NC}"
+    echo -e "${WHITE}Utilisateurs humains disponibles :${NC}"
     for i in "${!USERS[@]}"; do
         local user="${USERS[$i]}"
         local groups=$(groups "$user" 2>/dev/null | cut -d: -f2)
-        printf "${WHITE}%2d)${NC} %-15s ${CYAN}Groupes:${NC} %s\n" $((i+1)) "$user" "$groups"
+        local shell=$(getent passwd "$user" | cut -d: -f7)
+        local home=$(getent passwd "$user" | cut -d: -f6)
+        printf "${WHITE}%2d)${NC} %-15s ${CYAN}Shell:${NC} %-15s ${BLUE}Home:${NC} %-20s ${CYAN}Groupes:${NC} %s\n" $((i+1)) "$user" "$shell" "$home" "$groups"
     done
     echo -ne "${WHITE}Numéro de l'utilisateur [1-${#USERS[@]}] : ${NC}"
     read -r IDX
@@ -221,15 +262,19 @@ user_modification_options() {
 remove_user_secure() {
     clear
     echo -e "${RED}═══ SUPPRESSION SÉCURISÉE D'UN UTILISATEUR ═══${NC}"
-    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody"){print $1}' /etc/passwd)
+    # Filter only real human users: UID >= 1000, valid shell, exclude system accounts
+    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd)
     if [[ ${#USERS[@]} -eq 0 ]]; then
-        echo -e "${RED}Aucun utilisateur standard trouvé.${NC}"
+        echo -e "${RED}Aucun utilisateur humain trouvé.${NC}"
         read -n1 -r -p "Appuyez sur une touche pour continuer..." _
         return
     fi
-    echo -e "${WHITE}Utilisateurs pouvant être supprimés :${NC}"
+    echo -e "${WHITE}Utilisateurs humains pouvant être supprimés :${NC}"
     for i in "${!USERS[@]}"; do
-        printf "${WHITE}%2d)${NC} %s\n" $((i+1)) "${USERS[$i]}"
+        local user="${USERS[$i]}"
+        local shell=$(getent passwd "$user" | cut -d: -f7)
+        local home=$(getent passwd "$user" | cut -d: -f6)
+        printf "${WHITE}%2d)${NC} %-15s ${CYAN}Shell:${NC} %-15s ${BLUE}Home:${NC} %s\n" $((i+1)) "$user" "$shell" "$home"
     done
     echo -ne "${WHITE}Numéro de l'utilisateur à supprimer [1-${#USERS[@]}] : ${NC}"
     read -r IDX
@@ -254,335 +299,398 @@ remove_user_secure() {
     fi
     read -n1 -r -p "Appuyez sur une touche pour continuer..." _
 }
-# Wireguard Infrastructure Management
-wireguard_infrastructure_menu() {
+
+# System Update Management
+system_update_menu() {
     while true; do
         clear
-        echo -e "${BLUE}╔═════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${BLUE}║${WHITE}         GESTION DE L'INFRASTRUCTURE WIREGUARD                ${BLUE}║${NC}"
-        echo -e "${BLUE}╠═════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${BLUE}║ ${WHITE}[1]${NC} Scanner & gérer les instances Wireguard                ${BLUE}║${NC}"
-        echo -e "${BLUE}║ ${WHITE}[2]${NC} Réinitialiser la configuration Wireguard               ${BLUE}║${NC}"
-        echo -e "${BLUE}║ ${WHITE}[3]${NC} Sauvegarder/Restaurer les configurations               ${BLUE}║${NC}"
-        echo -e "${BLUE}║ ${WHITE}[4]${NC} Superviser les connexions actives                      ${BLUE}║${NC}"
-        echo -e "${BLUE}║ ${WHITE}[5]${NC} Mettre à jour les images Wireguard                     ${BLUE}║${NC}"
-        echo -e "${BLUE}║ ${WHITE}[0]${NC} Retour au menu principal                               ${BLUE}║${NC}"
-        echo -e "${BLUE}╚═════════════════════════════════════════════════════════════╝${NC}"
-        echo -ne "${WHITE}Sélectionnez une opération [0-5] : ${NC}"
-        read -r WG_CHOICE
-
-        case $WG_CHOICE in
+        echo -e "${YELLOW}═══ MISE À JOUR DU SYSTÈME ═══${NC}"
+        echo -e "${WHITE}[1]${NC} Vérifier les mises à jour disponibles"
+        echo -e "${WHITE}[2]${NC} Mettre à jour la liste des paquets"
+        echo -e "${WHITE}[3]${NC} Mettre à jour tous les paquets"
+        echo -e "${WHITE}[4]${NC} Mettre à jour les paquets de sécurité uniquement"
+        echo -e "${WHITE}[5]${NC} Nettoyer le cache des paquets"
+        echo -e "${WHITE}[6]${NC} Redémarrer si nécessaire après mise à jour"
+        echo -e "${WHITE}[0]${NC} Retour"
+        echo -ne "${WHITE}Votre choix [0-6] : ${NC}"
+        read -r UPDATE_CHOICE
+        
+        case $UPDATE_CHOICE in
             1)
-                scan_wireguard_instances
+                check_available_updates
                 ;;
             2)
-                reset_wireguard_config
+                update_package_list
                 ;;
             3)
-                backup_restore_menu
+                full_system_update
                 ;;
             4)
-                monitor_wg_connections
+                security_updates_only
                 ;;
             5)
-                update_wireguard_images
+                clean_package_cache
+                ;;
+            6)
+                check_reboot_required
                 ;;
             0)
                 break
                 ;;
             *)
-                echo -e "${RED}Invalid selection.${NC}"
-                read -n1 -r -p "Press any key to continue..." _
+                echo -e "${RED}Sélection invalide.${NC}"
                 ;;
         esac
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
     done
 }
 
-# Enhanced Wireguard instance scanning
-scan_wireguard_instances() {
+# Power Management Menu
+power_management_menu() {
+    while true; do
+        clear
+        echo -e "${RED}═══ GESTION DE L'ALIMENTATION ═══${NC}"
+        echo -e "${WHITE}[1]${NC} Redémarrer le système"
+        echo -e "${WHITE}[2]${NC} Arrêter le système"
+        echo -e "${WHITE}[3]${NC} Programmer un redémarrage"
+        echo -e "${WHITE}[4]${NC} Programmer un arrêt"
+        echo -e "${WHITE}[5]${NC} Annuler une programmation"
+        echo -e "${WHITE}[6]${NC} Voir l'état des tâches programmées"
+        echo -e "${WHITE}[0]${NC} Retour"
+        echo -ne "${WHITE}Votre choix [0-6] : ${NC}"
+        read -r POWER_CHOICE
+        
+        case $POWER_CHOICE in
+            1)
+                immediate_reboot
+                ;;
+            2)
+                immediate_shutdown
+                ;;
+            3)
+                schedule_reboot
+                ;;
+            4)
+                schedule_shutdown
+                ;;
+            5)
+                cancel_scheduled_task
+                ;;
+            6)
+                show_scheduled_tasks
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}Sélection invalide.${NC}"
+                ;;
+        esac
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
+    done
+}
+# ═══════════════════════════════════════════════════════════════
+# SYSTEM UPDATE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+# Check available updates
+check_available_updates() {
     clear
-    echo -e "${YELLOW}═══ WIREGUARD INSTANCE SCANNER ═══${NC}"
+    echo -e "${YELLOW}═══ VÉRIFICATION DES MISES À JOUR ═══${NC}"
     
-    echo -e "${CYAN}Scanning for Wireguard installations...${NC}"
-    mapfile -t WG_DIRS < <(find /home -maxdepth 3 -type d -name "docker-wireguard" 2>/dev/null)
-    mapfile -t WG_COMPOSE < <(find /home -maxdepth 3 -name "$DOCKER_COMPOSE_FILE" -path "*/docker-wireguard/*" 2>/dev/null)
-    
-    if [[ ${#WG_DIRS[@]} -eq 0 ]]; then
-        echo -e "${RED}No Wireguard instances found.${NC}"
-        read -n1 -r -p "Press any key to continue..." _
-        return
-    fi
-
-    echo -e "${WHITE}Found ${#WG_DIRS[@]} Wireguard instance(s):${NC}"
-    for i in "${!WG_DIRS[@]}"; do
-        local dir="${WG_DIRS[$i]}"
-        local status="STOPPED"
-        local compose_file="$dir/$DOCKER_COMPOSE_FILE"
+    if command -v apt &>/dev/null; then
+        echo -e "${WHITE}Mise à jour de la liste des paquets...${NC}"
+        apt update
         
-        if [[ -f "$compose_file" ]] && docker compose -f "$compose_file" ps | grep -q 'Up'; then
-            status="${GREEN}RUNNING${NC}"
+        echo -e "\n${WHITE}Mises à jour disponibles :${NC}"
+        local updates=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
+        updates=$((updates - 1))
+        
+        if [[ $updates -gt 0 ]]; then
+            echo -e "${YELLOW}$updates mises à jour disponibles${NC}"
+            apt list --upgradable
         else
-            status="${RED}STOPPED${NC}"
+            echo -e "${GREEN}Le système est à jour${NC}"
         fi
         
-        local config_files=$(find "$dir/$WG_CONFIG_DIR" -name "*.conf" 2>/dev/null | wc -l)
-        printf "${WHITE}%2d)${NC} %-40s Status: %s Configs: %d\n" $((i+1)) "$dir" "$status" "$config_files"
-    done
+        echo -e "\n${WHITE}Mises à jour de sécurité :${NC}"
+        local security_updates=$(apt list --upgradable 2>/dev/null | grep -i security | wc -l)
+        if [[ $security_updates -gt 0 ]]; then
+            echo -e "${RED}$security_updates mises à jour de sécurité disponibles${NC}"
+        else
+            echo -e "${GREEN}Aucune mise à jour de sécurité en attente${NC}"
+        fi
+        
+    elif command -v yum &>/dev/null; then
+        echo -e "${WHITE}Vérification avec YUM...${NC}"
+        yum check-update
+    elif command -v dnf &>/dev/null; then
+        echo -e "${WHITE}Vérification avec DNF...${NC}"
+        dnf check-update
+    else
+        echo -e "${RED}Gestionnaire de paquets non reconnu${NC}"
+    fi
     
-    echo -ne "${WHITE}Select instance to manage [1-${#WG_DIRS[@]}, 0 to cancel]: ${NC}"
-    read -r IDX
-    IDX=$((IDX-1))
+    log_action "INFO" "Vérification des mises à jour effectuée"
+}
+
+# Update package list
+update_package_list() {
+    clear
+    echo -e "${YELLOW}═══ MISE À JOUR DE LA LISTE DES PAQUETS ═══${NC}"
     
-    if [[ $IDX -ge 0 && $IDX -lt ${#WG_DIRS[@]} ]]; then
-        manage_wireguard_instance "${WG_DIRS[$IDX]}"
+    if command -v apt &>/dev/null; then
+        echo -e "${WHITE}Mise à jour de la liste des paquets APT...${NC}"
+        apt update
+        echo -e "${GREEN}✓ Liste des paquets mise à jour${NC}"
+    elif command -v yum &>/dev/null; then
+        echo -e "${WHITE}Nettoyage du cache YUM...${NC}"
+        yum clean all
+        echo -e "${GREEN}✓ Cache YUM nettoyé${NC}"
+    elif command -v dnf &>/dev/null; then
+        echo -e "${WHITE}Nettoyage du cache DNF...${NC}"
+        dnf clean all
+        echo -e "${GREEN}✓ Cache DNF nettoyé${NC}"
+    fi
+    
+    log_action "INFO" "Liste des paquets mise à jour"
+}
+
+# Full system update
+full_system_update() {
+    clear
+    echo -e "${YELLOW}═══ MISE À JOUR COMPLÈTE DU SYSTÈME ═══${NC}"
+    echo -e "${RED}ATTENTION : Cette opération peut prendre du temps et redémarrer certains services.${NC}"
+    echo -ne "${WHITE}Continuer ? [o/N] : ${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+        if command -v apt &>/dev/null; then
+            echo -e "${WHITE}Mise à jour APT en cours...${NC}"
+            apt update && apt upgrade -y
+            echo -e "${GREEN}✓ Mise à jour APT terminée${NC}"
+        elif command -v yum &>/dev/null; then
+            echo -e "${WHITE}Mise à jour YUM en cours...${NC}"
+            yum update -y
+            echo -e "${GREEN}✓ Mise à jour YUM terminée${NC}"
+        elif command -v dnf &>/dev/null; then
+            echo -e "${WHITE}Mise à jour DNF en cours...${NC}"
+            dnf update -y
+            echo -e "${GREEN}✓ Mise à jour DNF terminée${NC}"
+        fi
+        
+        log_action "INFO" "Mise à jour complète du système effectuée"
+        
+        # Check if reboot is required
+        if [[ -f /var/run/reboot-required ]]; then
+            echo -e "${YELLOW}Un redémarrage est requis pour finaliser les mises à jour.${NC}"
+            echo -ne "${WHITE}Redémarrer maintenant ? [o/N] : ${NC}"
+            read -r REBOOT_NOW
+            if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
+                echo -e "${RED}Redémarrage en cours...${NC}"
+                log_action "INFO" "Redémarrage après mise à jour"
+                shutdown -r now
+            fi
+        fi
+    else
+        echo -e "${YELLOW}Mise à jour annulée.${NC}"
     fi
 }
 
-# Manage individual Wireguard instance
-manage_wireguard_instance() {
-    local instance_dir="$1"
-    local compose_file="$instance_dir/$DOCKER_COMPOSE_FILE"
+# Security updates only
+security_updates_only() {
+    clear
+    echo -e "${YELLOW}═══ MISES À JOUR DE SÉCURITÉ UNIQUEMENT ═══${NC}"
     
-    while true; do
-        clear
-        echo -e "${YELLOW}═══ MANAGING: $instance_dir ═══${NC}"
+    if command -v apt &>/dev/null; then
+        echo -e "${WHITE}Installation des mises à jour de sécurité...${NC}"
+        apt update
+        apt upgrade -y --security
+        echo -e "${GREEN}✓ Mises à jour de sécurité installées${NC}"
+    elif command -v yum &>/dev/null; then
+        echo -e "${WHITE}Installation des mises à jour de sécurité YUM...${NC}"
+        yum update --security -y
+        echo -e "${GREEN}✓ Mises à jour de sécurité YUM installées${NC}"
+    elif command -v dnf &>/dev/null; then
+        echo -e "${WHITE}Installation des mises à jour de sécurité DNF...${NC}"
+        dnf update --security -y
+        echo -e "${GREEN}✓ Mises à jour de sécurité DNF installées${NC}"
+    fi
+    
+    log_action "INFO" "Mises à jour de sécurité installées"
+}
+
+# Clean package cache
+clean_package_cache() {
+    clear
+    echo -e "${YELLOW}═══ NETTOYAGE DU CACHE DES PAQUETS ═══${NC}"
+    
+    if command -v apt &>/dev/null; then
+        echo -e "${WHITE}Nettoyage du cache APT...${NC}"
+        apt autoclean
+        apt autoremove -y
+        echo -e "${GREEN}✓ Cache APT nettoyé${NC}"
+    elif command -v yum &>/dev/null; then
+        echo -e "${WHITE}Nettoyage du cache YUM...${NC}"
+        yum clean all
+        echo -e "${GREEN}✓ Cache YUM nettoyé${NC}"
+    elif command -v dnf &>/dev/null; then
+        echo -e "${WHITE}Nettoyage du cache DNF...${NC}"
+        dnf clean all
+        echo -e "${GREEN}✓ Cache DNF nettoyé${NC}"
+    fi
+    
+    log_action "INFO" "Cache des paquets nettoyé"
+}
+
+# Check if reboot is required
+check_reboot_required() {
+    clear
+    echo -e "${YELLOW}═══ VÉRIFICATION REDÉMARRAGE REQUIS ═══${NC}"
+    
+    if [[ -f /var/run/reboot-required ]]; then
+        echo -e "${RED}Un redémarrage est requis.${NC}"
+        if [[ -f /var/run/reboot-required.pkgs ]]; then
+            echo -e "${WHITE}Paquets nécessitant un redémarrage :${NC}"
+            cat /var/run/reboot-required.pkgs
+        fi
+        echo -ne "${WHITE}Redémarrer maintenant ? [o/N] : ${NC}"
+        read -r REBOOT_NOW
+        if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
+            echo -e "${RED}Redémarrage en cours...${NC}"
+            log_action "INFO" "Redémarrage manuel après vérification"
+            shutdown -r now
+        fi
+    else
+        echo -e "${GREEN}Aucun redémarrage requis.${NC}"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# POWER MANAGEMENT FUNCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+# Immediate reboot
+immediate_reboot() {
+    clear
+    echo -e "${RED}═══ REDÉMARRAGE IMMÉDIAT ═══${NC}"
+    echo -e "${RED}ATTENTION : Le système va redémarrer immédiatement !${NC}"
+    echo -ne "${WHITE}Confirmer le redémarrage ? [o/N] : ${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+        log_action "WARNING" "Redémarrage immédiat demandé par l'administrateur"
+        echo -e "${RED}Redémarrage en cours...${NC}"
+        shutdown -r now
+    else
+        echo -e "${YELLOW}Redémarrage annulé.${NC}"
+    fi
+}
+
+# Immediate shutdown
+immediate_shutdown() {
+    clear
+    echo -e "${RED}═══ ARRÊT IMMÉDIAT ═══${NC}"
+    echo -e "${RED}ATTENTION : Le système va s'arrêter immédiatement !${NC}"
+    echo -ne "${WHITE}Confirmer l'arrêt ? [o/N] : ${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+        log_action "WARNING" "Arrêt immédiat demandé par l'administrateur"
+        echo -e "${RED}Arrêt en cours...${NC}"
+        shutdown -h now
+    else
+        echo -e "${YELLOW}Arrêt annulé.${NC}"
+    fi
+}
+
+# Schedule reboot
+schedule_reboot() {
+    clear
+    echo -e "${YELLOW}═══ PROGRAMMER UN REDÉMARRAGE ═══${NC}"
+    echo -e "${WHITE}Formats acceptés :${NC}"
+    echo -e "  - +X (dans X minutes)"
+    echo -e "  - HH:MM (heure spécifique)"
+    echo -e "  - now (immédiatement)"
+    echo -ne "${WHITE}Quand redémarrer ? : ${NC}"
+    read -r WHEN
+    
+    if [[ -n "$WHEN" ]]; then
+        echo -ne "${WHITE}Message optionnel : ${NC}"
+        read -r MESSAGE
         
-        # Check status
-        local status="STOPPED"
-        if [[ -f "$compose_file" ]] && docker compose -f "$compose_file" ps | grep -q 'Up'; then
-            status="${GREEN}RUNNING${NC}"
+        if [[ -n "$MESSAGE" ]]; then
+            shutdown -r "$WHEN" "$MESSAGE"
+        else
+            shutdown -r "$WHEN"
         fi
         
-        echo -e "${WHITE}Current Status:${NC} $status"
-        echo -e "${WHITE}[1]${NC} Start/Stop Service"
-        echo -e "${WHITE}[2]${NC} View Configuration Details"
-        echo -e "${WHITE}[3]${NC} Reset Configuration Data"
-        echo -e "${WHITE}[4]${NC} View Logs"
-        echo -e "${WHITE}[5]${NC} Export Configuration Backup"
-        echo -e "${WHITE}[0]${NC} Return"
-        echo -ne "${WHITE}Select operation [0-5]: ${NC}"
-        read -r INST_CHOICE
+        echo -e "${GREEN}✓ Redémarrage programmé${NC}"
+        log_action "INFO" "Redémarrage programmé pour : $WHEN"
+    else
+        echo -e "${RED}Heure invalide.${NC}"
+    fi
+}
+
+# Schedule shutdown
+schedule_shutdown() {
+    clear
+    echo -e "${YELLOW}═══ PROGRAMMER UN ARRÊT ═══${NC}"
+    echo -e "${WHITE}Formats acceptés :${NC}"
+    echo -e "  - +X (dans X minutes)"
+    echo -e "  - HH:MM (heure spécifique)"
+    echo -e "  - now (immédiatement)"
+    echo -ne "${WHITE}Quand arrêter ? : ${NC}"
+    read -r WHEN
+    
+    if [[ -n "$WHEN" ]]; then
+        echo -ne "${WHITE}Message optionnel : ${NC}"
+        read -r MESSAGE
         
-        case $INST_CHOICE in
-            1)
-                toggle_wireguard_service "$instance_dir"
-                ;;
-            2)
-                view_wg_config_details "$instance_dir"
-                ;;
-            3)
-                reset_instance_config "$instance_dir"
-                ;;
-            4)
-                view_wg_logs "$instance_dir"
-                ;;
-            5)
-                export_wg_backup "$instance_dir"
-                ;;
-            0)
-                break
-                ;;
-            *)
-                echo -e "${RED}Invalid selection.${NC}"
-                ;;
-        esac
-        read -n1 -r -p "Press any key to continue..." _
-    done
-}
-# System Diagnostics & Monitoring
-system_diagnostics_menu() {
-    while true; do
-        clear
-        echo -e "${GREEN}╔═════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║${WHITE}         DIAGNOSTICS & SUPERVISION SYSTÈME                     ${GREEN}║${NC}"
-        echo -e "${GREEN}╠═════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${GREEN}║ ${WHITE}[1]${NC} Vue d'ensemble de la santé système                     ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[2]${NC} Informations matérielles détaillées                    ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[3]${NC} Statut des interfaces réseau                           ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[4]${NC} Supervision des processus & services                   ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[5]${NC} Analyse de l'utilisation disque & I/O                  ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[6]${NC} Analyse sécurité & logs                               ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[7]${NC} Benchmarks de performance                             ${GREEN}║${NC}"
-        echo -e "${GREEN}║ ${WHITE}[0]${NC} Retour au menu principal                              ${GREEN}║${NC}"
-        echo -e "${GREEN}╚═════════════════════════════════════════════════════════════╝${NC}"
-        echo -ne "${WHITE}Sélectionnez une opération [0-7] : ${NC}"
-        read -r DIAG_CHOICE
-
-        case $DIAG_CHOICE in
-            1)
-                system_health_overview
-                ;;
-            2)
-                detailed_hardware_info
-                ;;
-            3)
-                network_interface_status
-                ;;
-            4)
-                process_service_monitor
-                ;;
-            5)
-                disk_usage_analysis
-                ;;
-            6)
-                security_log_analysis
-                ;;
-            7)
-                performance_benchmarks
-                ;;
-            0)
-                break
-                ;;
-            *)
-                echo -e "${RED}Invalid selection.${NC}"
-                read -n1 -r -p "Press any key to continue..." _
-                ;;
-        esac
-    done
+        if [[ -n "$MESSAGE" ]]; then
+            shutdown -h "$WHEN" "$MESSAGE"
+        else
+            shutdown -h "$WHEN"
+        fi
+        
+        echo -e "${GREEN}✓ Arrêt programmé${NC}"
+        log_action "INFO" "Arrêt programmé pour : $WHEN"
+    else
+        echo -e "${RED}Heure invalide.${NC}"
+    fi
 }
 
-# Docker Environment Management
-docker_management_menu() {
-    while true; do
-        clear
-        echo -e "${PURPLE}╔═════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${PURPLE}║${WHITE}         GESTION DE L'ENVIRONNEMENT DOCKER                     ${PURPLE}║${NC}"
-        echo -e "${PURPLE}╠═════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[1]${NC} Statut & informations Docker                           ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[2]${NC} Gestion des conteneurs                                 ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[3]${NC} Gestion & mise à jour des images                       ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[4]${NC} Gestion des volumes & réseaux                          ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[5]${NC} Nettoyage système Docker                               ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[6]${NC} Analyse de l'utilisation des ressources                ${PURPLE}║${NC}"
-        echo -e "${PURPLE}║ ${WHITE}[0]${NC} Retour au menu principal                               ${PURPLE}║${NC}"
-        echo -e "${PURPLE}╚═════════════════════════════════════════════════════════════╝${NC}"
-        echo -ne "${WHITE}Sélectionnez une opération [0-6] : ${NC}"
-        read -r DOCKER_CHOICE
-
-        case $DOCKER_CHOICE in
-            1)
-                docker_status_info
-                ;;
-            2)
-                container_management
-                ;;
-            3)
-                image_management
-                ;;
-            4)
-                volume_network_management
-                ;;
-            5)
-                docker_system_cleanup
-                ;;
-            6)
-                docker_resource_analysis
-                ;;
-            0)
-                break
-                ;;
-            *)
-                echo -e "${RED}Invalid selection.${NC}"
-                read -n1 -r -p "Press any key to continue..." _
-                ;;
-        esac
-    done
+# Cancel scheduled task
+cancel_scheduled_task() {
+    clear
+    echo -e "${YELLOW}═══ ANNULER UNE PROGRAMMATION ═══${NC}"
+    
+    if shutdown -c 2>/dev/null; then
+        echo -e "${GREEN}✓ Tâche programmée annulée${NC}"
+        log_action "INFO" "Tâche programmée annulée"
+    else
+        echo -e "${RED}Aucune tâche programmée ou erreur lors de l'annulation${NC}"
+    fi
 }
 
-# Security Audit & Hardening
-security_audit_menu() {
-    while true; do
-        clear
-        echo -e "${RED}╔═════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${RED}║${WHITE}           AUDIT & RENFORCEMENT DE LA SÉCURITÉ                ${RED}║${NC}"
-        echo -e "${RED}╠═════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${RED}║ ${WHITE}[1]${NC} Audit de la sécurité système                           ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[2]${NC} Analyse de la configuration SSH                        ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[3]${NC} Statut & règles du pare-feu                            ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[4]${NC} Tentatives de connexion échouées                       ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[5]${NC} Audit des permissions de fichiers                      ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[6]${NC} Appliquer un renforcement de la sécurité               ${RED}║${NC}"
-        echo -e "${RED}║ ${WHITE}[0]${NC} Retour au menu principal                               ${RED}║${NC}"
-        echo -e "${RED}╚═════════════════════════════════════════════════════════════╝${NC}"
-        echo -ne "${WHITE}Sélectionnez une opération [0-6] : ${NC}"
-        read -r SEC_CHOICE
-
-        case $SEC_CHOICE in
-            1)
-                system_security_audit
-                ;;
-            2)
-                ssh_config_analysis
-                ;;
-            3)
-                firewall_status_rules
-                ;;
-            4)
-                failed_login_analysis
-                ;;
-            5)
-                file_permissions_audit
-                ;;
-            6)
-                apply_security_hardening
-                ;;
-            0)
-                break
-                ;;
-            *)
-                echo -e "${RED}Invalid selection.${NC}"
-                read -n1 -r -p "Press any key to continue..." _
-                ;;
-        esac
-    done
-}
-
-# Network Configuration & Services
-network_configuration_menu() {
-    while true; do
-        clear
-        echo -e "${CYAN}╔═════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║${WHITE}         CONFIGURATION RÉSEAU & SERVICES                       ${CYAN}║${NC}"
-        echo -e "${CYAN}╠═════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║ ${WHITE}[1]${NC} Configuration des interfaces réseau                    ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[2]${NC} Gestion du service SSH                                 ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[3]${NC} Configuration du pare-feu                              ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[4]${NC} Configuration DNS & routage                            ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[5]${NC} Scanner de ports & outils réseau                       ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[6]${NC} Nom d'hôte & heure système                             ${CYAN}║${NC}"
-        echo -e "${CYAN}║ ${WHITE}[0]${NC} Retour au menu principal                               ${CYAN}║${NC}"
-        echo -e "${CYAN}╚═════════════════════════════════════════════════════════════╝${NC}"
-        echo -ne "${WHITE}Sélectionnez une opération [0-6] : ${NC}"
-        read -r NET_CHOICE
-
-        case $NET_CHOICE in
-            1)
-                network_interface_config
-                ;;
-            2)
-                ssh_service_management
-                ;;
-            3)
-                firewall_configuration
-                ;;
-            4)
-                dns_routing_config
-                ;;
-            5)
-                network_tools
-                ;;
-            6)
-                hostname_time_config
-                ;;
-            0)
-                break
-                ;;
-            *)
-                echo -e "${RED}Invalid selection.${NC}"
-                read -n1 -r -p "Press any key to continue..." _
-                ;;
-        esac
-    done
+# Show scheduled tasks
+show_scheduled_tasks() {
+    clear
+    echo -e "${YELLOW}═══ TÂCHES PROGRAMMÉES ═══${NC}"
+    
+    echo -e "${WHITE}Tâches shutdown/reboot :${NC}"
+    if pgrep shutdown &>/dev/null; then
+        echo -e "${YELLOW}Une tâche shutdown est active${NC}"
+        ps aux | grep shutdown | grep -v grep
+    else
+        echo -e "${GREEN}Aucune tâche shutdown programmée${NC}"
+    fi
+    
+    echo -e "\n${WHITE}Tâches cron système :${NC}"
+    crontab -l 2>/dev/null | head -10 || echo "Aucune tâche cron utilisateur"
+    
+    echo -e "\n${WHITE}Timers systemd actifs :${NC}"
+    systemctl list-timers --no-pager | head -10
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -595,380 +703,343 @@ configure_user_autostart() {
     local script_dir="$2"
     local profile="/home/$user/.bash_profile"
     local script_path="$script_dir/config_wg.sh"
+    local github_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh"
     
+    echo -e "${YELLOW}Configuration du demarrage automatique pour $user...${NC}"
+    
+    # Télécharger le script config_wg.sh depuis GitHub
+    echo -e "${WHITE}Telechargement du script config_wg.sh depuis GitHub...${NC}"
+    if command -v curl &>/dev/null; then
+        if curl -fsSL "$github_url" -o "$script_path"; then
+            echo -e "${GREEN}✓ Script telecharge avec succes${NC}"
+        else
+            echo -e "${RED}✗ Echec du telechargement avec curl${NC}"
+            # Essayer avec wget si curl echoue
+            if command -v wget &>/dev/null; then
+                echo -e "${WHITE}Tentative avec wget...${NC}"
+                if wget -q "$github_url" -O "$script_path"; then
+                    echo -e "${GREEN}✓ Script telecharge avec wget${NC}"
+                else
+                    echo -e "${RED}✗ Echec du telechargement avec wget${NC}"
+                    echo -e "${YELLOW}Creation d'un script de demarrage basique...${NC}"
+                    create_basic_startup_script "$script_path"
+                fi
+            else
+                echo -e "${YELLOW}Creation d'un script de demarrage basique...${NC}"
+                create_basic_startup_script "$script_path"
+            fi
+        fi
+    elif command -v wget &>/dev/null; then
+        if wget -q "$github_url" -O "$script_path"; then
+            echo -e "${GREEN}✓ Script telecharge avec wget${NC}"
+        else
+            echo -e "${RED}✗ Echec du telechargement avec wget${NC}"
+            echo -e "${YELLOW}Creation d'un script de demarrage basique...${NC}"
+            create_basic_startup_script "$script_path"
+        fi
+    else
+        echo -e "${RED}Ni curl ni wget disponible${NC}"
+        echo -e "${YELLOW}Creation d'un script de demarrage basique...${NC}"
+        create_basic_startup_script "$script_path"
+    fi
+    
+    # Rendre le script executable
+    chmod +x "$script_path"
+    chown "$user:$user" "$script_path"
+    
+    # Configurer le demarrage automatique dans .bash_profile
     if ! grep -q "$script_path" "$profile" 2>/dev/null; then
+        echo '# Auto-start Wireguard management script' >> "$profile"
         echo '[[ $- == *i* ]] && cd ~/wireguard-script-manager && bash ./config_wg.sh' >> "$profile"
         chown "$user:$user" "$profile"
         chmod 644 "$profile"
-        echo -e "${GREEN}✓ Auto-start configured for user $user${NC}"
-        log_action "INFO" "Auto-start configured for user: $user"
+        echo -e "${GREEN}✓ Demarrage automatique configure pour $user${NC}"
+        log_action "INFO" "Auto-start configured for user: $user with GitHub script"
     else
-        echo -e "${YELLOW}Auto-start already configured for user $user${NC}"
+        echo -e "${YELLOW}Demarrage automatique deja configure pour $user${NC}"
     fi
 }
 
-# System Health Overview
-system_health_overview() {
-    clear
-    echo -e "${YELLOW}═══ SYSTEM HEALTH OVERVIEW ═══${NC}"
+# Create a basic startup script if download fails
+create_basic_startup_script() {
+    local script_path="$1"
     
-    # System info
-    echo -e "${WHITE}System Information:${NC}"
-    echo "Hostname    : $(hostname)"
-    echo "Uptime      : $(uptime -p)"
-    echo "OS          : $(lsb_release -ds 2>/dev/null || grep PRETTY_NAME /etc/os-release | cut -d'=' -f2 | tr -d '"')"
-    echo "Kernel      : $(uname -r)"
-    echo "Architecture: $(uname -m)"
-    
-    # CPU and Memory
-    echo -e "\n${WHITE}Hardware Resources:${NC}"
-    echo "CPU Model   : $(lscpu | grep 'Model name' | cut -d: -f2 | xargs)"
-    echo "CPU Cores   : $(nproc)"
-    echo "CPU Usage   : $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%"
-    echo "Memory      : $(free -h | awk '/Mem:/ {printf "%s used / %s total (%.1f%%)", $3, $2, ($3/$2)*100}')"
-    echo "Swap        : $(free -h | awk '/Swap:/ {printf "%s used / %s total", $3, $2}')"
-    
-    # Load averages
-    echo -e "\n${WHITE}System Load:${NC}"
-    echo "Load Average: $(uptime | awk -F'load average:' '{print $2}' | xargs)"
-    
-    # Disk usage
-    echo -e "\n${WHITE}Disk Usage (Critical filesystems):${NC}"
-    df -h | awk 'NR==1 || $5+0 > 80 {print}'
-    
-    # Network
-    echo -e "\n${WHITE}Network Status:${NC}"
-    echo "Primary IP  : $(hostname -I | awk '{print $1}')"
-    echo "DNS Servers : $(grep nameserver /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')"
-    
-    # Services
-    echo -e "\n${WHITE}Critical Services:${NC}"
-    local services=("ssh" "docker" "systemd-resolved")
-    for service in "${services[@]}"; do
-        local status=$(systemctl is-active "$service" 2>/dev/null || echo "not-found")
-        if [[ "$status" == "active" ]]; then
-            echo "✓ $service: ${GREEN}$status${NC}"
-        else
-            echo "✗ $service: ${RED}$status${NC}"
-        fi
-    done
-    
-    read -n1 -r -p "Press any key to continue..." _
-}
+    cat > "$script_path" << 'EOF'
+#!/bin/bash
+# Basic Wireguard Management Script
+# This is a fallback script when GitHub download fails
 
-# Docker Status & Information
-docker_status_info() {
-    clear
-    echo -e "${YELLOW}═══ DOCKER STATUS & INFORMATION ═══${NC}"
-    
-    if ! command -v docker &>/dev/null; then
-        echo -e "${RED}Docker is not installed.${NC}"
-        read -n1 -r -p "Press any key to continue..." _
-        return
-    fi
-    
-    echo -e "${WHITE}Docker Service Status:${NC}"
-    systemctl status docker --no-pager --lines=5
-    
-    echo -e "\n${WHITE}Docker Version:${NC}"
-    docker version --format "table {{.Server.Version}}\t{{.Server.APIVersion}}\t{{.Server.Os}}/{{.Server.Arch}}"
-    
-    echo -e "\n${WHITE}Docker System Information:${NC}"
-    docker system df
-    
-    echo -e "\n${WHITE}Running Containers:${NC}"
-    docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
-    
-    echo -e "\n${WHITE}All Containers:${NC}"
-    docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}"
-    
-    echo -e "\n${WHITE}Docker Networks:${NC}"
-    docker network ls
-    
-    echo -e "\n${WHITE}Docker Volumes:${NC}"
-    docker volume ls
-    
-    read -n1 -r -p "Press any key to continue..." _
-}
+set -euo pipefail
 
-# SSH Service Management
-ssh_service_management() {
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+WHITE='\033[1;37m'
+NC='\033[0m'
+
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+echo -e "${WHITE}   WIREGUARD MANAGEMENT SCRIPT (Basic)   ${NC}"
+echo -e "${BLUE}════════════════════════════════════════${NC}"
+echo
+echo -e "${YELLOW}Ce script est une version basique de secours.${NC}"
+echo -e "${WHITE}Pour obtenir la version complete, executez :${NC}"
+echo
+echo -e "${GREEN}wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh${NC}"
+echo -e "${GREEN}chmod +x config_wg.sh${NC}"
+echo -e "${GREEN}./config_wg.sh${NC}"
+echo
+echo -e "${WHITE}Ou utilisez curl :${NC}"
+echo -e "${GREEN}curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh -o config_wg.sh${NC}"
+echo
+echo -e "${YELLOW}Appuyez sur Entrée pour continuer ou Ctrl+C pour quitter${NC}"
+read -r
+
+# Basic menu
+while true; do
     clear
-    echo -e "${YELLOW}═══ SSH SERVICE MANAGEMENT ═══${NC}"
+    echo -e "${BLUE}═══ MENU BASIQUE WIREGUARD ═══${NC}"
+    echo -e "${WHITE}1) Telecharger la version complete${NC}"
+    echo -e "${WHITE}2) Verifier Docker${NC}"
+    echo -e "${WHITE}3) Quitter${NC}"
+    echo -ne "${WHITE}Choix : ${NC}"
+    read -r choice
     
-    local sshd_config="/etc/ssh/sshd_config"
-    local current_port=$(grep '^Port ' "$sshd_config" | awk '{print $2}' | head -n1)
-    current_port=${current_port:-22}
-    
-    echo -e "${WHITE}Current SSH Configuration:${NC}"
-    echo "Port        : $current_port"
-    echo "Status      : $(systemctl is-active ssh)"
-    echo "Enabled     : $(systemctl is-enabled ssh)"
-    
-    echo -e "\n${WHITE}Active SSH Connections:${NC}"
-    who | grep pts
-    
-    echo -e "\n${WHITE}Recent SSH Logins:${NC}"
-    last | head -10
-    
-    echo -e "\n${WHITE}Options:${NC}"
-    echo "[1] Change SSH Port"
-    echo "[2] Restart SSH Service"
-    echo "[3] View SSH Configuration"
-    echo "[4] View SSH Logs"
-    echo "[0] Return"
-    
-    echo -ne "${WHITE}Select option [0-4]: ${NC}"
-    read -r SSH_CHOICE
-    
-    case $SSH_CHOICE in
+    case $choice in
         1)
-            change_ssh_port
+            echo -e "${YELLOW}Telechargement de la version complete...${NC}"
+            if command -v curl &>/dev/null; then
+                curl -fsSL https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh -o config_wg_full.sh
+                chmod +x config_wg_full.sh
+                echo -e "${GREEN}✓ Telecharge dans config_wg_full.sh${NC}"
+                echo -e "${WHITE}Executer maintenant ? [o/N] : ${NC}"
+                read -r run_now
+                if [[ "$run_now" =~ ^[oOyY]$ ]]; then
+                    exec ./config_wg_full.sh
+                fi
+            elif command -v wget &>/dev/null; then
+                wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh -O config_wg_full.sh
+                chmod +x config_wg_full.sh
+                echo -e "${GREEN}✓ Telecharge dans config_wg_full.sh${NC}"
+                echo -e "${WHITE}Executer maintenant ? [o/N] : ${NC}"
+                read -r run_now
+                if [[ "$run_now" =~ ^[oOyY]$ ]]; then
+                    exec ./config_wg_full.sh
+                fi
+            else
+                echo -e "${RED}Ni curl ni wget disponible${NC}"
+            fi
+            read -n1 -r -p "Appuyez sur une touche..."
             ;;
         2)
-            systemctl restart ssh
-            echo -e "${GREEN}✓ SSH service restarted${NC}"
+            echo -e "${YELLOW}Verification de Docker...${NC}"
+            if command -v docker &>/dev/null; then
+                echo -e "${GREEN}✓ Docker est installe${NC}"
+                docker --version
+                if systemctl is-active docker &>/dev/null; then
+                    echo -e "${GREEN}✓ Docker est actif${NC}"
+                else
+                    echo -e "${RED}✗ Docker n'est pas actif${NC}"
+                fi
+            else
+                echo -e "${RED}✗ Docker n'est pas installe${NC}"
+            fi
+            read -n1 -r -p "Appuyez sur une touche..."
             ;;
         3)
-            less "$sshd_config"
+            echo -e "${GREEN}Au revoir !${NC}"
+            exit 0
             ;;
-        4)
-            journalctl -u ssh --lines=50 --no-pager
+        *)
+            echo -e "${RED}Choix invalide${NC}"
+            read -n1 -r -p "Appuyez sur une touche..."
             ;;
     esac
-    
-    read -n1 -r -p "Press any key to continue..." _
+done
+EOF
+
+    echo -e "${YELLOW}✓ Script basique cree${NC}"
 }
 
-# Change SSH Port
-change_ssh_port() {
-    local sshd_config="/etc/ssh/sshd_config"
-    local current_port=$(grep '^Port ' "$sshd_config" | awk '{print $2}' | head -n1)
-    current_port=${current_port:-22}
+# User group modification
+modify_user_groups() {
+    local user="$1"
     
-    echo -e "${YELLOW}Current SSH port: $current_port${NC}"
-    echo -ne "${WHITE}Enter new SSH port [1-65535]: ${NC}"
-    read -r NEW_PORT
-    
-    if validate_port "$NEW_PORT"; then
-        # Backup original config
-        cp "$sshd_config" "$sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
-        
-        # Update port
-        if grep -q '^Port ' "$sshd_config"; then
-            sed -i "s/^Port .*/Port $NEW_PORT/" "$sshd_config"
-        else
-            echo "Port $NEW_PORT" >> "$sshd_config"
-        fi
-        
-        echo -e "${GREEN}✓ SSH port changed to $NEW_PORT${NC}"
-        echo -e "${YELLOW}Restarting SSH service...${NC}"
-        systemctl restart ssh
-        
-        if systemctl is-active ssh &>/dev/null; then
-            echo -e "${GREEN}✓ SSH service restarted successfully${NC}"
-            log_action "INFO" "SSH port changed to $NEW_PORT"
-        else
-            echo -e "${RED}✗ SSH service failed to restart${NC}"
-            echo -e "${YELLOW}Restoring backup...${NC}"
-            cp "$sshd_config.backup."* "$sshd_config"
-            systemctl restart ssh
-        fi
-    else
-        echo -e "${RED}Invalid port number.${NC}"
-    fi
-}
-
-# System Security Audit
-system_security_audit() {
-    clear
-    echo -e "${YELLOW}═══ SYSTEM SECURITY AUDIT ═══${NC}"
-    
-    echo -e "${WHITE}1. User Account Security:${NC}"
-    echo "Users with UID 0 (root privileges):"
-    awk -F: '$3 == 0 {print "  " $1}' /etc/passwd
-    
-    echo -e "\nUsers with empty passwords:"
-    awk -F: '$2 == "" {print "  " $1}' /etc/shadow 2>/dev/null || echo "  (Permission denied - run as root)"
-    
-    echo -e "\n${WHITE}2. SSH Security:${NC}"
-    local sshd_config="/etc/ssh/sshd_config"
-    echo "PermitRootLogin: $(grep '^PermitRootLogin' $sshd_config | awk '{print $2}' || echo 'default')"
-    echo "PasswordAuthentication: $(grep '^PasswordAuthentication' $sshd_config | awk '{print $2}' || echo 'default')"
-    echo "Port: $(grep '^Port' $sshd_config | awk '{print $2}' || echo '22')"
-    
-    echo -e "\n${WHITE}3. File Permissions:${NC}"
-    echo "World-writable files in /etc:"
-    find /etc -type f -perm -002 2>/dev/null | head -5
-    
-    echo -e "\n${WHITE}4. Network Security:${NC}"
-    echo "Open ports:"
-    ss -tuln | grep LISTEN | head -10
-    
-    echo -e "\n${WHITE}5. System Updates:${NC}"
-    if command -v apt &>/dev/null; then
-        local updates=$(apt list --upgradable 2>/dev/null | wc -l)
-        echo "Available updates: $((updates - 1))"
-    fi
-    
-    read -n1 -r -p "Press any key to continue..." _
-}
-
-# Network Interface Status
-network_interface_status() {
-    clear
-    echo -e "${YELLOW}═══ NETWORK INTERFACE STATUS ═══${NC}"
-    
-    echo -e "${WHITE}Network Interfaces:${NC}"
-    ip addr show
-    
-    echo -e "\n${WHITE}Routing Table:${NC}"
-    ip route show
-    
-    echo -e "\n${WHITE}Network Statistics:${NC}"
-    cat /proc/net/dev | column -t
-    
-    echo -e "\n${WHITE}Active Network Connections:${NC}"
-    ss -tuln | head -20
-    
-    echo -e "\n${WHITE}DNS Configuration:${NC}"
-    cat /etc/resolv.conf
-    
-    read -n1 -r -p "Press any key to continue..." _
-}
-
-# Toggle Wireguard Service
-toggle_wireguard_service() {
-    local instance_dir="$1"
-    local compose_file="$instance_dir/$DOCKER_COMPOSE_FILE"
-    
-    if [[ ! -f "$compose_file" ]]; then
-        echo -e "${RED}Docker compose file not found: $compose_file${NC}"
+    # Vérifier que c'est un utilisateur humain
+    if ! is_human_user "$user"; then
+        echo -e "${RED}Erreur : '$user' n'est pas un utilisateur humain valide.${NC}"
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
         return
     fi
     
-    if docker compose -f "$compose_file" ps | grep -q 'Up'; then
-        echo -e "${YELLOW}Stopping Wireguard service...${NC}"
-        docker compose -f "$compose_file" down
-        echo -e "${GREEN}✓ Service stopped${NC}"
-    else
-        echo -e "${YELLOW}Starting Wireguard service...${NC}"
-        docker compose -f "$compose_file" up -d
-        echo -e "${GREEN}✓ Service started${NC}"
-    fi
+    clear
+    echo -e "${YELLOW}═══ MODIFICATION DES GROUPES POUR : $user ═══${NC}"
     
-    log_action "INFO" "Wireguard service toggled for: $instance_dir"
-}
-
-# Reset Instance Configuration
-reset_instance_config() {
-    local instance_dir="$1"
-    local config_dir="$instance_dir/$WG_CONFIG_DIR"
-    local compose_file="$instance_dir/$DOCKER_COMPOSE_FILE"
+    echo -e "${WHITE}Groupes actuels :${NC}"
+    groups "$user"
     
-    echo -e "${RED}WARNING: This will delete all Wireguard configurations!${NC}"
-    echo -ne "${RED}Type 'RESET' to confirm: ${NC}"
-    read -r CONFIRMATION
+    echo -e "\n${WHITE}Groupes disponibles :${NC}"
+    echo "docker, sudo, www-data, users, plugdev, netdev"
     
-    if [[ "$CONFIRMATION" == "RESET" ]]; then
-        # Stop service if running
-        if [[ -f "$compose_file" ]] && docker compose -f "$compose_file" ps | grep -q 'Up'; then
-            echo -e "${YELLOW}Stopping service...${NC}"
-            docker compose -f "$compose_file" down
-        fi
-        
-        # Remove configuration
-        if [[ -d "$config_dir" ]]; then
-            rm -rf "$config_dir"/*
-            echo -e "${GREEN}✓ Configuration reset completed${NC}"
-            log_action "WARNING" "Wireguard configuration reset: $instance_dir"
-        else
-            echo -e "${RED}Configuration directory not found: $config_dir${NC}"
-        fi
-    else
-        echo -e "${YELLOW}Operation cancelled.${NC}"
-    fi
+    echo -e "\n${WHITE}Options :${NC}"
+    echo "[1] Ajouter à un groupe"
+    echo "[2] Retirer d'un groupe"
+    echo "[0] Retour"
+    
+    echo -ne "${WHITE}Votre choix [0-2] : ${NC}"
+    read -r GROUP_CHOICE
+    
+    case $GROUP_CHOICE in
+        1)
+            echo -ne "${WHITE}Nom du groupe à ajouter : ${NC}"
+            read -r GROUP_NAME
+            if getent group "$GROUP_NAME" &>/dev/null; then
+                usermod -a -G "$GROUP_NAME" "$user"
+                echo -e "${GREEN}✓ Utilisateur $user ajouté au groupe $GROUP_NAME${NC}"
+                log_action "INFO" "Utilisateur $user ajouté au groupe $GROUP_NAME"
+            else
+                echo -e "${RED}Groupe $GROUP_NAME introuvable${NC}"
+            fi
+            ;;
+        2)
+            echo -ne "${WHITE}Nom du groupe à retirer : ${NC}"
+            read -r GROUP_NAME
+            if groups "$user" | grep -q "$GROUP_NAME"; then
+                gpasswd -d "$user" "$GROUP_NAME"
+                echo -e "${GREEN}✓ Utilisateur $user retiré du groupe $GROUP_NAME${NC}"
+                log_action "INFO" "Utilisateur $user retiré du groupe $GROUP_NAME"
+            else
+                echo -e "${RED}L'utilisateur $user n'est pas dans le groupe $GROUP_NAME${NC}"
+            fi
+            ;;
+    esac
 }
 
-# Placeholder functions for remaining features
-configure_auto_scripts() {
-    echo -e "${YELLOW}Configure Auto-login Scripts - Under Development${NC}"
-    read -n1 -r -p "Press any key to continue..." _
-}
-
-audit_user_permissions() {
-    echo -e "${YELLOW}User Permissions Audit - Under Development${NC}"
-    read -n1 -r -p "Press any key to continue..." _
-}
-
-modify_user_groups() {
-    echo -e "${YELLOW}Modify User Groups - Under Development${NC}"
-    read -n1 -r -p "Press any key to continue..." _
-}
-
+# Toggle user lock status
 toggle_user_lock() {
-    echo -e "${YELLOW}Toggle User Lock - Under Development${NC}"
-    read -n1 -r -p "Press any key to continue..." _
+    local user="$1"
+    
+    # Vérifier que c'est un utilisateur humain
+    if ! is_human_user "$user"; then
+        echo -e "${RED}Erreur : '$user' n'est pas un utilisateur humain valide.${NC}"
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
+        return
+    fi
+    
+    clear
+    echo -e "${YELLOW}═══ VERROUILLAGE/DEVERROUILLAGE : $user ═══${NC}"
+    
+    # Check current lock status
+    if passwd -S "$user" | grep -q " L "; then
+        echo -e "${RED}L'utilisateur $user est actuellement VERROUILLE${NC}"
+        echo -ne "${WHITE}Deverrouiller le compte ? [o/N] : ${NC}"
+        read -r UNLOCK
+        if [[ "$UNLOCK" =~ ^[oOyY]$ ]]; then
+            passwd -u "$user"
+            echo -e "${GREEN}✓ Compte $user deverrouille${NC}"
+            log_action "INFO" "Compte $user deverrouille"
+        fi
+    else
+        echo -e "${GREEN}L'utilisateur $user est actuellement DEVERROUILLE${NC}"
+        echo -ne "${WHITE}Verrouiller le compte ? [o/N] : ${NC}"
+        read -r LOCK
+        if [[ "$LOCK" =~ ^[oOyY]$ ]]; then
+            passwd -l "$user"
+            echo -e "${RED}✓ Compte $user verrouille${NC}"
+            log_action "INFO" "Compte $user verrouille"
+        fi
+    fi
 }
 
+# Set password expiry
 set_password_expiry() {
-    echo -e "${YELLOW}Set Password Expiry - Under Development${NC}"
-    read -n1 -r -p "Press any key to continue..." _
+    local user="$1"
+    
+    # Vérifier que c'est un utilisateur humain
+    if ! is_human_user "$user"; then
+        echo -e "${RED}Erreur : '$user' n'est pas un utilisateur humain valide.${NC}"
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
+        return
+    fi
+    
+    clear
+    echo -e "${YELLOW}═══ EXPIRATION DU MOT DE PASSE : $user ═══${NC}"
+    
+    echo -e "${WHITE}Informations actuelles :${NC}"
+    chage -l "$user"
+    
+    echo -e "\n${WHITE}Options :${NC}"
+    echo "[1] Définir une date d'expiration"
+    echo "[2] Forcer le changement au prochain login"
+    echo "[3] Supprimer l'expiration"
+    echo "[0] Retour"
+    
+    echo -ne "${WHITE}Votre choix [0-3] : ${NC}"
+    read -r EXPIRY_CHOICE
+    
+    case $EXPIRY_CHOICE in
+        1)
+            echo -ne "${WHITE}Date d'expiration (YYYY-MM-DD) : ${NC}"
+            read -r EXPIRY_DATE
+            if [[ "$EXPIRY_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                chage -E "$EXPIRY_DATE" "$user"
+                echo -e "${GREEN}✓ Date d'expiration définie${NC}"
+                log_action "INFO" "Date d'expiration définie pour $user : $EXPIRY_DATE"
+            else
+                echo -e "${RED}Format de date invalide${NC}"
+            fi
+            ;;
+        2)
+            chage -d 0 "$user"
+            echo -e "${GREEN}✓ Changement de mot de passe force au prochain login${NC}"
+            log_action "INFO" "Changement de mot de passe force pour $user"
+            ;;
+        3)
+            chage -E -1 "$user"
+            echo -e "${GREEN}✓ Expiration supprimee${NC}"
+            log_action "INFO" "Expiration supprimee pour $user"
+            ;;
+    esac
 }
 
+# Show detailed user information
 show_user_info() {
     local user="$1"
-    echo -e "${YELLOW}User Information for: $user${NC}"
-    id "$user"
-    finger "$user" 2>/dev/null || echo "Finger not available"
-    read -n1 -r -p "Press any key to continue..." _
-}
-
-# Additional placeholder functions
-reset_wireguard_config() { echo "Reset Wireguard Config - Under Development"; read -n1 -r -p "Press any key..." _; }
-backup_restore_menu() { echo "Backup/Restore Menu - Under Development"; read -n1 -r -p "Press any key..." _; }
-monitor_wg_connections() { echo "Monitor WG Connections - Under Development"; read -n1 -r -p "Press any key..." _; }
-update_wireguard_images() { echo "Update Wireguard Images - Under Development"; read -n1 -r -p "Press any key..." _; }
-view_wg_config_details() { echo "View WG Config Details - Under Development"; read -n1 -r -p "Press any key..." _; }
-view_wg_logs() { echo "View WG Logs - Under Development"; read -n1 -r -p "Press any key..." _; }
-export_wg_backup() { echo "Export WG Backup - Under Development"; read -n1 -r -p "Press any key..." _; }
-security_log_analysis() {
-    clear
-    echo -e "${YELLOW}═══ ANALYSE DES LOGS DE SÉCURITÉ ═══${NC}"
-    echo -e "\n${WHITE}Derniers événements de sécurité (auth.log / secure) :${NC}"
-    if [ -f /var/log/auth.log ]; then
-        sudo tail -n 30 /var/log/auth.log | grep -E "(fail|invalid|error|refused|denied|root|sudo)" --color=always || tail -n 30 /var/log/auth.log
-    elif [ -f /var/log/secure ]; then
-        sudo tail -n 30 /var/log/secure | grep -E "(fail|invalid|error|refused|denied|root|sudo)" --color=always || tail -n 30 /var/log/secure
-    else
-        echo -e "${RED}Aucun fichier de log de sécurité trouvé (/var/log/auth.log ou /var/log/secure).${NC}"
+    
+    # Vérifier que c'est un utilisateur humain
+    if ! is_human_user "$user"; then
+        echo -e "${RED}Erreur : '$user' n'est pas un utilisateur humain valide.${NC}"
+        read -n1 -r -p "Appuyez sur une touche pour continuer..." _
+        return
     fi
-    echo -e "\n${WHITE}Dernières connexions SSH :${NC}"
-    last -a | head -10
-    echo -e "\n${WHITE}Dernières tentatives sudo échouées :${NC}"
-    sudo grep 'sudo' /var/log/auth.log 2>/dev/null | grep -i 'incorrect password\|authentication failure' | tail -10 || echo "Pas d'échec sudo récent."
-    read -n1 -r -p "Appuyez sur une touche pour continuer..." _
+    
+    clear
+    echo -e "${YELLOW}═══ INFORMATIONS DETAILLEES : $user ═══${NC}"
+    
+    echo -e "${WHITE}Informations de base :${NC}"
+    id "$user"
+    
+    echo -e "\n${WHITE}Informations du compte :${NC}"
+    getent passwd "$user"
+    
+    echo -e "\n${WHITE}Statut du mot de passe :${NC}"
+    passwd -S "$user"
+    
+    echo -e "\n${WHITE}Informations d'expiration :${NC}"
+    chage -l "$user"
+    
+    echo -e "\n${WHITE}Dernières connexions :${NC}"
+    last "$user" | head -5
+    
+    echo -e "\n${WHITE}Processus actifs :${NC}"
+    ps -u "$user" --no-headers | wc -l | xargs echo "Nombre de processus :"
+    
+    if [[ -d "/home/$user" ]]; then
+        echo -e "\n${WHITE}Utilisation disque du répertoire home :${NC}"
+        du -sh "/home/$user" 2>/dev/null || echo "Impossible de calculer"
+    fi
 }
-detailed_hardware_info() { echo "Informations matérielles détaillées - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-process_service_monitor() { echo "Supervision des processus - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-disk_usage_analysis() { echo "Analyse de l'utilisation disque - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-performance_benchmarks() { echo "Benchmarks de performance - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-container_management() { echo "Gestion des conteneurs - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-image_management() { echo "Gestion des images - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-volume_network_management() { echo "Gestion des volumes et réseaux - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-docker_system_cleanup() { echo "Nettoyage système Docker - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-docker_resource_analysis() { echo "Analyse des ressources Docker - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-ssh_config_analysis() { echo "Analyse de la configuration SSH - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-firewall_status_rules() { echo "Statut et règles du pare-feu - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-failed_login_analysis() { echo "Analyse des connexions échouées - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-file_permissions_audit() { echo "Audit des permissions de fichiers - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-apply_security_hardening() { echo "Renforcement de la sécurité - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-network_interface_config() { echo "Configuration des interfaces réseau - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-firewall_configuration() { echo "Configuration du pare-feu - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-dns_routing_config() { echo "Configuration DNS et routage - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-network_tools() { echo "Outils réseau - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-hostname_time_config() { echo "Configuration du nom d'hôte et de l'heure - En développement"; read -n1 -r -p "Appuyez sur une touche..." _; }
-
 # ═══════════════════════════════════════════════════════════════
 # MAIN EXECUTION
 # ═══════════════════════════════════════════════════════════════
