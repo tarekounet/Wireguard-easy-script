@@ -158,7 +158,7 @@ display_container_info() {
                     local last_exit_code=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
                     [[ "$last_exit_code" != "0" ]] && echo -e "    \e[90m⚠️  Code d'erreur :\e[0m \e[1;31m$last_exit_code\e[0m"
                 else
-                    echo -e "\n    \e[1;45m\e[97m ⚫ ABSENT \e[0m \e[97mService non configuré\e[0m"
+                    echo -e "\n    \e[1;45m\e[97m ⚫ ARRÊT \e[0m \e[97mService arrêté\e[0m"
                 fi
                 ;;
         esac
