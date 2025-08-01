@@ -19,7 +19,7 @@ GITHUB_REPO="Wireguard-easy-script"
 BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
-SCRIPT_VERSION="2.0.0"  # Version par défaut
+SCRIPT_VERSION="0.9.0"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
 LOG_DIR="logs"
 LOG_FILE="$LOG_DIR/wg-easy-script.log"
@@ -62,7 +62,7 @@ if [[ -z "$DOCKER_WG_DIR" ]]; then
 fi
 
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
-SCRIPT_BASE_VERSION_INIT="1.8.6"
+SCRIPT_BASE_VERSION_INIT="0.9.0"
 
 export GITHUB_USER
 export GITHUB_REPO
