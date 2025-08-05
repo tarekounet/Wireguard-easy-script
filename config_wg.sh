@@ -20,7 +20,7 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.11.0"  # Version par défaut
+SCRIPT_VERSION="0.11.1"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
 # Détection du bon HOME utilisateur même en sudo/root
 if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
@@ -64,6 +64,34 @@ SCRIPT_BASE_VERSION_INIT="0.10.0"
 export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
+
+##############################
+#   FONCTIONS UTILITAIRES    #
+##############################
+
+# Fonction pour mettre à jour les modules depuis GitHub
+update_modules_from_github() {
+    echo "🔄 Mise à jour des modules depuis GitHub..."
+    for mod in utils conf docker menu ; do
+        echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
+        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
+            chmod +x "lib/$mod.sh"
+            echo "✅ Module lib/$mod.sh mis à jour avec succès"
+        else
+            echo "❌ Échec de la mise à jour de lib/$mod.sh"
+            log_error "Échec du téléchargement du module lib/$mod.sh depuis GitHub" 2>/dev/null || echo "Erreur: Échec du téléchargement du module lib/$mod.sh"
+            if [[ ! -f "lib/$mod.sh" ]]; then
+                echo "❌ Module manquant et impossible à télécharger"
+                log_error "Module lib/$mod.sh manquant et impossible à télécharger - arrêt du script" 2>/dev/null || echo "Erreur: Module lib/$mod.sh manquant"
+                exit 1
+            else
+                echo "⚠️  Utilisation de la version locale existante"
+            fi
+        fi
+        # Pause de 1 seconde entre chaque téléchargement
+        sleep 1
+    done
+}
 
 # Fonction pour récupérer ou créer le fichier version.txt
 get_or_create_version() {
@@ -208,30 +236,6 @@ auto_update_on_startup() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     auto_update_on_startup "$@"
 fi
-
-# Fonction pour mettre à jour les modules depuis GitHub
-update_modules_from_github() {
-    echo "🔄 Mise à jour des modules depuis GitHub..."
-    for mod in utils conf docker menu ; do
-        echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
-            chmod +x "lib/$mod.sh"
-            echo "✅ Module lib/$mod.sh mis à jour avec succès"
-        else
-            echo "❌ Échec de la mise à jour de lib/$mod.sh"
-            log_error "Échec du téléchargement du module lib/$mod.sh depuis GitHub"
-            if [[ ! -f "lib/$mod.sh" ]]; then
-                echo "❌ Module manquant et impossible à télécharger"
-                log_error "Module lib/$mod.sh manquant et impossible à télécharger - arrêt du script"
-                exit 1
-            else
-                echo "⚠️  Utilisation de la version locale existante"
-            fi
-        fi
-        # Pause de 1 seconde entre chaque téléchargement
-        sleep 1
-    done
-}
 
 # Fonction pour mettre à jour le changelog indépendamment
 update_changelog_from_github() {
