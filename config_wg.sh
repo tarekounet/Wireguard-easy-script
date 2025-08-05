@@ -20,7 +20,7 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.9.0"  # Version par défaut
+SCRIPT_VERSION="0.10.0"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
 # Détection du bon HOME utilisateur même en sudo/root
 if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
@@ -59,7 +59,7 @@ if [[ -z "$DOCKER_WG_DIR" ]]; then
 fi
 
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
-SCRIPT_BASE_VERSION_INIT="0.9.0"
+SCRIPT_BASE_VERSION_INIT="0.10.0"
 
 export GITHUB_USER
 export GITHUB_REPO

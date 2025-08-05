@@ -36,12 +36,12 @@ get_or_create_version() {
             echo "$github_version"
         else
             echo -e "${RED}❌ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut${NC}" >&2
-            echo "0.9.0" > "$version_file"
-            echo "0.9.0"
+            echo "0.10.0" > "$version_file"
+            echo "0.10.0"
         fi
     else
         # Lire la version locale
-        cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "0.9.0"
+        cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "0.10.0"
     fi
 }
 
