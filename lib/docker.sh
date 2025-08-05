@@ -1,10 +1,4 @@
 #!/bin/bash
-# Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "docker.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
-fi
-
 ##############################
 #      CONSTANTES            #
 ##############################
@@ -13,9 +7,48 @@ DOCKER_WG_DIR="$HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
 
-# S'assurer que le dossier existe
-mkdir -p "$WG_CONF_DIR"
-# Le dossier config/ et son contenu conservent leur propriétaire d'origine
+# Fonction pour vérifier et créer le dossier avec les bonnes permissions
+ensure_docker_dir() {
+    if [[ ! -d "$DOCKER_WG_DIR" ]]; then
+        echo "📁 Création du répertoire docker-wireguard..."
+        if ! mkdir -p "$DOCKER_WG_DIR" 2>/dev/null; then
+            log_error "Impossible de créer le répertoire $DOCKER_WG_DIR" 2>/dev/null || echo "ERREUR: Impossible de créer $DOCKER_WG_DIR"
+            echo "❌ Permissions insuffisantes pour créer le répertoire"
+            echo "💡 Veuillez créer manuellement le répertoire et ajuster les permissions :"
+            echo "   mkdir -p \"$DOCKER_WG_DIR\""
+            echo "   chown -R $USER:$USER \"$DOCKER_WG_DIR\""
+            echo "   chmod -R 755 \"$DOCKER_WG_DIR\""
+            return 1
+        fi
+    fi
+    
+    # Vérifier les permissions d'écriture
+    if [[ ! -w "$DOCKER_WG_DIR" ]]; then
+        log_error "Pas de droits d'écriture sur $DOCKER_WG_DIR" 2>/dev/null || echo "ERREUR: Pas de droits d'écriture sur $DOCKER_WG_DIR"
+        echo "❌ Permissions insuffisantes"
+        echo "💡 Veuillez ajuster les permissions manuellement :"
+        echo "   chown -R $USER:$USER \"$DOCKER_WG_DIR\""
+        echo "   chmod -R 755 \"$DOCKER_WG_DIR\""
+        return 1
+    fi
+    
+    # Créer le sous-dossier config
+    if [[ ! -d "$WG_CONF_DIR" ]]; then
+        if ! mkdir -p "$WG_CONF_DIR" 2>/dev/null; then
+            log_error "Impossible de créer $WG_CONF_DIR" 2>/dev/null || echo "ERREUR: Impossible de créer $WG_CONF_DIR"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Vérifier et créer le dossier
+if ! ensure_docker_dir; then
+    echo "❌ Impossible de configurer le répertoire docker-wireguard"
+    echo "Vérifiez vos permissions ou contactez l'administrateur système"
+    exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
@@ -52,9 +85,18 @@ configure_values() {
     # Fonction d'annulation (Ctrl+C) pendant la création
     trap cancel_config SIGINT
 
+    # Vérifier les permissions avant de commencer
+    if ! ensure_docker_dir; then
+        msg_error "Impossible d'accéder au répertoire docker-wireguard"
+        return 1
+    fi
+
     # Sauvegarde de l'état initial
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak"
+        if ! cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak" 2>/dev/null; then
+            msg_error "Impossible de créer une sauvegarde - permissions insuffisantes"
+            return 1
+        fi
     fi
 
     # Création du fichier si absent
@@ -62,6 +104,13 @@ configure_values() {
         trap cancel_config SIGINT
         DOCKER_COMPOSE_CREATED=1
         echo "Création de la configuration de Wireguard..."
+        
+        # Vérifier qu'on peut écrire dans le répertoire
+        if [[ ! -w "$DOCKER_WG_DIR" ]]; then
+            msg_error "Pas de droits d'écriture dans $DOCKER_WG_DIR"
+            return 1
+        fi
+        
         mkdir -p ${DOCKER_WG_DIR}/config
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 volumes:
@@ -181,21 +230,41 @@ RAZ_docker_compose() {
         msg_error "Réinitialisation annulée."
         return
     fi
+    
+    # Vérifier les permissions avant de procéder
+    if [[ -f "$DOCKER_COMPOSE_FILE" && ! -w "$DOCKER_COMPOSE_FILE" ]]; then
+        msg_error "Pas de droits d'écriture sur $DOCKER_COMPOSE_FILE"
+        msg_error "Permissions insuffisantes - impossible de continuer"
+        return 1
+    fi
+    
     msg_warn "⚠️  Cette action supprimera toutes les configurations existantes."
     read -p $'Confirmez-vous vouloir réinitialiser la configuration ? (o/N) : ' CONFIRM_RAZ
     if [[ ! "$CONFIRM_RAZ" =~ ^[oO]$ ]]; then
         msg_warn "Réinitialisation annulée."
         return
     fi
+    
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        rm -f "$DOCKER_COMPOSE_FILE"
-        msg_success "Le fichier docker-compose.yml a été supprimé."
+        if rm -f "$DOCKER_COMPOSE_FILE" 2>/dev/null; then
+            msg_success "Le fichier docker-compose.yml a été supprimé."
+        else
+            msg_error "Impossible de supprimer $DOCKER_COMPOSE_FILE"
+            msg_error "Permissions insuffisantes - veuillez supprimer manuellement"
+            return 1
+        fi
     else
         msg_error "Aucun fichier docker-compose.yml trouvé."
     fi
+    
     if [[ -d "${DOCKER_WG_DIR}" ]]; then
-        rm -rf "${DOCKER_WG_DIR}"
-        msg_success "Le dossier ${DOCKER_WG_DIR} a été supprimé."
+        if rm -rf "${DOCKER_WG_DIR}" 2>/dev/null; then
+            msg_success "Le dossier ${DOCKER_WG_DIR} a été supprimé."
+        else
+            msg_error "Impossible de supprimer ${DOCKER_WG_DIR}"
+            msg_error "Permissions insuffisantes - veuillez supprimer manuellement"
+            return 1
+        fi
     else
         msg_error "Aucun dossier ${DOCKER_WG_DIR} trouvé."
     fi

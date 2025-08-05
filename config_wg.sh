@@ -20,7 +20,7 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.11.1"  # Version par défaut
+SCRIPT_VERSION="0.11.2"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
 # Détection du bon HOME utilisateur même en sudo/root
 if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then

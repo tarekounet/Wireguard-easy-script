@@ -1,9 +1,4 @@
-# Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
-fi
-
+#!/bin/bash
 ##############################
 #        LOGS D'ERREUR       #
 ##############################
@@ -55,18 +50,6 @@ enable_error_logging() {
 disable_error_logging() {
     ERROR_LOG_TO_FILE="false"
     echo "✓ Logging d'erreur vers fichier désactivé"
-}
-
-##############################
-#        acces ROOT          #
-##############################
-
-run_as_root() {
-    if [[ $EUID -ne 0 ]]; then
-        sudo bash -c "$*"
-    else
-        bash -c "$*"
-    fi
 }
 
 ###############################

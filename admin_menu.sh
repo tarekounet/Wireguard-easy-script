@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.11.1
+# Version: 0.11.2
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script

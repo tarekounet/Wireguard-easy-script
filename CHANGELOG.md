@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.11.2] – 2025-08-05
+
+
+#### 🐛 Corrigé
+- docker permission
+
 ### [0.11.1] – 2025-08-05
 
 

@@ -1,9 +1,4 @@
-# Protection : ce module ne doit être chargé que par config_wg.sh
-if [[ "$(basename -- "$0")" == "menu.sh" ]]; then
-    echo -e "\e[1;31mCe module ne doit pas être lancé directement, mais via config_wg.sh !\e[0m"
-    exit 1
-fi
-
+#!/bin/bash
 ##############################
 #         VARIABLES          #
 ##############################
