@@ -19,12 +19,9 @@ GITHUB_REPO="Wireguard-easy-script"
 BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
+CHANGELOG_FILE="CHANGELOG.md"
 SCRIPT_VERSION="0.9.0"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
-LOG_DIR="logs"
-LOG_FILE="$LOG_DIR/wg-easy-script.log"
-CONFIG_LOG="$LOG_DIR/config-actions.log"
-INSTALL_LOG="$LOG_DIR/install.log"
 # Détection du bon HOME utilisateur même en sudo/root
 if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
     USER_HOME="$(getent passwd $SUDO_USER | cut -d: -f6)"
@@ -95,9 +92,31 @@ get_or_create_version() {
     fi
 }
 
+# Fonction pour récupérer le fichier CHANGELOG.md
+get_or_create_changelog() {
+    if [[ ! -f "$CHANGELOG_FILE" ]]; then
+        echo "📥 Fichier CHANGELOG.md manquant, récupération depuis GitHub..."
+        if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE" 2>/dev/null; then
+            if [[ -f "$CHANGELOG_FILE" && -s "$CHANGELOG_FILE" ]]; then
+                echo "✓ Fichier CHANGELOG.md récupéré avec succès depuis GitHub"
+                return 0
+            fi
+        fi
+        # Si échec, ne pas créer de fichier
+        echo "✗ Changelog non disponible (impossible de récupérer depuis GitHub)"
+        return 1
+    else
+        echo "✓ Fichier CHANGELOG.md déjà présent"
+        return 0
+    fi
+}
+
 # Détection de la version du script
 SCRIPT_VERSION=$(get_or_create_version)
 SCRIPT_BASE_VERSION_INIT="$SCRIPT_VERSION"
+
+# Récupération ou création du changelog
+get_or_create_changelog
 
 echo "Version du script : $SCRIPT_VERSION"
 
@@ -144,6 +163,20 @@ auto_update_on_startup() {
                     # Mettre à jour le fichier version.txt
                     echo "$LATEST_SCRIPT_VERSION" > "$VERSION_FILE"
                     
+                    # Mettre à jour le changelog
+                    echo "📥 Mise à jour du changelog..."
+                    if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE.tmp" 2>/dev/null; then
+                        if [[ -f "$CHANGELOG_FILE.tmp" && -s "$CHANGELOG_FILE.tmp" ]]; then
+                            mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
+                            echo "✅ Changelog mis à jour"
+                        else
+                            rm -f "$CHANGELOG_FILE.tmp" 2>/dev/null
+                            echo "⚠️  Changelog inchangé (fichier vide ou invalide)"
+                        fi
+                    else
+                        echo "⚠️  Impossible de mettre à jour le changelog"
+                    fi
+                    
                     echo "✅ Script mis à jour vers la version $LATEST_SCRIPT_VERSION"
                     echo "🔄 Redémarrage du script avec la nouvelle version..."
                     
@@ -169,6 +202,41 @@ auto_update_on_startup() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     auto_update_on_startup "$@"
 fi
+
+# Fonction pour mettre à jour le changelog indépendamment
+update_changelog_from_github() {
+    echo "🔄 Vérification du changelog sur GitHub..."
+    
+    if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE.tmp" 2>/dev/null; then
+        if [[ -f "$CHANGELOG_FILE.tmp" && -s "$CHANGELOG_FILE.tmp" ]]; then
+            # Comparer les contenus si le fichier local existe
+            if [[ -f "$CHANGELOG_FILE" ]]; then
+                if ! cmp -s "$CHANGELOG_FILE" "$CHANGELOG_FILE.tmp"; then
+                    # Créer une sauvegarde avant de remplacer
+                    cp "$CHANGELOG_FILE" "$CHANGELOG_FILE.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
+                    mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
+                    echo "✅ Changelog mis à jour depuis GitHub"
+                    return 0
+                else
+                    rm -f "$CHANGELOG_FILE.tmp"
+                    echo "✅ Changelog déjà à jour"
+                    return 0
+                fi
+            else
+                mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
+                echo "✅ Changelog récupéré depuis GitHub"
+                return 0
+            fi
+        else
+            rm -f "$CHANGELOG_FILE.tmp" 2>/dev/null
+            echo "⚠️  Fichier changelog distant vide ou invalide"
+            return 1
+        fi
+    else
+        echo "❌ Impossible de récupérer le changelog depuis GitHub"
+        return 1
+    fi
+}
 
 ##############################
 #   AUTO-BOOTSTRAP MODULES   #
