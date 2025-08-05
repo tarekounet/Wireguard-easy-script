@@ -68,24 +68,107 @@ export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
 
-# Détection de la version du script
-if [[ -f "$VERSION_FILE" && -s "$VERSION_FILE" ]]; then
-    SCRIPT_VERSION_FROM_FILE=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
-    if [[ -n "$SCRIPT_VERSION_FROM_FILE" && "$SCRIPT_VERSION_FROM_FILE" != "" ]]; then
-        SCRIPT_VERSION="$SCRIPT_VERSION_FROM_FILE"
-        echo "✓ Version lue depuis $VERSION_FILE : $SCRIPT_VERSION"
+# Fonction pour récupérer ou créer le fichier version.txt
+get_or_create_version() {
+    if [[ ! -f "$VERSION_FILE" ]]; then
+        echo "📥 Fichier version.txt manquant, récupération depuis GitHub..."
+        if REMOTE_VERSION=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r '); then
+            if [[ -n "$REMOTE_VERSION" ]]; then
+                echo "$REMOTE_VERSION" > "$VERSION_FILE"
+                echo "✓ Fichier version.txt créé avec la version : $REMOTE_VERSION"
+                echo "$REMOTE_VERSION"
+                return
+            fi
+        fi
+        # Si échec, créer avec la version par défaut
+        echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
+        echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $SCRIPT_BASE_VERSION_INIT"
+        echo "$SCRIPT_BASE_VERSION_INIT"
     else
-        echo "✗ Fichier $VERSION_FILE vide, utilisation de la version par défaut : $SCRIPT_VERSION"
+        VERSION_FROM_FILE=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
+        if [[ -n "$VERSION_FROM_FILE" ]]; then
+            echo "$VERSION_FROM_FILE"
+        else
+            echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
+            echo "$SCRIPT_BASE_VERSION_INIT"
+        fi
     fi
-    SCRIPT_BASE_VERSION_INIT="$SCRIPT_VERSION"
-else
-    # Créer le fichier version.txt s'il n'existe pas
-    echo "$SCRIPT_VERSION" > "$VERSION_FILE"
-    SCRIPT_BASE_VERSION_INIT="$SCRIPT_VERSION"
-    echo "✓ Fichier $VERSION_FILE créé avec la version : $SCRIPT_VERSION"
-fi
+}
+
+# Détection de la version du script
+SCRIPT_VERSION=$(get_or_create_version)
+SCRIPT_BASE_VERSION_INIT="$SCRIPT_VERSION"
 
 echo "Version du script : $SCRIPT_VERSION"
+
+##############################
+#   MISE À JOUR AUTOMATIQUE  #
+##############################
+
+# Fonction de comparaison de versions (format: X.Y.Z)
+compare_versions() {
+    local version1="$1"
+    local version2="$2"
+    
+    # Normaliser les versions (enlever les préfixes 'v' éventuels)
+    version1="${version1#v}"
+    version2="${version2#v}"
+    
+    # Comparer les versions
+    printf '%s\n%s' "$version1" "$version2" | sort -V | head -n1
+}
+
+# Fonction de mise à jour automatique
+auto_update_on_startup() {
+    echo "🔄 Vérification des mises à jour..."
+    
+    # Vérifier la version du script sur GitHub
+    LATEST_SCRIPT_VERSION=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    
+    if [[ -n "$LATEST_SCRIPT_VERSION" ]]; then
+        # Comparer les versions - ne mettre à jour que si la version distante est plus récente
+        if [[ "$LATEST_SCRIPT_VERSION" != "$SCRIPT_VERSION" ]]; then
+            OLDEST_VERSION=$(compare_versions "$SCRIPT_VERSION" "$LATEST_SCRIPT_VERSION")
+            if [[ "$OLDEST_VERSION" == "$SCRIPT_VERSION" ]]; then
+                echo "🆕 Nouvelle version du script disponible : $LATEST_SCRIPT_VERSION (actuelle : $SCRIPT_VERSION)"
+                echo "📥 Mise à jour automatique en cours..."
+                
+                # Sauvegarder le script actuel
+                cp "$0" "${0}.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
+                
+                # Télécharger la nouvelle version
+                if curl -fsSL -o "$0.tmp" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/config_wg.sh"; then
+                    chmod +x "$0.tmp"
+                    mv "$0.tmp" "$0"
+                    
+                    # Mettre à jour le fichier version.txt
+                    echo "$LATEST_SCRIPT_VERSION" > "$VERSION_FILE"
+                    
+                    echo "✅ Script mis à jour vers la version $LATEST_SCRIPT_VERSION"
+                    echo "🔄 Redémarrage du script avec la nouvelle version..."
+                    
+                    # Relancer le script avec la nouvelle version
+                    exec bash "$0" "$@"
+                else
+                    echo "❌ Échec de la mise à jour du script"
+                    rm -f "$0.tmp" 2>/dev/null
+                fi
+            else
+                echo "✅ Script à jour (version locale $SCRIPT_VERSION >= version distante $LATEST_SCRIPT_VERSION)"
+            fi
+        else
+            echo "✅ Script à jour (version $SCRIPT_VERSION)"
+        fi
+    else
+        echo "⚠️  Impossible de vérifier la version distante"
+        echo "✅ Script version locale : $SCRIPT_VERSION"
+    fi
+}
+
+# Exécuter la mise à jour automatique seulement si le script est lancé directement
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    auto_update_on_startup "$@"
+fi
 
 ##############################
 #   AUTO-BOOTSTRAP MODULES   #
@@ -103,33 +186,23 @@ for dir in lib config logs; do
     fi
 done
 
-# Téléchargement automatique des modules manquants
-echo "Vérification et téléchargement des modules..."
+# Téléchargement et mise à jour automatique des modules
+echo "🔄 Mise à jour des modules depuis GitHub..."
 for mod in utils conf docker menu ; do
-    if [[ ! -f "lib/$mod.sh" ]]; then
-        echo "Téléchargement de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
-            chmod +x "lib/$mod.sh"
-            echo "✓ Module lib/$mod.sh téléchargé avec succès"
-        else
-            echo "✗ Échec du téléchargement de lib/$mod.sh"
-            exit 1
-        fi
+    echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
+    if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
+        chmod +x "lib/$mod.sh"
+        echo "✅ Module lib/$mod.sh mis à jour avec succès"
     else
-        echo "✓ Module lib/$mod.sh déjà présent"
+        echo "❌ Échec de la mise à jour de lib/$mod.sh"
+        if [[ ! -f "lib/$mod.sh" ]]; then
+            echo "❌ Module manquant et impossible à télécharger"
+            exit 1
+        else
+            echo "⚠️  Utilisation de la version locale existante"
+        fi
     fi
 done
-
-# Téléchargement de auto_update.sh à la racine si absent
-if [[ ! -f "auto_update.sh" ]]; then
-    echo "Téléchargement de auto_update.sh depuis GitHub ($BRANCH)..."
-    if curl -fsSL -o "auto_update.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/auto_update.sh"; then
-        chmod +x "auto_update.sh"
-        echo "✓ auto_update.sh téléchargé avec succès"
-    else
-        echo "✗ Échec du téléchargement de auto_update.sh"
-    fi
-fi
 
 # Chargement des modules
 echo "Chargement des modules..."
@@ -228,28 +301,25 @@ echo "Version script : ${SCRIPT_VERSION:-VIDE}"
 echo "=========================="
 
 if [[ "$WG_EASY_VERSION_LOCAL" != "$WG_EASY_VERSION" && "$WG_EASY_VERSION" != "inconnu" && -n "$WG_EASY_VERSION_LOCAL" && "$WG_EASY_VERSION_LOCAL" != "inconnu" ]]; then
-    echo -e "\e[33mNouvelle version Wireguard Easy disponible : $WG_EASY_VERSION (actuelle : $WG_EASY_VERSION_LOCAL)\e[0m"
-    read -p $'Voulez-vous mettre à jour le docker-compose.yml avec la version $WG_EASY_VERSION ? (o/N) : ' CONFIRM_UPDATE
-    if [[ "$CONFIRM_UPDATE" =~ ^[oO]$ ]]; then
-        if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-            # Sauvegarder le fichier avant modification
-            cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak"
-            sed -i "s|image: ghcr.io/wg-easy/wg-easy:.*|image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION|" "$DOCKER_COMPOSE_FILE"
-            # Mettre à jour le fichier de version locale
-            echo "$WG_EASY_VERSION" > "$WG_EASY_VERSION_LOCAL_FILE"
-            echo -e "\e[32mLe docker-compose.yml a été mis à jour avec la version $WG_EASY_VERSION.\e[0m"
-            echo -e "\e[32mSauvegarde créée : $DOCKER_COMPOSE_FILE.bak\e[0m"
-        else
-            echo -e "\e[31mLe fichier docker-compose.yml est introuvable dans $DOCKER_COMPOSE_FILE.\e[0m"
-        fi
+    echo -e "🆕 Nouvelle version Wireguard Easy disponible : $WG_EASY_VERSION (actuelle : $WG_EASY_VERSION_LOCAL)"
+    echo -e "📥 Mise à jour automatique du docker-compose.yml..."
+    
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        # Sauvegarder le fichier avant modification
+        cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak.$(date +%Y%m%d_%H%M%S)"
+        sed -i "s|image: ghcr.io/wg-easy/wg-easy:.*|image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION|" "$DOCKER_COMPOSE_FILE"
+        # Mettre à jour le fichier de version locale
+        echo "$WG_EASY_VERSION" > "$WG_EASY_VERSION_LOCAL_FILE"
+        echo -e "✅ Docker-compose.yml mis à jour automatiquement vers la version $WG_EASY_VERSION"
+        echo -e "💾 Sauvegarde créée avec horodatage"
     else
-        echo -e "\e[33mAucune modification apportée au docker-compose.yml.\e[0m"
+        echo -e "❌ Le fichier docker-compose.yml est introuvable dans $DOCKER_COMPOSE_FILE"
     fi
 elif [[ "$WG_EASY_VERSION_LOCAL" == "$WG_EASY_VERSION" ]]; then
-    echo -e "\e[32mVotre version Wireguard Easy est à jour : $WG_EASY_VERSION\e[0m"
+    echo -e "✅ Votre version Wireguard Easy est à jour : $WG_EASY_VERSION"
 elif [[ -z "$WG_EASY_VERSION_LOCAL" || "$WG_EASY_VERSION_LOCAL" == "inconnu" ]]; then
-    echo -e "\e[31mImpossible de déterminer la version actuelle. Fichier docker-compose.yml introuvable.\e[0m"
-    echo -e "\e[33mAssurez-vous que Wireguard Easy est installé et que le fichier docker-compose.yml existe.\e[0m"
+    echo -e "⚠️  Impossible de déterminer la version actuelle. Fichier docker-compose.yml introuvable."
+    echo -e "📝 Assurez-vous que Wireguard Easy est installé et que le fichier docker-compose.yml existe."
 fi
 
 # 2. Création du fichier de conf (si besoin)

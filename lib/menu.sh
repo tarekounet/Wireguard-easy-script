@@ -243,8 +243,8 @@ build_configured_menu() {
     # Groupe 2 : Outils
     separators_ref+=(${#labels_ref[@]})
     titles_ref+=("🔧 OUTILS & INFORMATIONS")
-    labels_ref+=("Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin" "Configuration auto-update")
-    actions_ref+=("update_script" "show_changelog" "change_tech_password" "auto_update_menu")
+    labels_ref+=("Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin")
+    actions_ref+=("update_script" "show_changelog" "change_tech_password")
 }
 
 # Construction du menu pour configuration initiale
@@ -256,8 +256,8 @@ build_initial_menu() {
 
     separators_ref+=(0)
     titles_ref+=("🛠️ CONFIGURATION INITIALE")
-    labels_ref+=("Créer la configuration Wireguard" "Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin" "Configuration auto-update")
-    actions_ref+=("configure_values" "update_script" "show_changelog" "change_tech_password" "auto_update_menu")
+    labels_ref+=("Créer la configuration Wireguard" "Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin")
+    actions_ref+=("configure_values" "update_script" "show_changelog" "change_tech_password")
 }
 
 # Affichage des éléments du menu
@@ -362,7 +362,6 @@ execute_action() {
         show_changelog) show_changelog ;;
         configure_values) configure_values ;;
         change_tech_password) change_tech_password ;;
-        auto_update_menu) auto_update_menu; skip_ref=1 ;;
         "") ;; # Option inactive
         *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
     esac
@@ -433,12 +432,5 @@ detect_new_wg_easy_version() {
 }
 
 # Menu de configuration auto-update
-auto_update_menu() {
-    echo -e "\e[1;36m=== CONFIGURATION AUTO-UPDATE ===\e[0m\n"
-    echo -e "\e[1;33mCette fonctionnalité permet de configurer les mises à jour automatiques.\e[0m"
-    echo -e "\e[1;33mFonctionnalité en cours de développement...\e[0m\n"
-    echo -e "\e[1;32mPour l'instant, utilisez l'option de mise à jour manuelle du script.\e[0m"
-}
-
 # Note: Les autres fonctions d'administration système ont été supprimées
 # selon les spécifications du menu simplifié

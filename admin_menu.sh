@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: Dynamique (lue depuis version.txt)
+# Version: 1.0.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -19,7 +19,33 @@ readonly NC='\033[0m' # No Color
 
 # Technical constants
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_VERSION="$(cat "${SCRIPT_DIR}/version.txt" 2>/dev/null || echo "0.10.0")"
+
+# Function to get or create version.txt
+get_or_create_version() {
+    local version_file="$SCRIPT_DIR/version.txt"
+    local github_version_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt"
+    
+    # Si le fichier version.txt n'existe pas, le récupérer depuis GitHub
+    if [[ ! -f "$version_file" ]]; then
+        echo -e "${YELLOW}📥 Fichier version.txt manquant, récupération depuis GitHub...${NC}" >&2
+        local github_version=$(curl -fsSL --connect-timeout 5 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ')
+        
+        if [[ -n "$github_version" ]]; then
+            echo "$github_version" > "$version_file"
+            echo -e "${GREEN}✅ Fichier version.txt créé avec la version $github_version${NC}" >&2
+            echo "$github_version"
+        else
+            echo -e "${RED}❌ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut${NC}" >&2
+            echo "0.9.0" > "$version_file"
+            echo "0.9.0"
+        fi
+    else
+        # Lire la version locale
+        cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "0.9.0"
+    fi
+}
+
+readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 readonly MIN_PASSWORD_LENGTH=8
 readonly DOCKER_COMPOSE_FILE="docker-compose.yml"
@@ -37,6 +63,72 @@ error_exit() {
     log_action "ERROR" "$1"
     echo -e "${RED}[ERROR] $1${NC}" >&2
     exit 1
+}
+
+# Auto-update function for admin_menu.sh
+auto_update_admin_menu() {
+    echo -e "${BLUE}🔄 Vérification des mises à jour pour admin_menu.sh...${NC}"
+    
+    # URLs GitHub
+    local github_version_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt"
+    local github_script_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh"
+    
+    # Récupérer la version en ligne
+    local LATEST_VERSION=$(curl -fsSL --connect-timeout 5 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo -e "${RED}❌ Impossible de vérifier la version en ligne${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}📊 Version locale : $SCRIPT_VERSION${NC}"
+    echo -e "${CYAN}📊 Version en ligne : $LATEST_VERSION${NC}"
+    
+    # Fonction de comparaison de versions (version1 > version2 = 0, sinon 1)
+    version_greater() {
+        local ver1="$1"
+        local ver2="$2"
+        
+        # Comparer les versions en utilisant sort -V
+        if [[ "$ver1" == "$ver2" ]]; then
+            return 1  # Versions identiques
+        fi
+        
+        # Si ver1 est la plus récente dans un tri, elle est supérieure
+        local highest=$(printf '%s\n%s' "$ver1" "$ver2" | sort -V | tail -n1)
+        [[ "$highest" == "$ver1" ]]
+    }
+    
+    # Vérifier s'il y a une mise à jour disponible
+    if version_greater "$LATEST_VERSION" "$SCRIPT_VERSION"; then
+        echo -e "${YELLOW}🆕 Nouvelle version disponible : $LATEST_VERSION${NC}"
+        echo -e "${BLUE}📥 Mise à jour automatique en cours...${NC}"
+        
+        # Sauvegarder le script actuel
+        local backup_file="${0}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$0" "$backup_file" 2>/dev/null && echo -e "${GREEN}💾 Sauvegarde créée : $backup_file${NC}"
+        
+        # Télécharger la nouvelle version du script
+        if curl -fsSL -o "$0.tmp" "$github_script_url"; then
+            chmod +x "$0.tmp"
+            mv "$0.tmp" "$0"
+            
+            # Mettre à jour le fichier version.txt
+            echo "$LATEST_VERSION" > "$SCRIPT_DIR/version.txt"
+            
+            echo -e "${GREEN}✅ Admin menu mis à jour vers la version $LATEST_VERSION${NC}"
+            echo -e "${BLUE}🔄 Redémarrage avec la nouvelle version...${NC}"
+            
+            # Relancer le script avec la nouvelle version
+            exec bash "$0" "$@"
+        else
+            echo -e "${RED}❌ Échec du téléchargement de la mise à jour${NC}"
+            rm -f "$0.tmp" 2>/dev/null
+            return 1
+        fi
+    else
+        echo -e "${GREEN}✅ Admin menu à jour (version $SCRIPT_VERSION)${NC}"
+    fi
 }
 
 # Input validation
@@ -94,19 +186,12 @@ technical_admin_menu() {
         
         # En-tête moderne
         echo -e "\e[48;5;236m\e[97m                                                    \e[0m"
-        echo -e "\e[48;5;236m\e[97m           🔧 ADMINISTRATION TECHNIQUE            \e[0m"
+        echo -e "\e[48;5;236m\e[97m           🔧 ADMINISTRATION TECHNIQUE              \e[0m"
         echo -e "\e[48;5;236m\e[97m                                                    \e[0m"
-        
-        # Informations auteur et version
-        echo -e "\n\e[48;5;235m\e[97m            ℹ️  INFORMATIONS SCRIPT               \e[0m"
-        echo -e "\n    \e[90m👨‍💻 Auteur :\e[0m \e[1;36m${SCRIPT_AUTHOR}\e[0m"
-        echo -e "    \e[90m📦 Version :\e[0m \e[1;32m${SCRIPT_VERSION}\e[0m"
-        echo -e "    \e[90m🔗 Projet :\e[0m \e[1;33mWireguard Easy Script\e[0m"
-        echo -e "    \e[90m📅 Build :\e[0m \e[1;36m$(date '+%d/%m/%Y')\e[0m"
         
         # Informations système
         echo -e "\n\e[48;5;237m\e[97m            📊 INFORMATIONS SYSTÈME              \e[0m"
-        echo -e "\n    \e[90m🖥️  Système :\e[0m \e[1;36m$(uname -sr)\e[0m"
+        echo -e "\n    \e[90m🖥️  Système :\e[0m \e[1;36mDebian $(cat /etc/debian_version 2>/dev/null || echo "GNU/Linux")\e[0m"
         echo -e "    \e[90m⏱️  Uptime :\e[0m \e[1;32m$(uptime -p 2>/dev/null || echo "Non disponible")\e[0m"
         echo -e "    \e[90m👤 Utilisateur :\e[0m \e[1;33m$(whoami)\e[0m"
         echo -e "    \e[90m� Session :\e[0m \e[1;36m$(date '+%d/%m/%Y %H:%M:%S')\e[0m"
@@ -115,17 +200,21 @@ technical_admin_menu() {
         echo -e "\n\e[48;5;24m\e[97m  👥 GESTION DES UTILISATEURS  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 1\e[0m \e[97mCréer un utilisateur\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 2\e[0m \e[97mModifier un utilisateur\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mSupprimer un utilisateur\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mRAZ Docker-WireGuard utilisateur\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 2\e[0m \e[97mGérer un utilisateur\e[0m"
+        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+        
+        echo -e "\n\e[48;5;94m\e[97m  🐳 GESTION DOCKER  \e[0m"
+        echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mRAZ Docker-WireGuard utilisateur\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[48;5;22m\e[97m  🔄 MAINTENANCE SYSTÈME  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mVérifier les mises à jour\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mMettre à jour le système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mNettoyage du système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mConfiguration réseau et SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mMettre à jour le système\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mMise à jour majeure (ex: 12→13)\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mNettoyage du système\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mConfiguration réseau et SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mChanger le nom de la machine\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[48;5;52m\e[97m  ⚡ GESTION ALIMENTATION  \e[0m"
@@ -139,29 +228,27 @@ technical_admin_menu() {
         echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mOptions de sortie\e[0m \e[1;31m🚪\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
-        # Footer avec informations de version
-        echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        echo -e "\e[90m    │ \e[0m\e[1;36m${SCRIPT_AUTHOR}\e[0m \e[90m• Version \e[0m\e[1;32m${SCRIPT_VERSION}\e[0m \e[90m• Wireguard Easy Script     │\e[0m"
-        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+        # Footer discret avec version
+        echo -e "\n\e[90m    ${SCRIPT_AUTHOR} • v${SCRIPT_VERSION}\e[0m"
         
         echo -ne "\n\e[1;33mEntrez votre choix : \e[0m"
         read -r CHOICE
         
         case $CHOICE in
             1) create_technical_user ;;
-            2) modify_user_menu ;;
-            3) remove_user_secure ;;
-            4) reset_user_docker_wireguard ;;
-            5) check_available_updates ;;
-            6) full_system_update ;;
-            7) system_cleanup_menu ;;
-            8) network_ssh_config_menu ;;
+            2) user_management_menu ;;
+            3) reset_user_docker_wireguard ;;
+            4) full_system_update ;;
+            5) major_system_upgrade ;;
+            6) system_cleanup_menu ;;
+            7) network_ssh_config_menu ;;
+            8) change_hostname ;;
             9) immediate_reboot ;;
             10) immediate_shutdown ;;
             11) power_scheduling_menu ;;
             0) exit_menu ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 11.\e[0m"
+                echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 12.\e[0m"
                 sleep 2
                 ;;
         esac
@@ -184,9 +271,8 @@ exit_menu() {
         echo -e "\e[90m    ├─ \e[0m\e[1;33m 0\e[0m \e[97mRetour au menu principal\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
-        echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        echo -e "\e[90m    │ \e[0m\e[1;36m${SCRIPT_AUTHOR}\e[0m \e[90m• Version \e[0m\e[1;32m${SCRIPT_VERSION}\e[0m \e[90m• Wireguard Easy Script     │\e[0m"
-        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+        # Footer discret avec version
+        echo -e "\n\e[90m    ${SCRIPT_AUTHOR} • v${SCRIPT_VERSION}\e[0m"
         
         echo -ne "\n\e[1;33mEntrez votre choix : \e[0m"
         read -r EXIT_CHOICE
@@ -621,6 +707,53 @@ create_technical_user() {
     done
 }
 # User modification menu
+# Combined user management menu
+user_management_menu() {
+    while true; do
+        clear
+        echo -e "\e[48;5;236m\e[97m           👥 GESTION D'UTILISATEUR               \e[0m"
+        
+        # Filter only real human users
+        mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd)
+        
+        if [[ ${#USERS[@]} -eq 0 ]]; then
+            echo -e "\n\e[1;31m❌ Aucun utilisateur humain trouvé.\e[0m"
+            echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        
+        echo -e "\n\e[48;5;24m\e[97m  👥 UTILISATEURS DISPONIBLES  \e[0m"
+        for i in "${!USERS[@]}"; do
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m$((i+1))\e[0m \e[97m${USERS[i]}\e[0m"
+        done
+        
+        echo -e "\n\e[48;5;22m\e[97m  🔧 ACTIONS DISPONIBLES  \e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36mM\e[0m \e[97mModifier un utilisateur\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36mS\e[0m \e[97mSupprimer un utilisateur\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;31m0\e[0m \e[97mRetour au menu principal\e[0m"
+        
+        echo -e "\n\e[1;33m👉 Votre choix :\e[0m "
+        read -r CHOICE
+        
+        case $CHOICE in
+            [Mm])
+                modify_user_menu
+                ;;
+            [Ss])
+                remove_user_secure
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "\e[1;31m❌ Choix invalide !\e[0m"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 modify_user_menu() {
     clear
     echo -e "\e[48;5;236m\e[97m           ✏️  MODIFICATION D'UTILISATEUR          \e[0m"
@@ -1820,6 +1953,146 @@ restart_network_services() {
     echo -e "\e[1;32m✅ Services réseau redémarrés avec succès\e[0m"
 }
 
+# Change hostname
+change_hostname() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🏷️  CHANGER LE NOM DE LA MACHINE         \e[0m"
+    
+    # Afficher le nom actuel
+    local current_hostname=$(hostname)
+    echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS ACTUELLES  \e[0m"
+    echo -e "\n    \e[90m🏷️  Nom actuel :\e[0m \e[1;36m$current_hostname\e[0m"
+    echo -e "    \e[90m🌐 FQDN :\e[0m \e[1;36m$(hostname -f 2>/dev/null || echo "Non configuré")\e[0m"
+    
+    echo -e "\n\e[48;5;22m\e[97m  ⚙️  NOUVEAU NOM DE MACHINE  \e[0m"
+    echo -e "\n\e[1;33mRègles pour le nom de machine :\e[0m"
+    echo -e "\e[90m  • Longueur : 1-63 caractères\e[0m"
+    echo -e "\e[90m  • Caractères autorisés : lettres, chiffres, tirets\e[0m"
+    echo -e "\e[90m  • Commence et finit par une lettre ou un chiffre\e[0m"
+    echo -e "\e[90m  • Tapez 'annuler' pour revenir au menu\e[0m"
+    
+    while true; do
+        echo -ne "\n\e[1;33mNouveau nom de machine : \e[0m\e[1;36m→ \e[0m"
+        read -r NEW_HOSTNAME
+        
+        # Option d'annulation
+        if [[ "$NEW_HOSTNAME" == "annuler" || "$NEW_HOSTNAME" == "cancel" || "$NEW_HOSTNAME" == "exit" ]]; then
+            echo -e "\e[1;33m❌ Changement de nom annulé\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        
+        # Validation du nom
+        if [[ -z "$NEW_HOSTNAME" ]]; then
+            echo -e "\e[1;31m✗ Le nom ne peut pas être vide\e[0m"
+            continue
+        fi
+        
+        if [[ ${#NEW_HOSTNAME} -gt 63 ]]; then
+            echo -e "\e[1;31m✗ Le nom est trop long (maximum 63 caractères)\e[0m"
+            continue
+        fi
+        
+        if ! [[ "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then
+            echo -e "\e[1;31m✗ Format invalide\e[0m"
+            echo -e "\e[90m  Utilisez uniquement : lettres, chiffres, tirets\e[0m"
+            echo -e "\e[90m  Commence et finit par une lettre ou un chiffre\e[0m"
+            continue
+        fi
+        
+        if [[ "$NEW_HOSTNAME" == "$current_hostname" ]]; then
+            echo -e "\e[1;33m⚠️  Le nom est identique au nom actuel\e[0m"
+            continue
+        fi
+        
+        # Confirmation
+        echo -e "\n\e[1;32m✓ Nom valide : $NEW_HOSTNAME\e[0m"
+        echo -e "\n\e[48;5;52m\e[97m  ⚠️  CONFIRMATION  \e[0m"
+        echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
+        echo -e "    \e[97m• Le changement de nom nécessite un redémarrage\e[0m"
+        echo -e "    \e[97m• Certains services peuvent être affectés\e[0m"
+        echo -e "    \e[97m• Les connexions réseau actuelles seront interrompues\e[0m"
+        
+        echo -e "\n\e[1;33mConfirmer le changement ? [o/N/retour] : \e[0m"
+        read -r CONFIRM
+        
+        case "$CONFIRM" in
+            [oOyY])
+                echo -e "\n\e[1;33m🔄 Application du nouveau nom...\e[0m"
+                
+                # Changer le hostname
+                if hostnamectl set-hostname "$NEW_HOSTNAME" 2>/dev/null; then
+                    echo -e "\e[1;32m✓ hostnamectl configuré\e[0m"
+                else
+                    echo "$NEW_HOSTNAME" > /etc/hostname
+                    hostname "$NEW_HOSTNAME"
+                    echo -e "\e[1;32m✓ /etc/hostname mis à jour\e[0m"
+                fi
+                
+                # Mettre à jour /etc/hosts
+                echo -e "\e[1;33m🔄 Mise à jour de /etc/hosts...\e[0m"
+                cp /etc/hosts "/etc/hosts.backup-$(date +%Y%m%d-%H%M%S)"
+                
+                # Supprimer les anciennes entrées
+                sed -i "/127.0.0.1.*$current_hostname/d" /etc/hosts
+                sed -i "/127.0.1.1.*$current_hostname/d" /etc/hosts
+                
+                # Ajouter les nouvelles entrées
+                if ! grep -q "127.0.0.1.*$NEW_HOSTNAME" /etc/hosts; then
+                    echo "127.0.0.1 $NEW_HOSTNAME" >> /etc/hosts
+                fi
+                if ! grep -q "127.0.1.1.*$NEW_HOSTNAME" /etc/hosts; then
+                    echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts
+                fi
+                
+                echo -e "\e[1;32m✓ /etc/hosts mis à jour\e[0m"
+                
+                # Vérification
+                local new_name=$(hostname)
+                if [[ "$new_name" == "$NEW_HOSTNAME" ]]; then
+                    echo -e "\n\e[1;32m✅ NOM DE MACHINE CHANGÉ AVEC SUCCÈS\e[0m"
+                    echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
+                    echo -e "\e[90m│\e[0m \e[1;36mAncien nom :\e[0m $current_hostname"
+                    echo -e "\e[90m│\e[0m \e[1;36mNouveau nom :\e[0m $NEW_HOSTNAME"
+                    echo -e "\e[90m│\e[0m \e[1;36mStatut :\e[0m \e[1;32mAppliqué\e[0m"
+                    echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
+                    
+                    log_action "INFO" "Nom de machine changé de '$current_hostname' vers '$NEW_HOSTNAME'"
+                    
+                    echo -e "\n\e[1;33m⚠️  REDÉMARRAGE RECOMMANDÉ\e[0m"
+                    echo -e "Pour que tous les services prennent en compte le nouveau nom,"
+                    echo -e "un redémarrage du système est recommandé."
+                    
+                    echo -ne "\n\e[1;33mRedémarrer maintenant ? [o/N] : \e[0m"
+                    read -r REBOOT_NOW
+                    if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
+                        echo -e "\e[1;31m🔄 Redémarrage en cours...\e[0m"
+                        log_action "INFO" "Redémarrage après changement de nom de machine"
+                        sleep 2
+                        shutdown -r now
+                    fi
+                else
+                    echo -e "\e[1;31m❌ Erreur lors du changement de nom\e[0m"
+                fi
+                
+                echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+                read -n1 -s
+                return
+                ;;
+            [rR]|retour)
+                continue
+                ;;
+            *)
+                echo -e "\e[1;33m❌ Changement de nom annulé\e[0m"
+                echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+                read -n1 -s
+                return
+                ;;
+        esac
+    done
+}
+
 # Configure SSH port
 configure_ssh_port() {
     clear
@@ -2393,12 +2666,315 @@ show_user_info() {
     fi
 }
 # ═══════════════════════════════════════════════════════════════
+# DOCKER INSTALLATION AND VERIFICATION
+# ═══════════════════════════════════════════════════════════════
+
+# Check and install Docker if needed
+check_and_install_docker() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DOCKER                 \e[0m"
+    
+    echo -e "\n\e[1;33m🔍 Vérification de l'installation Docker...\e[0m"
+    
+    # Vérifier si Docker est installé
+    if command -v docker &>/dev/null; then
+        echo -e "\e[1;32m✓ Docker est déjà installé\e[0m"
+        
+        # Vérifier si Docker Compose est installé
+        if command -v docker-compose &>/dev/null || docker compose version &>/dev/null; then
+            echo -e "\e[1;32m✓ Docker Compose est déjà installé\e[0m"
+            
+            # Vérifier si le service Docker est actif
+            if systemctl is-active docker &>/dev/null; then
+                echo -e "\e[1;32m✓ Service Docker est actif\e[0m"
+                echo -e "\n\e[1;32m🎉 Docker est prêt à être utilisé !\e[0m"
+                sleep 2
+                return 0
+            else
+                echo -e "\e[1;33m⚠️  Service Docker inactif, démarrage...\e[0m"
+                systemctl start docker
+                systemctl enable docker
+                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"
+                sleep 2
+                return 0
+            fi
+        else
+            echo -e "\e[1;33m⚠️  Docker Compose manquant, installation...\e[0m"
+            install_docker_compose
+        fi
+    else
+        echo -e "\e[1;31m❌ Docker n'est pas installé\e[0m"
+        echo -e "\n\e[1;33m🚀 Lancement de l'installation Docker...\e[0m"
+        install_docker
+    fi
+}
+
+# Install Docker
+install_docker() {
+    echo -e "\n\e[48;5;24m\e[97m  📦 INSTALLATION DOCKER (DEBIAN)  \e[0m"
+    
+    echo -e "\n\e[1;33m📝 Étape 1/8 - Mise à jour des paquets...\e[0m"
+    apt-get update || { echo -e "\e[1;31m❌ Échec de la mise à jour\e[0m"; return 1; }
+    
+    echo -e "\n\e[1;33m📝 Étape 2/8 - Vérification des mises à jour système...\e[0m"
+    echo -e "\e[1;36m🔍 Recherche des mises à jour disponibles...\e[0m"
+    UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || echo "0")
+    if [[ "$UPGRADABLE" -gt 0 ]]; then
+        echo -e "\e[1;33m⚠️  $UPGRADABLE paquets peuvent être mis à jour\e[0m"
+        echo -ne "\e[1;33mEffectuer les mises à jour système maintenant ? [o/N] : \e[0m"
+        read -r UPDATE_SYSTEM
+        if [[ "$UPDATE_SYSTEM" =~ ^[oOyY]$ ]]; then
+            echo -e "\e[1;33m🔄 Mise à jour du système en cours...\e[0m"
+            apt-get upgrade -y || echo -e "\e[1;33m⚠️  Certaines mises à jour ont échoué, continuons...\e[0m"
+            echo -e "\e[1;32m✓ Mises à jour système terminées\e[0m"
+        else
+            echo -e "\e[1;33m⏭️  Mises à jour système ignorées\e[0m"
+        fi
+    else
+        echo -e "\e[1;32m✓ Système déjà à jour\e[0m"
+    fi
+    
+    echo -e "\n\e[1;33m📝 Étape 3/8 - Installation des outils essentiels...\e[0m"
+    echo -e "\e[1;36m🔧 Installation de vim et sudo...\e[0m"
+    apt-get install -y vim sudo || { echo -e "\e[1;31m❌ Échec installation outils essentiels\e[0m"; return 1; }
+    echo -e "\e[1;32m✓ vim et sudo installés\e[0m"
+    
+    echo -e "\n\e[1;33m📝 Étape 4/8 - Installation des prérequis Docker...\e[0m"
+    apt-get install -y ca-certificates curl || { echo -e "\e[1;31m❌ Échec installation prérequis\e[0m"; return 1; }
+    
+    echo -e "\n\e[1;33m📝 Étape 5/8 - Configuration des clés GPG...\e[0m"
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc || { echo -e "\e[1;31m❌ Échec téléchargement clé GPG\e[0m"; return 1; }
+    chmod a+r /etc/apt/keyrings/docker.asc
+    
+    echo -e "\n\e[1;33m📝 Étape 6/8 - Ajout du dépôt Docker...\e[0m"
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null || { echo -e "\e[1;31m❌ Échec ajout dépôt\e[0m"; return 1; }
+    
+    echo -e "\n\e[1;33m📝 Étape 7/8 - Mise à jour avec le nouveau dépôt...\e[0m"
+    apt-get update || { echo -e "\e[1;31m❌ Échec mise à jour dépôt\e[0m"; return 1; }
+    
+    echo -e "\n\e[1;33m📝 Étape 8/8 - Installation Docker...\e[0m"
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || {
+        echo -e "\e[1;31m❌ Échec installation Docker\e[0m"
+        return 1
+    }
+    
+    echo -e "\n\e[1;33m🔧 Configuration du service Docker...\e[0m"
+    systemctl start docker
+    systemctl enable docker
+    
+    echo -e "\n\e[1;33m🧪 Test de l'installation...\e[0m"
+    if docker --version && docker compose version; then
+        echo -e "\n\e[1;32m✅ DOCKER INSTALLÉ AVEC SUCCÈS !\e[0m"
+        echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
+        echo -e "\e[90m│\e[0m \e[1;36mDocker :\e[0m $(docker --version | cut -d' ' -f3 | tr -d ',')"
+        echo -e "\e[90m│\e[0m \e[1;36mDocker Compose :\e[0m $(docker compose version --short 2>/dev/null || echo "Plugin intégré")"
+        echo -e "\e[90m│\e[0m \e[1;36mStatut :\e[0m \e[1;32mActif et prêt\e[0m"
+        echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
+        
+        log_action "INFO" "Docker installé avec succès"
+        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+        return 0
+    else
+        echo -e "\e[1;31m❌ L'installation semble avoir échoué\e[0m"
+        return 1
+    fi
+}
+
+# Install Docker Compose (legacy)
+install_docker_compose() {
+    echo -e "\n\e[1;33m📦 Installation Docker Compose...\e[0m"
+    
+    # Essayer d'abord la méthode moderne (plugin)
+    if apt-get install -y docker-compose-plugin 2>/dev/null; then
+        echo -e "\e[1;32m✓ Docker Compose (plugin) installé\e[0m"
+        return 0
+    fi
+    
+    # Fallback vers la méthode classique
+    DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
+    curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    
+    if docker-compose --version; then
+        echo -e "\e[1;32m✓ Docker Compose (standalone) installé\e[0m"
+        return 0
+    else
+        echo -e "\e[1;31m❌ Échec installation Docker Compose\e[0m"
+        return 1
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
 # MAIN EXECUTION
 # ═══════════════════════════════════════════════════════════════
+
+# Function to handle major system upgrades (e.g., Debian 12 to 13)
+major_system_upgrade() {
+    clear
+    echo -e "\e[48;5;196m\e[97m  ⚠️  MISE À JOUR MAJEURE DU SYSTÈME  ⚠️   \e[0m"
+    echo -e "\n\e[1;33m📋 Cette fonction permet de migrer vers une version majeure de Debian.\e[0m"
+    echo -e "\e[1;33mExemple : Debian 12 (bookworm) → Debian 13 (trixie)\e[0m"
+    
+    # Détecter la version actuelle
+    CURRENT_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "inconnue")
+    CURRENT_CODENAME=$(awk -F= '/^VERSION_CODENAME=/{gsub(/"/,"",$2); print $2}' /etc/os-release 2>/dev/null || echo "inconnu")
+    
+    echo -e "\n\e[1;36m🖥️  Version actuelle : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
+    
+    # Avertissements de sécurité
+    echo -e "\n\e[48;5;208m\e[97m  ⚠️  AVERTISSEMENTS IMPORTANTS  ⚠️   \e[0m"
+    echo -e "\e[1;31m• Cette opération est IRRÉVERSIBLE\e[0m"
+    echo -e "\e[1;31m• Sauvegardez TOUS vos données importantes\e[0m"
+    echo -e "\e[1;31m• La migration peut prendre plusieurs heures\e[0m"
+    echo -e "\e[1;31m• Le système sera redémarré plusieurs fois\e[0m"
+    echo -e "\e[1;31m• WireGuard et Docker seront reconfigurés\e[0m"
+    
+    echo -e "\n\e[1;33m📋 Étapes de la migration :\e[0m"
+    echo -e "  1. Sauvegarde des configurations"
+    echo -e "  2. Mise à jour des sources APT"
+    echo -e "  3. Mise à jour des paquets système"
+    echo -e "  4. Migration des configurations"
+    echo -e "  5. Redémarrage et vérifications"
+    
+    echo -e "\n\e[1;31m⚠️  VOULEZ-VOUS VRAIMENT CONTINUER ? ⚠️\e[0m"
+    echo -e "\e[1;33mTapez 'MIGRER' en majuscules pour confirmer, ou autre chose pour annuler :\e[0m "
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" != "MIGRER" ]]; then
+        echo -e "\e[1;32m✅ Migration annulée par l'utilisateur.\e[0m"
+        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+        return
+    fi
+    
+    # Déterminer la version cible
+    case "$CURRENT_CODENAME" in
+        "bookworm"|"12")
+            TARGET_CODENAME="trixie"
+            TARGET_VERSION="13"
+            ;;
+        "bullseye"|"11")
+            TARGET_CODENAME="bookworm"
+            TARGET_VERSION="12"
+            ;;
+        *)
+            echo -e "\e[1;31m❌ Version source non supportée pour la migration automatique.\e[0m"
+            echo -e "\e[1;33mVersions supportées : Debian 11 (bullseye) → 12 (bookworm)\e[0m"
+            echo -e "\e[1;33m                      Debian 12 (bookworm) → 13 (trixie)\e[0m"
+            echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+            ;;
+    esac
+    
+    echo -e "\n\e[1;36m🎯 Migration vers : Debian $TARGET_VERSION ($TARGET_CODENAME)\e[0m"
+    echo -e "\e[1;33mDernière chance d'annuler ! Appuyez sur Entrée pour continuer ou Ctrl+C pour annuler...\e[0m"
+    read -r
+    
+    # Début de la migration
+    echo -e "\n\e[1;33m🚀 Début de la migration majeure...\e[0m"
+    
+    # Étape 1: Sauvegarde
+    echo -e "\n\e[1;33m📝 Étape 1/5 - Sauvegarde des configurations...\e[0m"
+    BACKUP_DIR="/root/debian_upgrade_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    
+    # Sauvegarder les sources APT
+    cp -r /etc/apt/ "$BACKUP_DIR/apt_backup/" 2>/dev/null
+    
+    # Sauvegarder les configurations réseau
+    cp -r /etc/netplan/ "$BACKUP_DIR/netplan_backup/" 2>/dev/null
+    cp /etc/hostname "$BACKUP_DIR/" 2>/dev/null
+    cp /etc/hosts "$BACKUP_DIR/" 2>/dev/null
+    
+    # Sauvegarder SSH
+    cp -r /etc/ssh/ "$BACKUP_DIR/ssh_backup/" 2>/dev/null
+    
+    echo -e "\e[1;32m✅ Sauvegarde créée dans : $BACKUP_DIR\e[0m"
+    
+    # Étape 2: Mise à jour sources APT
+    echo -e "\n\e[1;33m📝 Étape 2/5 - Mise à jour des sources APT...\e[0m"
+    
+    # Sauvegarder et modifier sources.list
+    cp /etc/apt/sources.list "$BACKUP_DIR/sources.list.backup"
+    sed -i "s/$CURRENT_CODENAME/$TARGET_CODENAME/g" /etc/apt/sources.list
+    
+    # Mettre à jour aussi les fichiers dans sources.list.d
+    find /etc/apt/sources.list.d/ -name "*.list" -exec sed -i "s/$CURRENT_CODENAME/$TARGET_CODENAME/g" {} \;
+    
+    echo -e "\e[1;32m✅ Sources APT mises à jour vers $TARGET_CODENAME\e[0m"
+    
+    # Étape 3: Mise à jour du cache APT
+    echo -e "\n\e[1;33m📝 Étape 3/5 - Mise à jour du cache APT...\e[0m"
+    apt update
+    
+    if [[ $? -ne 0 ]]; then
+        echo -e "\e[1;31m❌ Erreur lors de la mise à jour du cache APT.\e[0m"
+        echo -e "\e[1;33m🔄 Restauration des sources originales...\e[0m"
+        cp "$BACKUP_DIR/sources.list.backup" /etc/apt/sources.list
+        apt update
+        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+        return
+    fi
+    
+    # Étape 4: Migration des paquets
+    echo -e "\n\e[1;33m📝 Étape 4/5 - Migration des paquets système...\e[0m"
+    echo -e "\e[1;31m⚠️ Cette étape peut prendre très longtemps...\e[0m"
+    
+    # Mise à jour minimale d'abord
+    apt upgrade -y
+    
+    # Puis distribution upgrade
+    apt full-upgrade -y
+    
+    # Étape 5: Nettoyage et finalisation
+    echo -e "\n\e[1;33m📝 Étape 5/5 - Nettoyage et finalisation...\e[0m"
+    
+    # Nettoyer les paquets obsolètes
+    apt autoremove -y
+    apt autoclean
+    
+    # Vérifier la nouvelle version
+    NEW_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "inconnue")
+    
+    echo -e "\n\e[1;32m🎉 Migration terminée !\e[0m"
+    echo -e "\e[1;36m📊 Ancienne version : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
+    echo -e "\e[1;36m📊 Nouvelle version : Debian $NEW_VERSION ($TARGET_CODENAME)\e[0m"
+    echo -e "\e[1;36m💾 Sauvegarde disponible : $BACKUP_DIR\e[0m"
+    
+    echo -e "\n\e[1;33m🔄 Un redémarrage est FORTEMENT recommandé.\e[0m"
+    echo -e "\e[1;33mVoulez-vous redémarrer maintenant ? (o/N) :\e[0m "
+    read -r REBOOT_CHOICE
+    
+    if [[ "$REBOOT_CHOICE" =~ ^[Oo]$ ]]; then
+        echo -e "\e[1;33m🔄 Redémarrage dans 10 secondes...\e[0m"
+        sleep 10
+        reboot
+    else
+        echo -e "\e[1;33m⚠️ N'oubliez pas de redémarrer le système dès que possible !\e[0m"
+        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+    fi
+}
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
     log_action "INFO" "Technical administration session started"
+    
+    # Mise à jour automatique du script
+    auto_update_admin_menu "$@"
+    
+    # Vérifier et installer Docker si nécessaire
+    echo -e "\e[1;33m🔍 Vérification des prérequis système...\e[0m"
+    check_and_install_docker
+    
+    # Lancer le menu d'administration
     technical_admin_menu
 else
     echo -e "${RED}ERREUR : Ce script doit être exécuté en tant que root.${NC}"
