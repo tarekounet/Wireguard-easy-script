@@ -5,6 +5,59 @@ if [[ "$(basename -- "$0")" == "utils.sh" ]]; then
 fi
 
 ##############################
+#        LOGS D'ERREUR       #
+##############################
+
+# Variables de logging (erreurs uniquement)
+ERROR_LOG_FILE="${ERROR_LOG_FILE:-/tmp/wireguard-errors.log}"
+ERROR_LOG_TO_FILE="${ERROR_LOG_TO_FILE:-false}"
+ERROR_LOG_MAX_SIZE="${ERROR_LOG_MAX_SIZE:-1048576}"  # 1MB en bytes
+
+# Fonction pour écrire les erreurs dans le fichier de log
+write_error_log() {
+    local message="$1"
+    local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # Vérifier si on doit logger vers un fichier
+    if [[ "$ERROR_LOG_TO_FILE" == "true" ]]; then
+        # Rotation automatique si le fichier devient trop volumineux
+        if [[ -f "$ERROR_LOG_FILE" ]] && [[ $(stat -f%z "$ERROR_LOG_FILE" 2>/dev/null || stat -c%s "$ERROR_LOG_FILE" 2>/dev/null) -gt $ERROR_LOG_MAX_SIZE ]]; then
+            mv "$ERROR_LOG_FILE" "${ERROR_LOG_FILE}.old" 2>/dev/null
+        fi
+        
+        echo "[$timestamp] [ERROR] $message" >> "$ERROR_LOG_FILE"
+    fi
+}
+
+# Fonction de log pour les erreurs uniquement
+log_error() {
+    local message="$1"
+    local show_console="${2:-true}"
+    
+    write_error_log "$message"
+    
+    if [[ "$show_console" == "true" ]]; then
+        echo -e "\e[1;31m[ERREUR]\e[0m $message" >&2
+    fi
+}
+
+# Fonction pour activer le logging d'erreur vers fichier
+enable_error_logging() {
+    local log_file="$1"
+    ERROR_LOG_TO_FILE="true"
+    if [[ -n "$log_file" ]]; then
+        ERROR_LOG_FILE="$log_file"
+    fi
+    echo "✓ Logging d'erreur vers fichier activé : $ERROR_LOG_FILE"
+}
+
+# Fonction pour désactiver le logging d'erreur vers fichier
+disable_error_logging() {
+    ERROR_LOG_TO_FILE="false"
+    echo "✓ Logging d'erreur vers fichier désactivé"
+}
+
+##############################
 #        acces ROOT          #
 ##############################
 

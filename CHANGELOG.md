@@ -1,5 +1,13 @@
 # 📦 Wireguard Easy Script
 
+### [0.11.0] – 2025-08-05
+
+#### ✅ Ajouté
+- ajout des logs pour les erreur
+
+#### 🐛 Corrigé
+- la remonté de l'etat du container déjà installé
+
 ### [0.10.0] – 2025-08-05
 
 #### ✅ Ajouté

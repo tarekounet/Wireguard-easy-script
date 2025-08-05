@@ -115,7 +115,15 @@ display_version_info() {
 
 # Affichage des informations container
 display_container_info() {
-    local container_status=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
+    # Vérifier d'abord si le conteneur existe
+    if ! docker ps -a --format '{{.Names}}' | grep -qw wg-easy 2>/dev/null; then
+        container_status=""
+    else
+        container_status=$(docker inspect -f '{{.State.Status}}' wg-easy 2>/dev/null)
+    fi
+    
+    # Debug: afficher l'état détecté seulement si DEBUG est activé
+    [[ -n "$DEBUG" ]] && echo "DEBUG: container_status='$container_status'"
     
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         echo -e "\e[48;5;235m\e[97m           📊 ÉTAT DU SERVICE WIREGUARD           \e[0m"
@@ -153,11 +161,17 @@ display_container_info() {
                 echo -e "\n    \e[1;44m\e[30m ⧗ CRÉÉ \e[0m \e[97mService créé mais non démarré\e[0m"
                 ;;
             *)
-                if docker ps -a --format '{{.Names}}' | grep -qw wg-easy; then
-                    echo -e "\n    \e[1;41m\e[97m ✗ ERREUR \e[0m \e[97mService en erreur\e[0m"
+                if [[ -n "$container_status" ]]; then
+                    # Le conteneur existe mais n'est pas dans un état reconnu
+                    echo -e "\n    \e[1;41m\e[97m ✗ ERREUR \e[0m \e[97mService en erreur (état: $container_status)\e[0m"
+                    log_error "Container wg-easy dans un état inattendu: $container_status"
                     local last_exit_code=$(docker inspect -f '{{.State.ExitCode}}' wg-easy 2>/dev/null)
-                    [[ "$last_exit_code" != "0" ]] && echo -e "    \e[90m⚠️  Code d'erreur :\e[0m \e[1;31m$last_exit_code\e[0m"
+                    if [[ "$last_exit_code" != "0" ]]; then
+                        echo -e "    \e[90m⚠️  Code d'erreur :\e[0m \e[1;31m$last_exit_code\e[0m"
+                        log_error "Container wg-easy exit code: $last_exit_code"
+                    fi
                 else
+                    # Le conteneur n'existe pas
                     echo -e "\n    \e[1;45m\e[97m ⚫ ARRÊT \e[0m \e[97mService arrêté\e[0m"
                 fi
                 ;;

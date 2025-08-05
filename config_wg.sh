@@ -20,7 +20,7 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.10.0"  # Version par défaut
+SCRIPT_VERSION="0.11.0"  # Version par défaut
 SCRIPT_BACKUP="config_wg.sh.bak"
 # Détection du bon HOME utilisateur même en sudo/root
 if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
@@ -80,6 +80,7 @@ get_or_create_version() {
         # Si échec, créer avec la version par défaut
         echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
         echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $SCRIPT_BASE_VERSION_INIT"
+        log_error "Impossible de récupérer version.txt depuis GitHub, utilisation version par défaut: $SCRIPT_BASE_VERSION_INIT"
         echo "$SCRIPT_BASE_VERSION_INIT"
     else
         VERSION_FROM_FILE=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
@@ -87,6 +88,7 @@ get_or_create_version() {
             echo "$VERSION_FROM_FILE"
         else
             echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
+            log_error "Fichier version.txt vide, recréation avec version par défaut: $SCRIPT_BASE_VERSION_INIT"
             echo "$SCRIPT_BASE_VERSION_INIT"
         fi
     fi
@@ -217,8 +219,10 @@ update_modules_from_github() {
             echo "✅ Module lib/$mod.sh mis à jour avec succès"
         else
             echo "❌ Échec de la mise à jour de lib/$mod.sh"
+            log_error "Échec du téléchargement du module lib/$mod.sh depuis GitHub"
             if [[ ! -f "lib/$mod.sh" ]]; then
                 echo "❌ Module manquant et impossible à télécharger"
+                log_error "Module lib/$mod.sh manquant et impossible à télécharger - arrêt du script"
                 exit 1
             else
                 echo "⚠️  Utilisation de la version locale existante"
