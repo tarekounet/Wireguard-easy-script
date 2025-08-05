@@ -177,6 +177,10 @@ auto_update_on_startup() {
                         echo "⚠️  Impossible de mettre à jour le changelog"
                     fi
                     
+                    # Mettre à jour les modules aussi
+                    echo "🔄 Mise à jour des modules suite à la nouvelle version..."
+                    update_modules_from_github
+                    
                     echo "✅ Script mis à jour vers la version $LATEST_SCRIPT_VERSION"
                     echo "🔄 Redémarrage du script avec la nouvelle version..."
                     
@@ -202,6 +206,28 @@ auto_update_on_startup() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     auto_update_on_startup "$@"
 fi
+
+# Fonction pour mettre à jour les modules depuis GitHub
+update_modules_from_github() {
+    echo "🔄 Mise à jour des modules depuis GitHub..."
+    for mod in utils conf docker menu ; do
+        echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
+        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
+            chmod +x "lib/$mod.sh"
+            echo "✅ Module lib/$mod.sh mis à jour avec succès"
+        else
+            echo "❌ Échec de la mise à jour de lib/$mod.sh"
+            if [[ ! -f "lib/$mod.sh" ]]; then
+                echo "❌ Module manquant et impossible à télécharger"
+                exit 1
+            else
+                echo "⚠️  Utilisation de la version locale existante"
+            fi
+        fi
+        # Pause de 1 seconde entre chaque téléchargement
+        sleep 1
+    done
+}
 
 # Fonction pour mettre à jour le changelog indépendamment
 update_changelog_from_github() {
@@ -243,7 +269,7 @@ update_changelog_from_github() {
 ##############################
 
 # Création des dossiers nécessaires
-for dir in lib config logs; do
+for dir in lib config; do
     if [[ ! -d "$dir" ]]; then
         mkdir -p "$dir"
         echo "Dossier créé : $dir/"
@@ -254,23 +280,20 @@ for dir in lib config logs; do
     fi
 done
 
-# Téléchargement et mise à jour automatique des modules
-echo "🔄 Mise à jour des modules depuis GitHub..."
+# Vérifier si les modules existent, sinon les télécharger une première fois
+MODULES_MISSING=false
 for mod in utils conf docker menu ; do
-    echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
-    if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
-        chmod +x "lib/$mod.sh"
-        echo "✅ Module lib/$mod.sh mis à jour avec succès"
-    else
-        echo "❌ Échec de la mise à jour de lib/$mod.sh"
-        if [[ ! -f "lib/$mod.sh" ]]; then
-            echo "❌ Module manquant et impossible à télécharger"
-            exit 1
-        else
-            echo "⚠️  Utilisation de la version locale existante"
-        fi
+    if [[ ! -f "lib/$mod.sh" ]]; then
+        echo "⚠️  Module lib/$mod.sh manquant"
+        MODULES_MISSING=true
     fi
 done
+
+# Si des modules manquent, les télécharger
+if [[ "$MODULES_MISSING" == "true" ]]; then
+    echo "📥 Téléchargement des modules manquants..."
+    update_modules_from_github
+fi
 
 # Chargement des modules
 echo "Chargement des modules..."
@@ -282,6 +305,8 @@ for f in lib/*.sh; do
         echo "Erreur : Module $f introuvable après téléchargement"
         exit 1
     fi
+    # Pause de 1 seconde entre chaque chargement de module
+    sleep 1
 done
 echo "✓ Tous les modules sont chargés"
 
