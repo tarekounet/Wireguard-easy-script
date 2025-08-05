@@ -113,13 +113,6 @@ configure_values() {
         
         mkdir -p ${DOCKER_WG_DIR}/config
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
-volumes:
-  etc_wireguard:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${DOCKER_WG_DIR}/config
-      o: bind
 services:
   wg-easy:
     environment:
@@ -132,7 +125,7 @@ services:
         ipv4_address: 10.42.42.42
         ipv6_address: fdcc:ad94:bacf:61a3::2a
     volumes:
-      - etc_wireguard:/etc/wireguard
+      - ${DOCKER_WG_DIR}/config:/etc/wireguard
       - /lib/modules:/lib/modules:ro
     ports:
       - "51820:51820/udp"
@@ -225,6 +218,65 @@ update_wireguard_container() {
 #   RÉINITIALISATION CONFIG  #
 ##############################
 
+# Fonction pour nettoyer les volumes Docker conflictuels
+clean_docker_volumes() {
+    echo "🧹 Nettoyage des volumes Docker conflictuels..."
+    
+    # Arrêter le conteneur s'il est en cours d'exécution
+    if docker ps -q --filter "name=wg-easy" | grep -q .; then
+        echo "📦 Arrêt du conteneur wg-easy..."
+        docker stop wg-easy 2>/dev/null || true
+    fi
+    
+    # Supprimer le conteneur s'il existe
+    if docker ps -a -q --filter "name=wg-easy" | grep -q .; then
+        echo "🗑️  Suppression du conteneur wg-easy..."
+        docker rm wg-easy 2>/dev/null || true
+    fi
+    
+    # Nettoyer les volumes orphelins liés à docker-wireguard
+    echo "🧽 Nettoyage des volumes Docker..."
+    docker volume ls -q | grep -E "(docker-wireguard|wireguard)" | xargs -r docker volume rm 2>/dev/null || true
+    
+    # Nettoyer les réseaux orphelins
+    echo "🌐 Nettoyage des réseaux Docker..."
+    docker network ls -q --filter "name=docker-wireguard" | xargs -r docker network rm 2>/dev/null || true
+    
+    echo "✅ Nettoyage terminé"
+}
+
+# Fonction pour résoudre les conflits de volumes Docker
+fix_docker_volume_conflicts() {
+    echo "🔧 Résolution des conflits de volumes Docker..."
+    
+    msg_warn "⚠️  Cette action va arrêter temporairement le service Wireguard"
+    read -p $'Voulez-vous continuer ? (o/N) : ' CONFIRM_FIX
+    if [[ ! "$CONFIRM_FIX" =~ ^[oO]$ ]]; then
+        msg_warn "Résolution annulée."
+        return
+    fi
+    
+    # Sauvegarder la configuration actuelle
+    if [[ -d "$WG_CONF_DIR" ]]; then
+        BACKUP_DIR="$HOME/wg-config-backup-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$BACKUP_DIR"
+        cp -r "$WG_CONF_DIR" "$BACKUP_DIR/" 2>/dev/null
+        msg_success "Sauvegarde de la configuration dans $BACKUP_DIR"
+    fi
+    
+    # Nettoyer les volumes conflictuels
+    clean_docker_volumes
+    
+    # Redémarrer le service avec la nouvelle configuration
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        echo "🚀 Redémarrage du service Wireguard..."
+        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        msg_success "Service Wireguard redémarré avec succès"
+    else
+        msg_error "Fichier docker-compose.yml introuvable"
+    fi
+}
+
 RAZ_docker_compose() {
     if ! ask_tech_password; then
         msg_error "Réinitialisation annulée."
@@ -244,6 +296,9 @@ RAZ_docker_compose() {
         msg_warn "Réinitialisation annulée."
         return
     fi
+    
+    # Nettoyer les volumes Docker conflictuels
+    clean_docker_volumes
     
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         if rm -f "$DOCKER_COMPOSE_FILE" 2>/dev/null; then

@@ -641,25 +641,25 @@ create_technical_user() {
                             echo -e "\n\e[1;33m🔄 Création de l'utilisateur en cours...\e[0m"
                             
                             log_action "INFO" "Création de l'utilisateur : $NEWUSER"
-                            if useradd -m -s /bin/bash -G docker,sudo "$NEWUSER" 2>/dev/null; then
+                            if useradd -m -s /bin/bash -G docker "$NEWUSER" 2>/dev/null; then
                                 if echo "$NEWUSER:$NEWPASS" | chpasswd 2>/dev/null; then
                                     USER_HOME="/home/$NEWUSER"
-                                    SCRIPT_DIR="$USER_HOME/wireguard-script-manager"
-                                    mkdir -p "$SCRIPT_DIR"
-                                    chown -R "$NEWUSER:$NEWUSER" "$SCRIPT_DIR"
-                                    chmod 750 "$SCRIPT_DIR"
+                                    USER_SCRIPT_DIR="$USER_HOME/wireguard-script-manager"
+                                    mkdir -p "$USER_SCRIPT_DIR"
+                                    chown -R "$NEWUSER:$NEWUSER" "$USER_SCRIPT_DIR"
+                                    chmod 775 "$USER_SCRIPT_DIR"
                                     
                                     echo -e "\n\e[1;32m✅ UTILISATEUR CRÉÉ AVEC SUCCÈS\e[0m"
                                     echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
                                     echo -e "\e[90m│\e[0m \e[1;36mUtilisateur :\e[0m $NEWUSER"
-                                    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker, sudo"
-                                    echo -e "\e[90m│\e[0m \e[1;36mDossier :\e[0m $SCRIPT_DIR"
+                                    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker"
+                                    echo -e "\e[90m│\e[0m \e[1;36mDossier :\e[0m $USER_SCRIPT_DIR"
                                     echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
                                     
                                     echo -ne "\n\e[1;33mConfigurer le lancement automatique du script ? [o/N] : \e[0m"
                                     read -r AUTOSTART
                                     if [[ "$AUTOSTART" =~ ^[oOyY]$ ]]; then
-                                        configure_user_autostart "$NEWUSER" "$SCRIPT_DIR"
+                                        configure_user_autostart "$NEWUSER" "$USER_SCRIPT_DIR"
                                     fi
                                     
                                     log_action "INFO" "Utilisateur $NEWUSER créé avec succès"
