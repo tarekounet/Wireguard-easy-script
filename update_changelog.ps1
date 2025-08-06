@@ -148,27 +148,45 @@ function Add-ChangelogSmart {
     # Mise à jour de admin_menu.sh
     if (Test-Path "admin_menu.sh") {
         $adminContent = Get-Content "admin_menu.sh"
+        $updated = $false
+        
         for ($i = 0; $i -lt $adminContent.Length; $i++) {
+            # Mise à jour de la ligne de version dans les commentaires
             if ($adminContent[$i] -match '^# Version: \d+\.\d+\.\d+') {
                 $adminContent[$i] = "# Version: $newVersion"
-                break
+                $updated = $true
+            }
+            # Mise à jour de la variable DEFAULT_VERSION
+            elseif ($adminContent[$i] -match '^readonly DEFAULT_VERSION="[^"]*"') {
+                $adminContent[$i] = 'readonly DEFAULT_VERSION="' + $newVersion + '"'
+                $updated = $true
             }
         }
-        $adminContent | Set-Content "admin_menu.sh"
-        Write-Host "📝 Fichier admin_menu.sh mis à jour" -ForegroundColor Green
+        
+        if ($updated) {
+            $adminContent | Set-Content "admin_menu.sh"
+            Write-Host "📝 Fichier admin_menu.sh mis à jour" -ForegroundColor Green
+        }
     }
 
     # Mise à jour de config_wg.sh
     if (Test-Path "config_wg.sh") {
         $configContent = Get-Content "config_wg.sh"
+        $updated = $false
+        
         for ($i = 0; $i -lt $configContent.Length; $i++) {
-            if ($configContent[$i] -match '^SCRIPT_VERSION="[^"]*"') {
-                $configContent[$i] = 'SCRIPT_VERSION="' + $newVersion + '"  # Version par défaut'
+            # Mise à jour de la variable DEFAULT_VERSION
+            if ($configContent[$i] -match '^readonly DEFAULT_VERSION="[^"]*"') {
+                $configContent[$i] = 'readonly DEFAULT_VERSION="' + $newVersion + '"'
+                $updated = $true
                 break
             }
         }
-        $configContent | Set-Content "config_wg.sh"
-        Write-Host "📝 Fichier config_wg.sh mis à jour" -ForegroundColor Green
+        
+        if ($updated) {
+            $configContent | Set-Content "config_wg.sh"
+            Write-Host "📝 Fichier config_wg.sh mis à jour" -ForegroundColor Green
+        }
     }
 
     Write-Host "`n✅ Changelog mis à jour avec la version $newVersion !" -ForegroundColor Green

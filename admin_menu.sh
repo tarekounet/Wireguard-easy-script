@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.12.0
+# Version: 0.13.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -57,15 +57,16 @@ get_or_create_version() {
             echo "$github_version"
         else
             echo -e "${RED}❌ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut${NC}" >&2
-            echo "0.10.0" > "$version_file"
-            echo "0.10.0"
+            echo "$DEFAULT_VERSION" > "$version_file"
+            echo "$DEFAULT_VERSION"
         fi
     else
         # Lire la version locale
-        cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "0.10.0"
+        cat "$version_file" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "$DEFAULT_VERSION"
     fi
 }
 
+readonly DEFAULT_VERSION="0.13.0"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -386,13 +387,15 @@ exit_menu() {
                         fi
                     fi
                 else
-                    echo -e "\e[1;33mFermeture de session annulée.\e[0m"                fi
+                    echo -e "\e[1;33mFermeture de session annulée.\e[0m"
+                fi
                 ;;
             0)
                 return
                 ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez saisir 0, 1 ou 2.\e[0m"                ;;
+                echo -e "\e[1;31mChoix invalide. Veuillez saisir 0, 1 ou 2.\e[0m"
+                ;;
         esac
     done
 }
@@ -841,7 +844,8 @@ modify_user_menu() {
         local SELECTED_USER="${USERS[$IDX]}"
         user_modification_options "$SELECTED_USER"
     else
-        echo -e "\e[1;31m✗ Sélection invalide.\e[0m"    fi
+        echo -e "\e[1;31m✗ Sélection invalide.\e[0m"
+    fi
 }
 
 user_modification_options() {

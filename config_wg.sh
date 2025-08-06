@@ -10,7 +10,6 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.12.0"  # Version par défaut
 # Utilisation du HOME de l'utilisateur actuel
 USER_HOME="$HOME"
 
@@ -44,11 +43,13 @@ if [[ -z "$DOCKER_WG_DIR" ]]; then
 fi
 
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
-SCRIPT_BASE_VERSION_INIT="0.10.0"
 
 export GITHUB_USER
 export GITHUB_REPO
 export BRANCH
+
+# Version par défaut pour fallback
+readonly DEFAULT_VERSION="0.13.0"
 
 ##############################
 #   FONCTIONS UTILITAIRES    #
@@ -89,18 +90,18 @@ get_or_create_version() {
             fi
         fi
         # Si échec, créer avec la version par défaut
-        echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
-        echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $SCRIPT_BASE_VERSION_INIT"
-        log_error "Impossible de récupérer version.txt depuis GitHub, utilisation version par défaut: $SCRIPT_BASE_VERSION_INIT"
-        echo "$SCRIPT_BASE_VERSION_INIT"
+        echo "$DEFAULT_VERSION" > "$VERSION_FILE"
+        echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $DEFAULT_VERSION"
+        log_error "Impossible de récupérer version.txt depuis GitHub, utilisation version par défaut: $DEFAULT_VERSION"
+        echo "$DEFAULT_VERSION"
     else
         VERSION_FROM_FILE=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
         if [[ -n "$VERSION_FROM_FILE" ]]; then
             echo "$VERSION_FROM_FILE"
         else
-            echo "$SCRIPT_BASE_VERSION_INIT" > "$VERSION_FILE"
-            log_error "Fichier version.txt vide, recréation avec version par défaut: $SCRIPT_BASE_VERSION_INIT"
-            echo "$SCRIPT_BASE_VERSION_INIT"
+            echo "$DEFAULT_VERSION" > "$VERSION_FILE"
+            log_error "Fichier version.txt vide, recréation avec version par défaut: $DEFAULT_VERSION"
+            echo "$DEFAULT_VERSION"
         fi
     fi
 }

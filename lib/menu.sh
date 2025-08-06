@@ -27,6 +27,7 @@ WG_EASY_VERSION_URL="$GITHUB_BASE_URL/WG_EASY_VERSION"
 
 # Variables globales
 WG_EASY_UPDATE_AVAILABLE=0
+readonly SCRIPT_AUTHOR="Tarek.E"
 
 # S'assurer que les dossiers existent
 mkdir -p "$WG_CONF_DIR"
@@ -324,6 +325,9 @@ display_menu_items() {
     echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
     echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mQuitter le programme\e[0m \e[1;31m🚪\e[0m"
     echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+    
+    # Footer discret avec version
+    echo -e "\n\e[90m    ${SCRIPT_AUTHOR} • v$(get_script_version)\e[0m"
 }
 
 # Gestion du choix utilisateur

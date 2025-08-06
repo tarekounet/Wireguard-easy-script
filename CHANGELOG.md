@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.13.0] – 2025-08-06
+
+
+#### 🔄 Modifié
+- armonisation de la gestion des versions entre le script principale et admin
+
 ### [0.12.0] – 2025-08-06
 
 
