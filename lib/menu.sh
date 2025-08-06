@@ -72,45 +72,14 @@ version_gt() {
 }
 
 # Affichage des informations de version
-display_version_info() {
-    local script_version="$(get_script_version)"
-    local latest_version="$(get_latest_script_version)"
+# Affichage des informations container
+display_container_info() {
     local wg_easy_distant="$(get_wg_easy_github_version)"
     local wg_easy_local="$(get_wg_easy_local_version)"
     
     # Sauvegarder la version GitHub
     [[ -n "$wg_easy_distant" ]] && echo "$wg_easy_distant" > "$WG_EASY_VERSION_FILE"
     
-
-    echo -e "\e[48;5;237m\e[97m            📋 INFORMATIONS VERSIONS              \e[0m"
-
-    
-    # Affichage version script
-    if [[ -z "$script_version" ]]; then
-        echo -e "\n    \e[90m📄 Script :\e[0m \e[1;31mNon définie\e[0m"
-    else
-        echo -e "\n    \e[90m📄 Script :\e[0m \e[1;36m$script_version\e[0m"
-    fi
-    
-    # Notification mise à jour script
-    if [[ -n "$latest_version" ]] && version_gt "$latest_version" "$script_version"; then
-        echo -e "    \e[1;43m\e[30m ⚡ NOUVEAU \e[0m \e[1;33mVersion $latest_version disponible\e[0m"
-    fi
-    
-    # Affichage version WireGuard Easy
-    if [[ -n "$wg_easy_distant" && -n "$wg_easy_local" && "$wg_easy_local" != "$wg_easy_distant" ]]; then
-        echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m"
-        echo -e "    \e[1;43m\e[30m ⚡ NOUVEAU \e[0m \e[1;33mVersion $wg_easy_distant disponible\e[0m"
-        WG_EASY_UPDATE_AVAILABLE=1
-    elif [[ -n "$wg_easy_local" ]]; then
-        echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m \e[1;32m(à jour)\e[0m"
-    else
-        echo -e "    \e[90m🐳 Container :\e[0m \e[1;31mNon détectée\e[0m"
-    fi
-}
-
-# Affichage des informations container
-display_container_info() {
     # Vérifier d'abord si le conteneur existe
     if ! docker ps -a --format '{{.Names}}' | grep -qw wg-easy 2>/dev/null; then
         container_status=""
@@ -172,6 +141,17 @@ display_container_info() {
                 fi
                 ;;
         esac
+        
+        # Affichage version WireGuard Easy Container
+        if [[ -n "$wg_easy_distant" && -n "$wg_easy_local" && "$wg_easy_local" != "$wg_easy_distant" ]]; then
+            echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m"
+            echo -e "    \e[1;43m\e[30m ⚡ NOUVEAU \e[0m \e[1;33mVersion $wg_easy_distant disponible\e[0m"
+            WG_EASY_UPDATE_AVAILABLE=1
+        elif [[ -n "$wg_easy_local" ]]; then
+            echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m \e[1;32m(à jour)\e[0m"
+        else
+            echo -e "    \e[90m🐳 Container :\e[0m \e[1;31mNon détectée\e[0m"
+        fi
         
         # Informations réseau
         display_network_info
@@ -253,8 +233,8 @@ build_configured_menu() {
     # Groupe 2 : Outils
     separators_ref+=(${#labels_ref[@]})
     titles_ref+=("🔧 OUTILS & INFORMATIONS")
-    labels_ref+=("Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin")
-    actions_ref+=("update_script" "show_changelog" "change_tech_password")
+    labels_ref+=("Voir le changelog" "Changer mot de passe admin")
+    actions_ref+=("show_changelog" "change_tech_password")
 }
 
 # Construction du menu pour configuration initiale
@@ -266,8 +246,8 @@ build_initial_menu() {
 
     separators_ref+=(0)
     titles_ref+=("🛠️ CONFIGURATION INITIALE")
-    labels_ref+=("Créer la configuration Wireguard" "Mettre à jour le script" "Voir le changelog" "Changer mot de passe admin")
-    actions_ref+=("configure_values" "update_script" "show_changelog" "change_tech_password")
+    labels_ref+=("Créer la configuration Wireguard" "Voir le changelog" "Changer mot de passe admin")
+    actions_ref+=("configure_values" "show_changelog" "change_tech_password")
 }
 
 # Affichage des éléments du menu
@@ -370,7 +350,6 @@ execute_action() {
         shutdown_wireguard) stop_wireguard; skip_ref=1 ;;
         restart_wireguard) restart_wireguard; skip_ref=1 ;;
         update_wireguard_container) update_wireguard_container; skip_ref=1 ;;
-        update_script) update_script ;;
         show_changelog) show_changelog ;;
         configure_values) configure_values ;;
         change_tech_password) change_tech_password ;;
@@ -388,9 +367,6 @@ main_menu() {
         detect_new_wg_easy_version
         clear
         show_logo_ascii
-        
-        # Affichage des informations de version
-        display_version_info
         
         # Informations container et configuration
         display_container_info
@@ -439,7 +415,7 @@ show_changelog() {
 
 # Détection de nouvelle version WG-Easy (fonction vide pour compatibilité)
 detect_new_wg_easy_version() {
-    # Cette fonction est maintenant intégrée dans la logique de display_version_info
+    # Cette fonction est maintenant intégrée dans la logique de display_container_info
     return 0
 }
 

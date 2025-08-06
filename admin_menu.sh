@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.13.0
+# Version: 0.14.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -32,10 +32,6 @@ detect_package_manager() {
     
     if command -v apt >/dev/null 2>&1; then
         PACKAGE_MANAGER="apt"
-    elif command -v dnf >/dev/null 2>&1; then
-        PACKAGE_MANAGER="dnf"
-    elif command -v yum >/dev/null 2>&1; then
-        PACKAGE_MANAGER="yum"
     else
         PACKAGE_MANAGER="unknown"
     fi
@@ -66,7 +62,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.13.0"
+readonly DEFAULT_VERSION="0.14.0"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -112,26 +108,8 @@ execute_package_cmd() {
                 "check") apt list --upgradable 2>/dev/null | grep -c upgradable || echo "0" ;;
             esac
             ;;
-        "dnf")
-            case "$action" in
-                "update") dnf check-update ;;
-                "upgrade") dnf update -y "$@" ;;
-                "clean") dnf clean all ;;
-                "security") dnf update --security -y ;;
-                "check") dnf check-update --quiet | wc -l || echo "0" ;;
-            esac
-            ;;
-        "yum")
-            case "$action" in
-                "update") yum check-update ;;
-                "upgrade") yum update -y "$@" ;;
-                "clean") yum clean all ;;
-                "security") yum update --security -y ;;
-                "check") yum check-update --quiet | wc -l || echo "0" ;;
-            esac
-            ;;
         *)
-            echo -e "${RED}✗ Gestionnaire de paquets non reconnu${NC}"
+            echo -e "${RED}✗ Ce script nécessite APT (Debian uniquement)${NC}"
             return 1
             ;;
     esac
@@ -168,6 +146,9 @@ get_latest_version() {
 # Auto-update function for admin_menu.sh
 auto_update_admin_menu() {
     echo -e "${BLUE}🔄 Vérification des mises à jour pour admin_menu.sh...${NC}"
+    
+    # URL du script admin_menu.sh sur GitHub
+    local github_script_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh"
     
     # Récupérer la version en ligne avec cache
     local LATEST_VERSION=$(get_latest_version)
@@ -1192,20 +1173,9 @@ full_system_update() {
     read -r CONFIRM
     
     if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-        if command -v apt &>/dev/null; then
-            echo -e "${WHITE}Mise à jour APT en cours...${NC}"
-            apt update && apt upgrade -y
-            echo -e "${GREEN}✓ Mise à jour APT terminée${NC}"
-        elif command -v yum &>/dev/null; then
-            echo -e "${WHITE}Mise à jour YUM en cours...${NC}"
-            yum update -y
-            echo -e "${GREEN}✓ Mise à jour YUM terminée${NC}"
-        elif command -v dnf &>/dev/null; then
-            echo -e "${WHITE}Mise à jour DNF en cours...${NC}"
-            dnf update -y
-            echo -e "${GREEN}✓ Mise à jour DNF terminée${NC}"
-        fi
-        
+        echo -e "${WHITE}Mise à jour APT en cours...${NC}"
+        apt update && apt upgrade -y
+        echo -e "${GREEN}✓ Mise à jour APT terminée${NC}"
         
         # Check if reboot is required
         if [[ -f /var/run/reboot-required ]]; then
@@ -1490,14 +1460,7 @@ get_physical_interface() {
 is_dhcp_enabled() {
     local interface="$1"
     
-    # Vérifier dans les fichiers de configuration Netplan (Ubuntu 18+)
-    if [[ -d /etc/netplan ]]; then
-        if grep -r "dhcp4.*true" /etc/netplan/ 2>/dev/null | grep -q "$interface"; then
-            return 0
-        fi
-    fi
-    
-    # Vérifier dans /etc/network/interfaces (Debian/Ubuntu classique)
+    # Vérifier dans /etc/network/interfaces (Debian)
     if [[ -f /etc/network/interfaces ]]; then
         if grep -A5 "iface $interface" /etc/network/interfaces | grep -q "dhcp"; then
             return 0
@@ -1606,14 +1569,11 @@ apply_static_ip_config() {
     mkdir -p "$backup_dir"
     
     # Sauvegarder selon le système
-    if [[ -d /etc/netplan ]]; then
-        cp -r /etc/netplan/* "$backup_dir/" 2>/dev/null || true
-        configure_netplan "$interface" "$ip" "$netmask" "$gateway" "$dns"
-    elif [[ -f /etc/network/interfaces ]]; then
+    if [[ -f /etc/network/interfaces ]]; then
         cp /etc/network/interfaces "$backup_dir/"
         configure_interfaces "$interface" "$ip" "$netmask" "$gateway" "$dns"
     else
-        echo -e "\e[1;31m✗ Système de configuration réseau non reconnu\e[0m"
+        echo -e "\e[1;31m✗ Système de configuration réseau non reconnu (Debian uniquement)\e[0m"
         return 1
     fi
     
@@ -1628,41 +1588,7 @@ apply_static_ip_config() {
     fi
 }
 
-# Configure Netplan (Ubuntu 18+)
-configure_netplan() {
-    local interface="$1"
-    local ip="$2"
-    local netmask="$3"
-    local gateway="$4"
-    local dns="$5"
-    
-    local netplan_file="/etc/netplan/01-static-config.yaml"
-    
-    cat > "$netplan_file" << EOF
-network:
-  version: 2
-  ethernets:
-    $interface:
-      dhcp4: false
-      addresses:
-        - $ip/$netmask
-      gateway4: $gateway
-EOF
-
-    if [[ -n "$dns" ]]; then
-        cat >> "$netplan_file" << EOF
-      nameservers:
-        addresses:
-          - $dns
-          - 8.8.8.8
-EOF
-    fi
-    
-    # Appliquer la configuration
-    netplan apply 2>/dev/null || echo -e "\e[1;33mRedémarrez les services réseau pour appliquer les changements\e[0m"
-}
-
-# Configure /etc/network/interfaces (Debian classique)
+# Configure /etc/network/interfaces (Debian)
 configure_interfaces() {
     local interface="$1"
     local ip="$2"
@@ -1771,12 +1697,12 @@ configure_dhcp_mode() {
         local backup_dir="/etc/network-backup-$(date +%Y%m%d-%H%M%S)"
         mkdir -p "$backup_dir"
         
-        if [[ -d /etc/netplan ]]; then
-            cp -r /etc/netplan/* "$backup_dir/" 2>/dev/null || true
-            configure_netplan_dhcp "$interface"
-        elif [[ -f /etc/network/interfaces ]]; then
+        if [[ -f /etc/network/interfaces ]]; then
             cp /etc/network/interfaces "$backup_dir/"
             configure_interfaces_dhcp "$interface"
+        else
+            echo -e "\e[1;31m✗ Système de configuration réseau non reconnu (Debian uniquement)\e[0m"
+            return 1
         fi
         
         echo -e "\e[1;32m✓ Configuration DHCP appliquée\e[0m"
@@ -1791,22 +1717,6 @@ configure_dhcp_mode() {
     else
         echo -e "\e[1;33mConfiguration annulée.\e[0m"
     fi
-}
-
-# Configure Netplan for DHCP
-configure_netplan_dhcp() {
-    local interface="$1"
-    local netplan_file="/etc/netplan/01-dhcp-config.yaml"
-    
-    cat > "$netplan_file" << EOF
-network:
-  version: 2
-  ethernets:
-    $interface:
-      dhcp4: true
-EOF
-    
-    netplan apply 2>/dev/null || echo -e "\e[1;33mRedémarrez les services réseau pour appliquer les changements\e[0m"
 }
 
 # Configure /etc/network/interfaces for DHCP
@@ -1902,12 +1812,6 @@ restart_network_services() {
     if systemctl is-active NetworkManager >/dev/null 2>&1; then
         systemctl restart NetworkManager
         echo -e "\e[1;32m✓ NetworkManager redémarré\e[0m"
-    fi
-    
-    # Appliquer netplan si disponible
-    if command -v netplan >/dev/null 2>&1; then
-        netplan apply 2>/dev/null
-        echo -e "\e[1;32m✓ Netplan appliqué\e[0m"
     fi
     
     echo -e "\e[1;32m✅ Services réseau redémarrés avec succès\e[0m"
@@ -2718,12 +2622,13 @@ install_docker_compose() {
 # MAIN EXECUTION
 # ═══════════════════════════════════════════════════════════════
 
-# Function to handle major system upgrades (e.g., Debian 12 to 13)
+# Function to handle major system upgrades (stable versions only)
 major_system_upgrade() {
     clear
     echo -e "\e[48;5;196m\e[97m  ⚠️  MISE À JOUR MAJEURE DU SYSTÈME  ⚠️   \e[0m"
-    echo -e "\n\e[1;33m📋 Cette fonction permet de migrer vers une version majeure de Debian.\e[0m"
-    echo -e "\e[1;33mExemple : Debian 12 (bookworm) → Debian 13 (trixie)\e[0m"
+    echo -e "\n\e[1;33m📋 Cette fonction permet de migrer vers une version majeure stable de Debian.\e[0m"
+    echo -e "\e[1;33mExemple : Debian 11 (bullseye) → 12 (bookworm)\e[0m"
+    echo -e "\e[1;90m💡 Note : Seules les versions stables officielles sont supportées.\e[0m"
     
     # Détecter la version actuelle
     CURRENT_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "inconnue")
@@ -2757,20 +2662,31 @@ major_system_upgrade() {
         return
     fi
     
-    # Déterminer la version cible
+    # Déterminer la version cible (versions stables uniquement)
     case "$CURRENT_CODENAME" in
-        "bookworm"|"12")
-            TARGET_CODENAME="trixie"
-            TARGET_VERSION="13"
-            ;;
         "bullseye"|"11")
             TARGET_CODENAME="bookworm"
             TARGET_VERSION="12"
             ;;
+        # TODO: Ajouter le support Debian 13 quand il sera stable :
+        # "bookworm"|"12")
+        #     TARGET_CODENAME="trixie"
+        #     TARGET_VERSION="13"
+        #     ;;
+        "bookworm"|"12")
+            echo -e "\e[1;32m✅ Vous utilisez déjà la dernière version stable de Debian !\e[0m"
+            echo -e "\e[1;36m📊 Version actuelle : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
+            echo -e "\e[1;33m📝 Aucune mise à jour majeure stable disponible.\e[0m"
+            echo -e "\e[1;90m💡 Note : Seules les versions stables sont supportées par ce script.\e[0m"
+            echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+            ;;
         *)
             echo -e "\e[1;31m❌ Version source non supportée pour la migration automatique.\e[0m"
-            echo -e "\e[1;33mVersions supportées : Debian 11 (bullseye) → 12 (bookworm)\e[0m"
-            echo -e "\e[1;33m                      Debian 12 (bookworm) → 13 (trixie)\e[0m"
+            echo -e "\e[1;33mVersions supportées (stables uniquement) :\e[0m"
+            echo -e "\e[1;33m• Debian 11 (bullseye) → 12 (bookworm)\e[0m"
+            echo -e "\e[1;90m💡 Note : Ce script ne supporte que les versions stables officielles.\e[0m"
             echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
             read -n1 -s
             return
@@ -2793,7 +2709,6 @@ major_system_upgrade() {
     cp -r /etc/apt/ "$BACKUP_DIR/apt_backup/" 2>/dev/null
     
     # Sauvegarder les configurations réseau
-    cp -r /etc/netplan/ "$BACKUP_DIR/netplan_backup/" 2>/dev/null
     cp /etc/hostname "$BACKUP_DIR/" 2>/dev/null
     cp /etc/hosts "$BACKUP_DIR/" 2>/dev/null
     

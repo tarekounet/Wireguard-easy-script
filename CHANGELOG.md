@@ -1,5 +1,17 @@
 # 📦 Wireguard Easy Script
 
+### [0.14.0] – 2025-08-06
+
+
+#### 🔄 Modifié
+- modification de la configuration du docker
+- ajout de l'afficher de l'url pour ce conneter sur l'interface
+- modification des infos du script dans le menu
+- déplacement de la version du container dans > etat du service wireguad
+
+#### 🐛 Corrigé
+- bug pour la mise a jour du script admin
+
 ### [0.13.0] – 2025-08-06
 
 

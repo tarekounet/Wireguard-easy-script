@@ -159,34 +159,39 @@ EOF
         DOCKER_COMPOSE_CREATED=0
     fi
 
-    # Modification du port
+    # Configuration automatique avec valeurs par défaut sécurisées
     CURRENT_PORT=$(grep 'PORT=' "$DOCKER_COMPOSE_FILE" | cut -d '=' -f 2)
-    msg_info "Port actuel pour PORT : $CURRENT_PORT"
-    read -p $'Voulez-vous modifier le port PORT ? (o/N, ctrl+c pour annuler) : ' MODIFY_PORT
-    if [[ "${MODIFY_PORT,,}" == "o" ]]; then
-        while true; do
-            read -p $'Entrez le nouveau port PORT (1-65535, par défaut : '"$CURRENT_PORT"', ctrl+c pour annuler) : ' NEW_PORT
-            NEW_PORT=${NEW_PORT:-$CURRENT_PORT}
-            if validate_port "$NEW_PORT"; then
-                break
-            else
-                msg_error "Veuillez entrer un nombre entre 1 et 65535."
-            fi
-        done
-        sed -i "s#PORT=.*#PORT=$NEW_PORT#" "$DOCKER_COMPOSE_FILE"
-        msg_success "Le port PORT a été modifié avec succès."
+    msg_info "Port configuré pour l'interface web : $CURRENT_PORT"
+    
+    # Configuration sécurisée automatique (INSECURE=false)
+    sed -i "s#INSECURE=.*#INSECURE=false#" "$DOCKER_COMPOSE_FILE"
+    msg_success "Interface web configurée en mode sécurisé (INSECURE=false)."
+    msg_info "Configuration terminée avec les paramètres par défaut sécurisés."
+    
+    # Demander s'il faut lancer le service (défaut: Non)
+    echo ""
+    read -p $'Voulez-vous démarrer le service Wireguard maintenant ? (o/N) : ' START_SERVICE
+    if [[ "${START_SERVICE,,}" == "o" ]]; then
+        echo -e "\e[34m🚀 Démarrage du service Wireguard...\e[0m"
+        if command -v docker-compose &>/dev/null; then
+            docker-compose -f "$DOCKER_COMPOSE_FILE" up -d
+        elif docker compose version &>/dev/null 2>&1; then
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+        else
+            msg_error "Docker Compose non disponible"
+            return 1
+        fi
+        
+        if [[ $? -eq 0 ]]; then
+            msg_success "Service Wireguard démarré avec succès !"
+            # Récupérer l'IP de la machine
+            LOCAL_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || ip route get 1 | awk '{print $NF;exit}' 2>/dev/null || echo "localhost")
+            echo -e "\e[36m🌐 Interface web accessible sur : https://$LOCAL_IP:$CURRENT_PORT\e[0m"
+        else
+            msg_error "Erreur lors du démarrage du service"
+        fi
     else
-        msg_warn "Aucune modification apportée au port PORT."
-    fi
-
-    # Sécurité interface web
-    read -p $'L\'interface web sera-t-elle exposée côté internet ? (o/N, ctrl+c pour annuler) : ' EXPOSE_WEB
-    if [[ "${EXPOSE_WEB,,}" == "o" ]]; then
-        sed -i "s#INSECURE=.*#INSECURE=false#" "$DOCKER_COMPOSE_FILE"
-        msg_success "L'interface web a été configurée pour ne pas être exposée de manière non sécurisée."
-    else
-        sed -i "s#INSECURE=.*#INSECURE=true#" "$DOCKER_COMPOSE_FILE"
-        msg_warn "L'interface web reste configurée comme non sécurisée."
+        msg_info "Service non démarré. Vous pouvez le lancer plus tard depuis le menu principal."
     fi
 }
 

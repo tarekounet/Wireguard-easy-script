@@ -191,6 +191,8 @@ function Add-ChangelogSmart {
 
     Write-Host "`n✅ Changelog mis à jour avec la version $newVersion !" -ForegroundColor Green
     Write-Host "📝 Fichier version.txt également mis à jour" -ForegroundColor Green
+    sleep 2
+
 }
 
 function Show-Menu {
