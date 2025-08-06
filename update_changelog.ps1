@@ -1,4 +1,4 @@
-# ===============================
+﻿# ===============================
 # 📦 WireGuard Easy – Changelog Generator
 # ===============================
 
@@ -93,8 +93,24 @@ function Add-ChangelogSmart {
         return
     }
 
-    $newVersion = Update-Version -currentVersion $lastVersion -type $type
-    Write-Host "`n🆕 Nouvelle version détectée : $newVersion ($type)" -ForegroundColor Cyan
+    # Détection version pré-1.0 et proposition de passage en stable
+    if ($lastVersion -match '^0\.') {
+        Write-Host "`n🚧 Version de développement détectée : $lastVersion" -ForegroundColor Yellow
+        Write-Host "🎯 Le script va calculer automatiquement : $(Update-Version -currentVersion $lastVersion -type $type)" -ForegroundColor Cyan
+        
+        $goStable = Read-Host "`n🎉 Voulez-vous plutôt passer directement en version stable 1.0.0 ? (o/N)"
+        if ($goStable -match '^[oO]$') {
+            $newVersion = "1.0.0"
+            Write-Host "`n🎊 Passage en version stable : 1.0.0 !" -ForegroundColor Green
+            Write-Host "🏆 Félicitations pour la sortie officielle de votre projet !" -ForegroundColor Green
+        } else {
+            $newVersion = Update-Version -currentVersion $lastVersion -type $type
+            Write-Host "`n🆕 Nouvelle version détectée : $newVersion ($type)" -ForegroundColor Cyan
+        }
+    } else {
+        $newVersion = Update-Version -currentVersion $lastVersion -type $type
+        Write-Host "`n🆕 Nouvelle version détectée : $newVersion ($type)" -ForegroundColor Cyan
+    }
 
     # Création du fichier si nécessaire
     if (-not (Test-Path $changelogPath)) {
@@ -107,7 +123,7 @@ function Add-ChangelogSmart {
 
     # Préparation du nouveau contenu
     $newEntry = @()
-    $newEntry += "`n### [$newVersion] – $date`n"
+    $newEntry += "`n### [$newVersion] - $date`n"
 
     if ($added.Count -gt 0) {
         $newEntry += "#### ✅ Ajouté"
@@ -191,15 +207,49 @@ function Add-ChangelogSmart {
 
     Write-Host "`n✅ Changelog mis à jour avec la version $newVersion !" -ForegroundColor Green
     Write-Host "📝 Fichier version.txt également mis à jour" -ForegroundColor Green
-    sleep 2
-
+    
+    # Pause pour laisser le temps de lire
+    Write-Host "`n🔄 Appuyez sur une touche pour continuer..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
 function Show-Menu {
     Clear-Host
-    Write-Host "=== WireGuard Easy – Générateur de Changelog ===`n"
-    Write-Host "1. Ajouter une entrée avec détection intelligente"
-    Write-Host "0. Quitter`n"
+    
+    # Récupération des informations
+    $currentVersion = Get-LastVersion
+    $versionFile = if (Test-Path "version.txt") { Get-Content "version.txt" -First 1 } else { "Non trouvé" }
+    $changelogExists = Test-Path "CHANGELOG.md"
+    $lastModified = if ($changelogExists) { (Get-Item "CHANGELOG.md").LastWriteTime.ToString("dd/MM/yyyy HH:mm") } else { "N/A" }
+    
+    Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "║          📦 WireGuard Easy – Générateur de Changelog      ║" -ForegroundColor Cyan
+    Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host ""
+    
+    # Informations du projet
+    Write-Host "📊 Informations du projet :" -ForegroundColor Yellow
+    Write-Host "   🏷️  Version actuelle (CHANGELOG) : $currentVersion" -ForegroundColor White
+    Write-Host "   📄 Version (version.txt)        : $versionFile" -ForegroundColor White
+    Write-Host "   📅 Dernière modification        : $lastModified" -ForegroundColor White
+    Write-Host "   📋 Fichier CHANGELOG.md         : $(if ($changelogExists) { "✅ Présent" } else { "❌ Absent" })" -ForegroundColor White
+    Write-Host ""
+    
+    # Règles de versioning
+    Write-Host "📐 Règles de versioning automatique :" -ForegroundColor Magenta
+    Write-Host "   🔴 MAJOR : Ajouts avec mots-clés 'structure|refonte|majeure'" -ForegroundColor Red
+    Write-Host "   🟡 MINOR : Ajouts ou modifications (nouvelles fonctionnalités)" -ForegroundColor Yellow
+    Write-Host "   🟢 PATCH : Corrections de bugs uniquement" -ForegroundColor Green
+    if ($currentVersion -match '^0\.') {
+        Write-Host "   🎉 STABLE: Option spéciale 0.xx.xx → 1.0.0 (passage en stable)" -ForegroundColor Magenta
+    }
+    Write-Host ""
+    
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "1. 📝 Ajouter une entrée avec détection intelligente"
+    Write-Host "0. 🚪 Quitter"
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host ""
 }
 
 do {

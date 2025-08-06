@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.14.0
+# Version: 0.14.1
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -26,7 +26,33 @@ readonly WG_CONFIG_DIR="config"
 # Cache for package manager detection
 PACKAGE_MANAGER=""
 
-# Detect package manager once
+# Vérification de la disponibilité de l'upgrade Debian 13
+is_debian13_stable() {
+    # Vérifier si Debian 13 est disponible en stable
+    if command -v apt-cache >/dev/null 2>&1; then
+        # Vérifier les sources stable pour Debian 13
+        local stable_sources=$(apt-cache policy 2>/dev/null | grep -c "stable.*trixie" || echo "0")
+        local debian13_available=$(apt list --upgradable 2>/dev/null | grep -c "trixie" || echo "0")
+        
+        # Vérifier aussi via les sources APT
+        if [[ -f /etc/apt/sources.list ]] && grep -q "trixie.*main" /etc/apt/sources.list 2>/dev/null; then
+            local trixie_status=$(grep "trixie" /etc/apt/sources.list | grep -v testing | grep -v unstable | wc -l)
+            if [[ $trixie_status -gt 0 ]]; then
+                return 0  # Debian 13 est stable
+            fi
+        fi
+        
+        # Vérifier via l'API Debian (si curl disponible)
+        if command -v curl >/dev/null 2>&1; then
+            local debian_releases=$(curl -s --connect-timeout 3 "https://api.debian.org/info/package/base-files" 2>/dev/null | grep -o "trixie.*stable" || echo "")
+            if [[ -n "$debian_releases" ]]; then
+                return 0  # Debian 13 est stable
+            fi
+        fi
+    fi
+    
+    return 1  # Debian 13 n'est pas encore stable
+}
 detect_package_manager() {
     [[ -n "$PACKAGE_MANAGER" ]] && return 0
     
@@ -62,7 +88,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.14.0"
+readonly DEFAULT_VERSION="0.14.1"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -277,17 +303,33 @@ technical_admin_menu() {
         echo -e "\n\e[48;5;22m\e[97m  🔄 MAINTENANCE SYSTÈME  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mMettre à jour le système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mMise à jour majeure (ex: 12→13)\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mNettoyage du système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mConfiguration réseau et SSH\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mChanger le nom de la machine\e[0m"
+        
+        # Vérifier si Debian 13 est stable pour afficher l'option d'upgrade majeur
+        if is_debian13_stable; then
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mMise à jour majeure (Debian 13 disponible!)\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mNettoyage du système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mConfiguration réseau et SSH\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mChanger le nom de la machine\e[0m"
+        else
+            # echo -e "\e[90m    ├─ \e[0m\e[90m 5\e[0m \e[90mMise à jour majeure (Debian 13 pas encore stable)\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mNettoyage du système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mConfiguration réseau et SSH\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mChanger le nom de la machine\e[0m"
+        fi
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[48;5;52m\e[97m  ⚡ GESTION ALIMENTATION  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mRedémarrer le système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mArrêter le système\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m11\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
+        
+        if is_debian13_stable; then
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mRedémarrer le système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mArrêter le système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m11\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
+        else
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mRedémarrer le système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mArrêter le système\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
+        fi
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
@@ -305,16 +347,62 @@ technical_admin_menu() {
             2) user_management_menu ;;
             3) reset_user_docker_wireguard ;;
             4) full_system_update ;;
-            5) major_system_upgrade ;;
-            6) system_cleanup_menu ;;
-            7) network_ssh_config_menu ;;
-            8) change_hostname ;;
-            9) immediate_reboot ;;
-            10) immediate_shutdown ;;
-            11) power_scheduling_menu ;;
+            5) 
+                if is_debian13_stable; then
+                    major_system_upgrade
+                else
+                    system_cleanup_menu
+                fi
+                ;;
+            6) 
+                if is_debian13_stable; then
+                    system_cleanup_menu
+                else
+                    network_ssh_config_menu
+                fi
+                ;;
+            7) 
+                if is_debian13_stable; then
+                    network_ssh_config_menu
+                else
+                    change_hostname
+                fi
+                ;;
+            8) 
+                if is_debian13_stable; then
+                    change_hostname
+                else
+                    immediate_reboot
+                fi
+                ;;
+            9) 
+                if is_debian13_stable; then
+                    immediate_reboot
+                else
+                    immediate_shutdown
+                fi
+                ;;
+            10) 
+                if is_debian13_stable; then
+                    immediate_shutdown
+                else
+                    power_scheduling_menu
+                fi
+                ;;
+            11) 
+                if is_debian13_stable; then
+                    power_scheduling_menu
+                else
+                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro valide.\e[0m"
+                fi
+                ;;
             0) exit_menu ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 12.\e[0m"                ;;
+                if is_debian13_stable; then
+                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 11.\e[0m"
+                else
+                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 10.\e[0m"
+                fi                ;;
         esac
     done
 }
