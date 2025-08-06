@@ -57,12 +57,6 @@ CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
 
 ##############################
-#        VERSION MODULE      #
-##############################
-
-DOCKER_VERSION="1.1.0"
-
-##############################
 #   CONFIGURATION PRINCIPALE #
 ##############################
 cancel_config() {
@@ -125,7 +119,7 @@ services:
         ipv4_address: 10.42.42.42
         ipv6_address: fdcc:ad94:bacf:61a3::2a
     volumes:
-      - ${DOCKER_WG_DIR}/config:/etc/wireguard
+      - etc_wireguard:/etc/wireguard
       - /lib/modules:/lib/modules:ro
     ports:
       - "51820:51820/udp"
@@ -150,6 +144,14 @@ networks:
       config:
         - subnet: 10.42.42.0/24
         - subnet: fdcc:ad94:bacf:61a3::/64
+volumes:
+  etc_wireguard:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${WG_CONF_DIR}
+      o: bind
+
 EOF
         echo "Fichier docker-compose.yml créé avec succès."
         trap - SIGINT
@@ -212,115 +214,5 @@ update_wireguard_container() {
         echo -e "\e[32mLe fichier WG_EASY_VERSION local a été mis à jour avec la version $WG_EASY_VERSION_DISTANT.\e[0m"
     else
         echo -e "\e[33mAucune mise à jour disponible ou variable non définie.\e[0m"
-    fi
-}
-##############################
-#   RÉINITIALISATION CONFIG  #
-##############################
-
-# Fonction pour nettoyer les volumes Docker conflictuels
-clean_docker_volumes() {
-    echo "🧹 Nettoyage des volumes Docker conflictuels..."
-    
-    # Arrêter le conteneur s'il est en cours d'exécution
-    if docker ps -q --filter "name=wg-easy" | grep -q .; then
-        echo "📦 Arrêt du conteneur wg-easy..."
-        docker stop wg-easy 2>/dev/null || true
-    fi
-    
-    # Supprimer le conteneur s'il existe
-    if docker ps -a -q --filter "name=wg-easy" | grep -q .; then
-        echo "🗑️  Suppression du conteneur wg-easy..."
-        docker rm wg-easy 2>/dev/null || true
-    fi
-    
-    # Nettoyer les volumes orphelins liés à docker-wireguard
-    echo "🧽 Nettoyage des volumes Docker..."
-    docker volume ls -q | grep -E "(docker-wireguard|wireguard)" | xargs -r docker volume rm 2>/dev/null || true
-    
-    # Nettoyer les réseaux orphelins
-    echo "🌐 Nettoyage des réseaux Docker..."
-    docker network ls -q --filter "name=docker-wireguard" | xargs -r docker network rm 2>/dev/null || true
-    
-    echo "✅ Nettoyage terminé"
-}
-
-# Fonction pour résoudre les conflits de volumes Docker
-fix_docker_volume_conflicts() {
-    echo "🔧 Résolution des conflits de volumes Docker..."
-    
-    msg_warn "⚠️  Cette action va arrêter temporairement le service Wireguard"
-    read -p $'Voulez-vous continuer ? (o/N) : ' CONFIRM_FIX
-    if [[ ! "$CONFIRM_FIX" =~ ^[oO]$ ]]; then
-        msg_warn "Résolution annulée."
-        return
-    fi
-    
-    # Sauvegarder la configuration actuelle
-    if [[ -d "$WG_CONF_DIR" ]]; then
-        BACKUP_DIR="$HOME/wg-config-backup-$(date +%Y%m%d-%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
-        cp -r "$WG_CONF_DIR" "$BACKUP_DIR/" 2>/dev/null
-        msg_success "Sauvegarde de la configuration dans $BACKUP_DIR"
-    fi
-    
-    # Nettoyer les volumes conflictuels
-    clean_docker_volumes
-    
-    # Redémarrer le service avec la nouvelle configuration
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        echo "🚀 Redémarrage du service Wireguard..."
-        docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-        msg_success "Service Wireguard redémarré avec succès"
-    else
-        msg_error "Fichier docker-compose.yml introuvable"
-    fi
-}
-
-RAZ_docker_compose() {
-    if ! ask_tech_password; then
-        msg_error "Réinitialisation annulée."
-        return
-    fi
-    
-    # Vérifier les permissions avant de procéder
-    if [[ -f "$DOCKER_COMPOSE_FILE" && ! -w "$DOCKER_COMPOSE_FILE" ]]; then
-        msg_error "Pas de droits d'écriture sur $DOCKER_COMPOSE_FILE"
-        msg_error "Permissions insuffisantes - impossible de continuer"
-        return 1
-    fi
-    
-    msg_warn "⚠️  Cette action supprimera toutes les configurations existantes."
-    read -p $'Confirmez-vous vouloir réinitialiser la configuration ? (o/N) : ' CONFIRM_RAZ
-    if [[ ! "$CONFIRM_RAZ" =~ ^[oO]$ ]]; then
-        msg_warn "Réinitialisation annulée."
-        return
-    fi
-    
-    # Nettoyer les volumes Docker conflictuels
-    clean_docker_volumes
-    
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        if rm -f "$DOCKER_COMPOSE_FILE" 2>/dev/null; then
-            msg_success "Le fichier docker-compose.yml a été supprimé."
-        else
-            msg_error "Impossible de supprimer $DOCKER_COMPOSE_FILE"
-            msg_error "Permissions insuffisantes - veuillez supprimer manuellement"
-            return 1
-        fi
-    else
-        msg_error "Aucun fichier docker-compose.yml trouvé."
-    fi
-    
-    if [[ -d "${DOCKER_WG_DIR}" ]]; then
-        if rm -rf "${DOCKER_WG_DIR}" 2>/dev/null; then
-            msg_success "Le dossier ${DOCKER_WG_DIR} a été supprimé."
-        else
-            msg_error "Impossible de supprimer ${DOCKER_WG_DIR}"
-            msg_error "Permissions insuffisantes - veuillez supprimer manuellement"
-            return 1
-        fi
-    else
-        msg_error "Aucun dossier ${DOCKER_WG_DIR} trouvé."
     fi
 }

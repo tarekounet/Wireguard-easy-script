@@ -333,7 +333,6 @@ handle_user_choice() {
     
     if [[ -z "$CHOICE" ]]; then
         echo -e "\e[1;31mAucune saisie détectée. Merci de saisir un numéro.\e[0m"
-        sleep 1
         return
     fi
     

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.11.2
+# Version: 0.12.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -19,6 +19,27 @@ readonly NC='\033[0m' # No Color
 
 # Technical constants
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly MIN_PASSWORD_LENGTH=8
+readonly DOCKER_COMPOSE_FILE="docker-compose.yml"
+readonly WG_CONFIG_DIR="config"
+
+# Cache for package manager detection
+PACKAGE_MANAGER=""
+
+# Detect package manager once
+detect_package_manager() {
+    [[ -n "$PACKAGE_MANAGER" ]] && return 0
+    
+    if command -v apt >/dev/null 2>&1; then
+        PACKAGE_MANAGER="apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        PACKAGE_MANAGER="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        PACKAGE_MANAGER="yum"
+    else
+        PACKAGE_MANAGER="unknown"
+    fi
+}
 
 # Function to get or create version.txt
 get_or_create_version() {
@@ -47,34 +68,108 @@ get_or_create_version() {
 
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
-readonly MIN_PASSWORD_LENGTH=8
-readonly DOCKER_COMPOSE_FILE="docker-compose.yml"
-readonly WG_CONFIG_DIR="config"
 
-# Logging function
-log_action() {
-    local level="$1"
-    local message="$2"
-    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message" | tee -a "/var/log/wireguard-admin.log" 2>/dev/null || echo -e "[$level] $message"
+# Unified validation functions
+validate_input() {
+    local type="$1"
+    local value="$2"
+    
+    case "$type" in
+        "username")
+            [[ "$value" =~ ^[a-z][a-z0-9_-]{1,31}$ ]]
+            ;;
+        "port")
+            [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ]
+            ;;
+        "ip")
+            [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && \
+            awk -F. '{for(i=1;i<=4;i++) if($i>255) exit 1}' <<< "$value"
+            ;;
+        "yesno")
+            [[ "${value,,}" =~ ^[oynOYN]?$ ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Unified package management
+execute_package_cmd() {
+    local action="$1"
+    shift
+    
+    detect_package_manager
+    
+    case "$PACKAGE_MANAGER" in
+        "apt")
+            case "$action" in
+                "update") apt update ;;
+                "upgrade") apt upgrade -y "$@" ;;
+                "clean") apt autoclean && apt autoremove -y ;;
+                "security") apt upgrade -y --security ;;
+                "check") apt list --upgradable 2>/dev/null | grep -c upgradable || echo "0" ;;
+            esac
+            ;;
+        "dnf")
+            case "$action" in
+                "update") dnf check-update ;;
+                "upgrade") dnf update -y "$@" ;;
+                "clean") dnf clean all ;;
+                "security") dnf update --security -y ;;
+                "check") dnf check-update --quiet | wc -l || echo "0" ;;
+            esac
+            ;;
+        "yum")
+            case "$action" in
+                "update") yum check-update ;;
+                "upgrade") yum update -y "$@" ;;
+                "clean") yum clean all ;;
+                "security") yum update --security -y ;;
+                "check") yum check-update --quiet | wc -l || echo "0" ;;
+            esac
+            ;;
+        *)
+            echo -e "${RED}✗ Gestionnaire de paquets non reconnu${NC}"
+            return 1
+            ;;
+    esac
 }
 
 # Error handling
 error_exit() {
-    log_action "ERROR" "$1"
     echo -e "${RED}[ERROR] $1${NC}" >&2
     exit 1
+}
+
+# Cached version check to avoid repeated curl calls
+CACHED_LATEST_VERSION=""
+CACHE_TIMESTAMP=0
+
+get_latest_version() {
+    local current_time=$(date +%s)
+    local cache_age=$((current_time - CACHE_TIMESTAMP))
+    
+    # Cache valid for 5 minutes (300 seconds)
+    if [[ $cache_age -lt 300 ]] && [[ -n "$CACHED_LATEST_VERSION" ]]; then
+        echo "$CACHED_LATEST_VERSION"
+        return 0
+    fi
+    
+    # Fetch new version
+    local github_version_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt"
+    CACHED_LATEST_VERSION=$(curl -fsSL --connect-timeout 5 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    CACHE_TIMESTAMP=$current_time
+    
+    echo "$CACHED_LATEST_VERSION"
 }
 
 # Auto-update function for admin_menu.sh
 auto_update_admin_menu() {
     echo -e "${BLUE}🔄 Vérification des mises à jour pour admin_menu.sh...${NC}"
     
-    # URLs GitHub
-    local github_version_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt"
-    local github_script_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh"
-    
-    # Récupérer la version en ligne
-    local LATEST_VERSION=$(curl -fsSL --connect-timeout 5 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    # Récupérer la version en ligne avec cache
+    local LATEST_VERSION=$(get_latest_version)
     
     if [[ -z "$LATEST_VERSION" ]]; then
         echo -e "${RED}❌ Impossible de vérifier la version en ligne${NC}"
@@ -129,17 +224,6 @@ auto_update_admin_menu() {
     else
         echo -e "${GREEN}✅ Admin menu à jour (version $SCRIPT_VERSION)${NC}"
     fi
-}
-
-# Input validation
-validate_username() {
-    local username="$1"
-    [[ "$username" =~ ^[a-z][a-z0-9_-]{1,31}$ ]] || return 1
-}
-
-validate_port() {
-    local port="$1"
-    [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
 }
 
 # Check if user is a human user (not system/service account)
@@ -248,9 +332,7 @@ technical_admin_menu() {
             11) power_scheduling_menu ;;
             0) exit_menu ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 12.\e[0m"
-                sleep 2
-                ;;
+                echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 12.\e[0m"                ;;
         esac
     done
 }
@@ -280,7 +362,6 @@ exit_menu() {
         case $EXIT_CHOICE in
             1)
                 clear
-                log_action "INFO" "Sortie du script admin par l'utilisateur"
                 echo -e "\e[1;32m✅ Script d'administration fermé. À bientôt ! 👋\e[0m"
                 exit 0
                 ;;
@@ -292,11 +373,7 @@ exit_menu() {
                 read -r CONFIRM_LOGOUT
                 
                 if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then
-                    log_action "INFO" "Fermeture de session demandée par l'utilisateur"
-                    echo -e "\e[1;31m🔒 Fermeture de la session en cours...\e[0m"
-                    sleep 2
-                    
-                    # Déconnexion selon le type de session
+                    echo -e "\e[1;31m🔒 Fermeture de la session en cours...\e[0m"                    # Déconnexion selon le type de session
                     if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]; then
                         # Session SSH
                         pkill -TERM -u "$(whoami)" 2>/dev/null || true
@@ -309,17 +386,13 @@ exit_menu() {
                         fi
                     fi
                 else
-                    echo -e "\e[1;33mFermeture de session annulée.\e[0m"
-                    sleep 1
-                fi
+                    echo -e "\e[1;33mFermeture de session annulée.\e[0m"                fi
                 ;;
             0)
                 return
                 ;;
             *)
-                echo -e "\e[1;31mChoix invalide. Veuillez saisir 0, 1 ou 2.\e[0m"
-                sleep 2
-                ;;
+                echo -e "\e[1;31mChoix invalide. Veuillez saisir 0, 1 ou 2.\e[0m"                ;;
         esac
     done
 }
@@ -360,9 +433,7 @@ network_ssh_config_menu() {
             6) restart_network_services ;;
             0) break ;;
             *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                sleep 2
-                ;;
+                echo -e "\e[1;31mChoix invalide.\e[0m"                ;;
         esac
         
         if [[ "$NET_CHOICE" != "0" ]]; then
@@ -444,9 +515,7 @@ system_cleanup_menu() {
             4) full_system_cleanup ;;
             0) break ;;
             *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                sleep 2
-                ;;
+                echo -e "\e[1;31mChoix invalide.\e[0m"                ;;
         esac
         
         if [[ "$CLEANUP_CHOICE" != "0" ]]; then
@@ -484,9 +553,7 @@ power_scheduling_menu() {
             4) show_scheduled_tasks ;;
             0) break ;;
             *)
-                echo -e "\e[1;31mChoix invalide.\e[0m"
-                sleep 2
-                ;;
+                echo -e "\e[1;31mChoix invalide.\e[0m"                ;;
         esac
         
         if [[ "$POWER_CHOICE" != "0" ]]; then
@@ -526,21 +593,13 @@ create_technical_user() {
         fi
         
         if [[ -z "$NEWUSER" ]]; then
-            echo -e "\e[1;31m✗ Le nom d'utilisateur ne peut pas être vide\e[0m"
-            sleep 2
-            continue
-        elif ! validate_username "$NEWUSER"; then
-            echo -e "\e[1;31m✗ Format invalide\e[0m"
-            sleep 2
-            continue
+            echo -e "\e[1;31m✗ Le nom d'utilisateur ne peut pas être vide\e[0m"            continue
+        elif ! validate_input "username" "$NEWUSER"; then
+            echo -e "\e[1;31m✗ Format invalide\e[0m"            continue
         elif id "$NEWUSER" &>/dev/null; then
-            echo -e "\e[1;31m✗ L'utilisateur '$NEWUSER' existe déjà\e[0m"
-            sleep 2
-            continue
+            echo -e "\e[1;31m✗ L'utilisateur '$NEWUSER' existe déjà\e[0m"            continue
         elif [[ "$NEWUSER" =~ ^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|ftp|nobody|systemd.*|_.*|sshd|messagebus|uuidd)$ ]]; then
-            echo -e "\e[1;31m✗ Nom réservé au système\e[0m"
-            sleep 2
-            continue
+            echo -e "\e[1;31m✗ Nom réservé au système\e[0m"            continue
         fi
         
         echo -e "\e[1;32m✓ Nom d'utilisateur valide : $NEWUSER\e[0m"
@@ -583,15 +642,11 @@ create_technical_user() {
         
         # Option de retour en arrière
         if [[ -z "$NEWPASS" ]]; then
-            echo -e "\e[1;33m⬅️  Retour à l'étape précédente\e[0m"
-            sleep 1
-            break  # Retourne à la boucle du nom d'utilisateur
+            echo -e "\e[1;33m⬅️  Retour à l'étape précédente\e[0m"            break  # Retourne à la boucle du nom d'utilisateur
         fi
         
         if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
-            echo -e "\e[1;31m✗ Mot de passe trop court (minimum ${MIN_PASSWORD_LENGTH} caractères)\e[0m"
-            sleep 2
-            continue
+            echo -e "\e[1;31m✗ Mot de passe trop court (minimum ${MIN_PASSWORD_LENGTH} caractères)\e[0m"            continue
         fi
         
         echo -ne "\e[1;33mConfirmation du mot de passe : \e[0m\e[1;36m→ \e[0m"
@@ -599,9 +654,7 @@ create_technical_user() {
         echo
         
         if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
-            echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
-            sleep 2
-            continue
+            echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"            continue
         fi
         
         echo -e "\e[1;32m✓ Mot de passe valide\e[0m"
@@ -640,7 +693,6 @@ create_technical_user() {
                             # Création de l'utilisateur
                             echo -e "\n\e[1;33m🔄 Création de l'utilisateur en cours...\e[0m"
                             
-                            log_action "INFO" "Création de l'utilisateur : $NEWUSER"
                             if useradd -m -s /bin/bash -G docker "$NEWUSER" 2>/dev/null; then
                                 if echo "$NEWUSER:$NEWPASS" | chpasswd 2>/dev/null; then
                                     USER_HOME="/home/$NEWUSER"
@@ -662,7 +714,6 @@ create_technical_user() {
                                         configure_user_autostart "$NEWUSER" "$USER_SCRIPT_DIR"
                                     fi
                                     
-                                    log_action "INFO" "Utilisateur $NEWUSER créé avec succès"
                                     echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
                                     read -n1 -s
                                     return
@@ -688,9 +739,7 @@ create_technical_user() {
                             return
                             ;;
                         *)
-                            echo -e "\e[1;31m✗ Choix invalide. Utilisez C, R ou A\e[0m"
-                            sleep 2
-                            ;;
+                            echo -e "\e[1;31m✗ Choix invalide. Utilisez C, R ou A\e[0m"                            ;;
                     esac
                 done
                 ;;
@@ -747,9 +796,7 @@ user_management_menu() {
                 break
                 ;;
             *)
-                echo -e "\e[1;31m❌ Choix invalide !\e[0m"
-                sleep 1
-                ;;
+                echo -e "\e[1;31m❌ Choix invalide !\e[0m"                ;;
         esac
     done
 }
@@ -794,9 +841,7 @@ modify_user_menu() {
         local SELECTED_USER="${USERS[$IDX]}"
         user_modification_options "$SELECTED_USER"
     else
-        echo -e "\e[1;31m✗ Sélection invalide.\e[0m"
-        sleep 2
-    fi
+        echo -e "\e[1;31m✗ Sélection invalide.\e[0m"    fi
 }
 
 user_modification_options() {
@@ -816,7 +861,6 @@ user_modification_options() {
             1)
                 echo -e "${YELLOW}Changement du mot de passe pour $user...${NC}"
                 passwd "$user"
-                log_action "INFO" "Mot de passe modifié pour l'utilisateur : $user"
                 ;;
             2)
                 modify_user_groups "$user"
@@ -868,11 +912,8 @@ remove_user_secure() {
         echo -ne "${RED}Tapez 'SUPPRIMER $TARGET_USER' pour confirmer : ${NC}"
         read -r CONFIRMATION
         if [[ "$CONFIRMATION" == "SUPPRIMER $TARGET_USER" ]]; then
-            pkill -u "$TARGET_USER" 2>/dev/null || true
-            sleep 2
-            pkill -9 -u "$TARGET_USER" 2>/dev/null || true
+            pkill -u "$TARGET_USER" 2>/dev/null || true            pkill -9 -u "$TARGET_USER" 2>/dev/null || true
             deluser --remove-home "$TARGET_USER" 2>/dev/null || userdel -r "$TARGET_USER"
-            log_action "WARNING" "Utilisateur $TARGET_USER supprimé"
             echo -e "${GREEN}✓ Utilisateur '$TARGET_USER' supprimé avec succès${NC}"
         else
             echo -e "${YELLOW}Opération annulée.${NC}"
@@ -991,7 +1032,6 @@ reset_user_docker_wireguard() {
             echo -e "    \e[90m• Suppression des fichiers et dossiers...\e[0m"
             if rm -rf "$docker_wg_path"/* "$docker_wg_path"/.[!.]* "$docker_wg_path"/..?* 2>/dev/null; then
                 echo -e "\e[1;32m✓ Contenu du dossier docker-wireguard supprimé avec succès\e[0m"
-                log_action "WARNING" "RAZ docker-wireguard pour l'utilisateur $TARGET_USER"
                 
                 # Vérification finale
                 local remaining_files=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
@@ -1113,40 +1153,16 @@ check_available_updates() {
     clear
     echo -e "${YELLOW}═══ VÉRIFICATION DES MISES À JOUR ═══${NC}"
     
-    if command -v apt &>/dev/null; then
-        echo -e "${WHITE}Mise à jour de la liste des paquets...${NC}"
-        apt update
-        
-        echo -e "\n${WHITE}Mises à jour disponibles :${NC}"
-        local updates=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
-        updates=$((updates - 1))
-        
-        if [[ $updates -gt 0 ]]; then
-            echo -e "${YELLOW}$updates mises à jour disponibles${NC}"
-            apt list --upgradable
-        else
-            echo -e "${GREEN}Le système est à jour${NC}"
-        fi
-        
-        echo -e "\n${WHITE}Mises à jour de sécurité :${NC}"
-        local security_updates=$(apt list --upgradable 2>/dev/null | grep -i security | wc -l)
-        if [[ $security_updates -gt 0 ]]; then
-            echo -e "${RED}$security_updates mises à jour de sécurité disponibles${NC}"
-        else
-            echo -e "${GREEN}Aucune mise à jour de sécurité en attente${NC}"
-        fi
-        
-    elif command -v yum &>/dev/null; then
-        echo -e "${WHITE}Vérification avec YUM...${NC}"
-        yum check-update
-    elif command -v dnf &>/dev/null; then
-        echo -e "${WHITE}Vérification avec DNF...${NC}"
-        dnf check-update
+    echo -e "${WHITE}Vérification des mises à jour disponibles...${NC}"
+    local updates_count=$(execute_package_cmd "check")
+    
+    if [[ "$updates_count" -gt 0 ]]; then
+        echo -e "${YELLOW}$updates_count mises à jour disponibles${NC}"
+        execute_package_cmd "update" # Pour afficher la liste détaillée
     else
-        echo -e "${RED}Gestionnaire de paquets non reconnu${NC}"
+        echo -e "${GREEN}Le système est à jour${NC}"
     fi
     
-    log_action "INFO" "Vérification des mises à jour effectuée"
 }
 
 # Update package list
@@ -1154,21 +1170,13 @@ update_package_list() {
     clear
     echo -e "${YELLOW}═══ MISE À JOUR DE LA LISTE DES PAQUETS ═══${NC}"
     
-    if command -v apt &>/dev/null; then
-        echo -e "${WHITE}Mise à jour de la liste des paquets APT...${NC}"
-        apt update
+    echo -e "${WHITE}Mise à jour de la liste des paquets...${NC}"
+    if execute_package_cmd "update"; then
         echo -e "${GREEN}✓ Liste des paquets mise à jour${NC}"
-    elif command -v yum &>/dev/null; then
-        echo -e "${WHITE}Nettoyage du cache YUM...${NC}"
-        yum clean all
-        echo -e "${GREEN}✓ Cache YUM nettoyé${NC}"
-    elif command -v dnf &>/dev/null; then
-        echo -e "${WHITE}Nettoyage du cache DNF...${NC}"
-        dnf clean all
-        echo -e "${GREEN}✓ Cache DNF nettoyé${NC}"
+    else
+        echo -e "${RED}✗ Échec de la mise à jour de la liste${NC}"
     fi
     
-    log_action "INFO" "Liste des paquets mise à jour"
 }
 
 # Full system update
@@ -1194,7 +1202,6 @@ full_system_update() {
             echo -e "${GREEN}✓ Mise à jour DNF terminée${NC}"
         fi
         
-        log_action "INFO" "Mise à jour complète du système effectuée"
         
         # Check if reboot is required
         if [[ -f /var/run/reboot-required ]]; then
@@ -1203,7 +1210,6 @@ full_system_update() {
             read -r REBOOT_NOW
             if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
                 echo -e "${RED}Redémarrage en cours...${NC}"
-                log_action "INFO" "Redémarrage après mise à jour"
                 shutdown -r now
             fi
         fi
@@ -1217,22 +1223,13 @@ security_updates_only() {
     clear
     echo -e "${YELLOW}═══ MISES À JOUR DE SÉCURITÉ UNIQUEMENT ═══${NC}"
     
-    if command -v apt &>/dev/null; then
-        echo -e "${WHITE}Installation des mises à jour de sécurité...${NC}"
-        apt update
-        apt upgrade -y --security
+    echo -e "${WHITE}Installation des mises à jour de sécurité...${NC}"
+    if execute_package_cmd "security"; then
         echo -e "${GREEN}✓ Mises à jour de sécurité installées${NC}"
-    elif command -v yum &>/dev/null; then
-        echo -e "${WHITE}Installation des mises à jour de sécurité YUM...${NC}"
-        yum update --security -y
-        echo -e "${GREEN}✓ Mises à jour de sécurité YUM installées${NC}"
-    elif command -v dnf &>/dev/null; then
-        echo -e "${WHITE}Installation des mises à jour de sécurité DNF...${NC}"
-        dnf update --security -y
-        echo -e "${GREEN}✓ Mises à jour de sécurité DNF installées${NC}"
+    else
+        echo -e "${RED}✗ Échec des mises à jour de sécurité${NC}"
     fi
     
-    log_action "INFO" "Mises à jour de sécurité installées"
 }
 
 # Clean package cache
@@ -1240,24 +1237,13 @@ clean_package_cache() {
     clear
     echo -e "\e[1;36m═══ NETTOYAGE DU CACHE DES PAQUETS ═══\e[0m\n"
     
-    if command -v apt &>/dev/null; then
-        echo -e "\e[1;33mNettoyage du cache APT...\e[0m"
-        apt autoclean
-        apt autoremove -y
-        echo -e "\e[1;32m✓ Cache APT nettoyé\e[0m"
-    elif command -v yum &>/dev/null; then
-        echo -e "\e[1;33mNettoyage du cache YUM...\e[0m"
-        yum clean all
-        echo -e "\e[1;32m✓ Cache YUM nettoyé\e[0m"
-    elif command -v dnf &>/dev/null; then
-        echo -e "\e[1;33mNettoyage du cache DNF...\e[0m"
-        dnf clean all
-        echo -e "\e[1;32m✓ Cache DNF nettoyé\e[0m"
+    echo -e "\e[1;33mNettoyage du cache des paquets...\e[0m"
+    if execute_package_cmd "clean"; then
+        echo -e "\e[1;32m✓ Cache des paquets nettoyé\e[0m"
     else
-        echo -e "\e[1;31m✗ Aucun gestionnaire de paquets reconnu\e[0m"
+        echo -e "\e[1;31m✗ Échec du nettoyage du cache\e[0m"
     fi
     
-    log_action "INFO" "Cache des paquets nettoyé"
 }
 
 # Clean temporary files
@@ -1285,7 +1271,6 @@ clean_temp_files() {
     find /home -name ".cache" -type d -exec rm -rf {}/* \; 2>/dev/null || true
     
     echo -e "\e[1;32m✓ Nettoyage des fichiers temporaires terminé\e[0m"
-    log_action "INFO" "Nettoyage des fichiers temporaires effectué"
 }
 
 # Full system cleanup
@@ -1326,7 +1311,6 @@ full_system_cleanup() {
         echo -e "\e[0;36mEspace disque après nettoyage :\e[0m"
         df -h / | tail -1
         
-        log_action "INFO" "Nettoyage complet du système effectué"
     else
         echo -e "\e[1;33mNettoyage annulé.\e[0m"
     fi
@@ -1347,7 +1331,6 @@ check_reboot_required() {
         read -r REBOOT_NOW
         if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
             echo -e "${RED}Redémarrage en cours...${NC}"
-            log_action "INFO" "Redémarrage manuel après vérification"
             shutdown -r now
         fi
     else
@@ -1368,7 +1351,6 @@ immediate_reboot() {
     read -r CONFIRM
     
     if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-        log_action "WARNING" "Redémarrage immédiat demandé par l'administrateur"
         echo -e "${RED}Redémarrage en cours...${NC}"
         shutdown -r now
     else
@@ -1385,7 +1367,6 @@ immediate_shutdown() {
     read -r CONFIRM
     
     if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-        log_action "WARNING" "Arrêt immédiat demandé par l'administrateur"
         echo -e "${RED}Arrêt en cours...${NC}"
         shutdown -h now
     else
@@ -1415,7 +1396,6 @@ schedule_reboot() {
         fi
         
         echo -e "${GREEN}✓ Redémarrage programmé${NC}"
-        log_action "INFO" "Redémarrage programmé pour : $WHEN"
     else
         echo -e "${RED}Heure invalide.${NC}"
     fi
@@ -1443,7 +1423,6 @@ schedule_shutdown() {
         fi
         
         echo -e "${GREEN}✓ Arrêt programmé${NC}"
-        log_action "INFO" "Arrêt programmé pour : $WHEN"
     else
         echo -e "${RED}Heure invalide.${NC}"
     fi
@@ -1456,7 +1435,6 @@ cancel_scheduled_task() {
     
     if shutdown -c 2>/dev/null; then
         echo -e "${GREEN}✓ Tâche programmée annulée${NC}"
-        log_action "INFO" "Tâche programmée annulée"
     else
         echo -e "${RED}Aucune tâche programmée ou erreur lors de l'annulation${NC}"
     fi
@@ -1532,23 +1510,6 @@ is_dhcp_enabled() {
     return 1
 }
 
-# Validate IP address
-validate_ip() {
-    local ip="$1"
-    local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-    
-    if [[ $ip =~ $regex ]]; then
-        IFS='.' read -ra ADDR <<< "$ip"
-        for i in "${ADDR[@]}"; do
-            if [[ $i -gt 255 ]]; then
-                return 1
-            fi
-        done
-        return 0
-    fi
-    return 1
-}
-
 # Configure IP address
 configure_ip_address() {
     clear
@@ -1574,7 +1535,7 @@ configure_ip_address() {
     echo -ne "\e[1;36m→ \e[0m"
     read -r NEW_IP
     
-    if ! validate_ip "$NEW_IP"; then
+    if ! validate_input "ip" "$NEW_IP"; then
         echo -e "\e[1;31m✗ Adresse IP invalide\e[0m"
         return 1
     fi
@@ -1592,7 +1553,7 @@ configure_ip_address() {
     echo -ne "\e[1;36m→ \e[0m"
     read -r GATEWAY
     
-    if ! validate_ip "$GATEWAY"; then
+    if ! validate_input "ip" "$GATEWAY"; then
         echo -e "\e[1;31m✗ Adresse de passerelle invalide\e[0m"
         return 1
     fi
@@ -1601,7 +1562,7 @@ configure_ip_address() {
     echo -ne "\e[1;36m→ \e[0m"
     read -r DNS1
     
-    if [[ -n "$DNS1" ]] && ! validate_ip "$DNS1"; then
+    if [[ -n "$DNS1" ]] && ! validate_input "ip" "$DNS1"; then
         echo -e "\e[1;31m✗ Adresse DNS invalide\e[0m"
         return 1
     fi
@@ -1655,7 +1616,6 @@ apply_static_ip_config() {
     echo -e "\e[1;32m✓ Configuration appliquée\e[0m"
     echo -e "\e[1;33mSauvegarde créée dans : $backup_dir\e[0m"
     
-    log_action "INFO" "Configuration IP statique appliquée pour $interface: $ip/$netmask"
     
     echo -ne "\n\e[1;33mRedémarrer les services réseau maintenant ? [o/N] : \e[0m"
     read -r RESTART
@@ -1786,9 +1746,7 @@ configure_network_mode() {
             ;;
         2)
             echo -e "\n\e[1;33m📝 Mode statique sélectionné.\e[0m"
-            echo -e "Redirection vers la configuration d'adresse IP..."
-            sleep 2
-            configure_ip_address
+            echo -e "Redirection vers la configuration d'adresse IP..."            configure_ip_address
             ;;
         *)
             echo -e "\e[1;31m✗ Choix invalide\e[0m"
@@ -1820,7 +1778,6 @@ configure_dhcp_mode() {
         echo -e "\e[1;32m✓ Configuration DHCP appliquée\e[0m"
         echo -e "\e[1;33mSauvegarde créée dans : $backup_dir\e[0m"
         
-        log_action "INFO" "Configuration DHCP appliquée pour $interface"
         
         echo -ne "\n\e[1;33mRedémarrer les services réseau maintenant ? [o/N] : \e[0m"
         read -r RESTART
@@ -1949,7 +1906,6 @@ restart_network_services() {
         echo -e "\e[1;32m✓ Netplan appliqué\e[0m"
     fi
     
-    log_action "INFO" "Services réseau redémarrés"
     echo -e "\e[1;32m✅ Services réseau redémarrés avec succès\e[0m"
 }
 
@@ -2058,7 +2014,6 @@ change_hostname() {
                     echo -e "\e[90m│\e[0m \e[1;36mStatut :\e[0m \e[1;32mAppliqué\e[0m"
                     echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
                     
-                    log_action "INFO" "Nom de machine changé de '$current_hostname' vers '$NEW_HOSTNAME'"
                     
                     echo -e "\n\e[1;33m⚠️  REDÉMARRAGE RECOMMANDÉ\e[0m"
                     echo -e "Pour que tous les services prennent en compte le nouveau nom,"
@@ -2067,10 +2022,7 @@ change_hostname() {
                     echo -ne "\n\e[1;33mRedémarrer maintenant ? [o/N] : \e[0m"
                     read -r REBOOT_NOW
                     if [[ "$REBOOT_NOW" =~ ^[oOyY]$ ]]; then
-                        echo -e "\e[1;31m🔄 Redémarrage en cours...\e[0m"
-                        log_action "INFO" "Redémarrage après changement de nom de machine"
-                        sleep 2
-                        shutdown -r now
+                        echo -e "\e[1;31m🔄 Redémarrage en cours...\e[0m"                        shutdown -r now
                     fi
                 else
                     echo -e "\e[1;31m❌ Erreur lors du changement de nom\e[0m"
@@ -2107,7 +2059,7 @@ configure_ssh_port() {
     echo -ne "\e[1;36m→ \e[0m"
     read -r NEW_PORT
     
-    if ! validate_port "$NEW_PORT"; then
+    if ! validate_input "port" "$NEW_PORT"; then
         echo -e "\e[1;31m✗ Port invalide\e[0m"
         return 1
     fi
@@ -2140,7 +2092,6 @@ configure_ssh_port() {
             # Redémarrer SSH
             if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
                 echo -e "\e[1;32m✓ Service SSH redémarré sur le port $NEW_PORT\e[0m"
-                log_action "INFO" "Port SSH changé de $current_port vers $NEW_PORT"
             else
                 echo -e "\e[1;31m✗ Erreur lors du redémarrage SSH\e[0m"
             fi
@@ -2186,7 +2137,6 @@ toggle_ssh_service() {
             systemctl stop "$ssh_service"
             systemctl disable "$ssh_service"
             echo -e "\e[1;32m✓ Service SSH désactivé\e[0m"
-            log_action "WARNING" "Service SSH désactivé"
         fi
     else
         echo -ne "\n\e[1;33mActiver le service SSH ? [o/N] : \e[0m"
@@ -2196,7 +2146,6 @@ toggle_ssh_service() {
             systemctl enable "$ssh_service"
             systemctl start "$ssh_service"
             echo -e "\e[1;32m✓ Service SSH activé\e[0m"
-            log_action "INFO" "Service SSH activé"
         fi
     fi
 }
@@ -2283,41 +2232,6 @@ restart_ssh_service() {
 # ═══════════════════════════════════════════════════════════════
 
 # Validate port number
-validate_port() {
-    local port="$1"
-    
-    # Vérifier que c'est un nombre
-    if ! [[ "$port" =~ ^[0-9]+$ ]]; then
-        return 1
-    fi
-    
-    # Vérifier la plage
-    if [[ "$port" -lt 1 || "$port" -gt 65535 ]]; then
-        return 1
-    fi
-    
-    return 0
-}
-
-# Validate IP address
-validate_ip() {
-    local ip="$1"
-    local valid_ip_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-    
-    if ! [[ "$ip" =~ $valid_ip_regex ]]; then
-        return 1
-    fi
-    
-    IFS='.' read -ra OCTETS <<< "$ip"
-    for octet in "${OCTETS[@]}"; do
-        if [[ "$octet" -gt 255 ]]; then
-            return 1
-        fi
-    done
-    
-    return 0
-}
-
 # ═══════════════════════════════════════════════════════════════
 # TECHNICAL FUNCTION IMPLEMENTATIONS
 # ═══════════════════════════════════════════════════════════════
@@ -2379,7 +2293,6 @@ configure_user_autostart() {
         chown "$user:$user" "$profile"
         chmod 644 "$profile"
         echo -e "${GREEN}✓ Demarrage automatique configure pour $user${NC}"
-        log_action "INFO" "Auto-start configured for user: $user with GitHub script"
     else
         echo -e "${YELLOW}Demarrage automatique deja configure pour $user${NC}"
     fi
@@ -2522,7 +2435,6 @@ modify_user_groups() {
             if getent group "$GROUP_NAME" &>/dev/null; then
                 usermod -a -G "$GROUP_NAME" "$user"
                 echo -e "${GREEN}✓ Utilisateur $user ajouté au groupe $GROUP_NAME${NC}"
-                log_action "INFO" "Utilisateur $user ajouté au groupe $GROUP_NAME"
             else
                 echo -e "${RED}Groupe $GROUP_NAME introuvable${NC}"
             fi
@@ -2533,7 +2445,6 @@ modify_user_groups() {
             if groups "$user" | grep -q "$GROUP_NAME"; then
                 gpasswd -d "$user" "$GROUP_NAME"
                 echo -e "${GREEN}✓ Utilisateur $user retiré du groupe $GROUP_NAME${NC}"
-                log_action "INFO" "Utilisateur $user retiré du groupe $GROUP_NAME"
             else
                 echo -e "${RED}L'utilisateur $user n'est pas dans le groupe $GROUP_NAME${NC}"
             fi
@@ -2563,7 +2474,6 @@ toggle_user_lock() {
         if [[ "$UNLOCK" =~ ^[oOyY]$ ]]; then
             passwd -u "$user"
             echo -e "${GREEN}✓ Compte $user deverrouille${NC}"
-            log_action "INFO" "Compte $user deverrouille"
         fi
     else
         echo -e "${GREEN}L'utilisateur $user est actuellement DEVERROUILLE${NC}"
@@ -2572,7 +2482,6 @@ toggle_user_lock() {
         if [[ "$LOCK" =~ ^[oOyY]$ ]]; then
             passwd -l "$user"
             echo -e "${RED}✓ Compte $user verrouille${NC}"
-            log_action "INFO" "Compte $user verrouille"
         fi
     fi
 }
@@ -2610,7 +2519,6 @@ set_password_expiry() {
             if [[ "$EXPIRY_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
                 chage -E "$EXPIRY_DATE" "$user"
                 echo -e "${GREEN}✓ Date d'expiration définie${NC}"
-                log_action "INFO" "Date d'expiration définie pour $user : $EXPIRY_DATE"
             else
                 echo -e "${RED}Format de date invalide${NC}"
             fi
@@ -2618,12 +2526,10 @@ set_password_expiry() {
         2)
             chage -d 0 "$user"
             echo -e "${GREEN}✓ Changement de mot de passe force au prochain login${NC}"
-            log_action "INFO" "Changement de mot de passe force pour $user"
             ;;
         3)
             chage -E -1 "$user"
             echo -e "${GREEN}✓ Expiration supprimee${NC}"
-            log_action "INFO" "Expiration supprimee pour $user"
             ;;
     esac
 }
@@ -2687,16 +2593,12 @@ check_and_install_docker() {
             # Vérifier si le service Docker est actif
             if systemctl is-active docker &>/dev/null; then
                 echo -e "\e[1;32m✓ Service Docker est actif\e[0m"
-                echo -e "\n\e[1;32m🎉 Docker est prêt à être utilisé !\e[0m"
-                sleep 2
-                return 0
+                echo -e "\n\e[1;32m🎉 Docker est prêt à être utilisé !\e[0m"                return 0
             else
                 echo -e "\e[1;33m⚠️  Service Docker inactif, démarrage...\e[0m"
                 systemctl start docker
                 systemctl enable docker
-                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"
-                sleep 2
-                return 0
+                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"                return 0
             fi
         else
             echo -e "\e[1;33m⚠️  Docker Compose manquant, installation...\e[0m"
@@ -2775,7 +2677,6 @@ install_docker() {
         echo -e "\e[90m│\e[0m \e[1;36mStatut :\e[0m \e[1;32mActif et prêt\e[0m"
         echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
         
-        log_action "INFO" "Docker installé avec succès"
         echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
         read -n1 -s
         return 0
@@ -2953,9 +2854,7 @@ major_system_upgrade() {
     read -r REBOOT_CHOICE
     
     if [[ "$REBOOT_CHOICE" =~ ^[Oo]$ ]]; then
-        echo -e "\e[1;33m🔄 Redémarrage dans 10 secondes...\e[0m"
-        sleep 10
-        reboot
+        echo -e "\e[1;33m🔄 Redémarrage dans 10 secondes...\e[0m"        reboot
     else
         echo -e "\e[1;33m⚠️ N'oubliez pas de redémarrer le système dès que possible !\e[0m"
         echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
@@ -2965,7 +2864,6 @@ major_system_upgrade() {
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
-    log_action "INFO" "Technical administration session started"
     
     # Mise à jour automatique du script
     auto_update_admin_menu "$@"

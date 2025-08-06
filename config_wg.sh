@@ -1,15 +1,5 @@
 #!/bin/bash
 
-add_script_autostart_to_user() {
-    TARGETUSER="$1"
-    PROFILE="/home/$TARGETUSER/.bash_profile"
-    SCRIPT_PATH="/home/$TARGETUSER/wireguard-script-manager/config_wg.sh"
-    if ! grep -q "$SCRIPT_PATH" "$PROFILE" 2>/dev/null; then
-        echo '[[ $- == *i* ]] && cd ~/wireguard-script-manager && bash ./config_wg.sh' >> "$PROFILE"
-        chown "$TARGETUSER:$TARGETUSER" "$PROFILE"
-    fi
-}
-
 ##############################
 #   VARIABLES GÉNÉRALES      #
 ##############################
@@ -20,14 +10,9 @@ BRANCH="main"
 CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
-SCRIPT_VERSION="0.11.2"  # Version par défaut
-SCRIPT_BACKUP="config_wg.sh.bak"
-# Détection du bon HOME utilisateur même en sudo/root
-if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-    USER_HOME="$(getent passwd $SUDO_USER | cut -d: -f6)"
-else
-    USER_HOME="$HOME"
-fi
+SCRIPT_VERSION="0.12.0"  # Version par défaut
+# Utilisation du HOME de l'utilisateur actuel
+USER_HOME="$HOME"
 
 # Vérifier plusieurs emplacements possibles pour docker-wireguard
 POSSIBLE_DOCKER_DIRS=(
@@ -88,8 +73,6 @@ update_modules_from_github() {
                 echo "⚠️  Utilisation de la version locale existante"
             fi
         fi
-        # Pause de 1 seconde entre chaque téléchargement
-        sleep 1
     done
 }
 
@@ -143,7 +126,6 @@ get_or_create_changelog() {
 
 # Détection de la version du script
 SCRIPT_VERSION=$(get_or_create_version)
-SCRIPT_BASE_VERSION_INIT="$SCRIPT_VERSION"
 
 # Récupération ou création du changelog
 get_or_create_changelog
@@ -237,41 +219,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     auto_update_on_startup "$@"
 fi
 
-# Fonction pour mettre à jour le changelog indépendamment
-update_changelog_from_github() {
-    echo "🔄 Vérification du changelog sur GitHub..."
-    
-    if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE.tmp" 2>/dev/null; then
-        if [[ -f "$CHANGELOG_FILE.tmp" && -s "$CHANGELOG_FILE.tmp" ]]; then
-            # Comparer les contenus si le fichier local existe
-            if [[ -f "$CHANGELOG_FILE" ]]; then
-                if ! cmp -s "$CHANGELOG_FILE" "$CHANGELOG_FILE.tmp"; then
-                    # Créer une sauvegarde avant de remplacer
-                    cp "$CHANGELOG_FILE" "$CHANGELOG_FILE.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
-                    mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
-                    echo "✅ Changelog mis à jour depuis GitHub"
-                    return 0
-                else
-                    rm -f "$CHANGELOG_FILE.tmp"
-                    echo "✅ Changelog déjà à jour"
-                    return 0
-                fi
-            else
-                mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
-                echo "✅ Changelog récupéré depuis GitHub"
-                return 0
-            fi
-        else
-            rm -f "$CHANGELOG_FILE.tmp" 2>/dev/null
-            echo "⚠️  Fichier changelog distant vide ou invalide"
-            return 1
-        fi
-    else
-        echo "❌ Impossible de récupérer le changelog depuis GitHub"
-        return 1
-    fi
-}
-
 ##############################
 #   AUTO-BOOTSTRAP MODULES   #
 ##############################
@@ -313,8 +260,6 @@ for f in lib/*.sh; do
         echo "Erreur : Module $f introuvable après téléchargement"
         exit 1
     fi
-    # Pause de 1 seconde entre chaque chargement de module
-    sleep 1
 done
 echo "✓ Tous les modules sont chargés"
 

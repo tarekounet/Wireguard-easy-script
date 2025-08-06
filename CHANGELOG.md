@@ -1,5 +1,15 @@
 # 📦 Wireguard Easy Script
 
+### [0.12.0] – 2025-08-06
+
+
+#### 🔄 Modifié
+- Optimisation général du script et des modules
+- suppresion des logs
+
+#### 🐛 Corrigé
+- erreur de permision
+
 ### [0.11.2] – 2025-08-05
 
 
