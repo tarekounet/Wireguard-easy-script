@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.14.2
+# Version: 0.15.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -88,7 +88,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.14.2"
+readonly DEFAULT_VERSION="0.15.0"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 

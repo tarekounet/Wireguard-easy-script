@@ -66,7 +66,7 @@ __  _  _|__|______   ____   ____  __ _______ _______  __| _/
     local color_count=${#colors[@]}
     while IFS= read -r line; do
         if [[ $line_num -eq 0 || $line =~ ^=+$ ]]; then
-            printf "\033[90m%s\033[0m\n" "$line"
+            printf "\033[97m%s\033[0m\n" "$line"
         elif [[ $line =~ "Easy Script Manager" ]]; then
             printf "\033[97m%s\033[0m\n" "$line"
         else
@@ -99,108 +99,8 @@ validate_yesno() {
 }
 validate_ip() {
     local ip="$1"
-    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && \
+    [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && 
     awk -F. '{for(i=1;i<=4;i++) if($i>255) exit 1}' <<< "$ip"
-}
-
-##############################
-#      CHANGE PORT WEB       #
-##############################
-
-change_wg_easy_web_port() {
-    local compose_file="$DOCKER_COMPOSE_FILE"
-    local new_port
-
-    read -p $'\e[1;33mEntrez le nouveau port pour l’interface web (par défaut 51821) : \e[0m' new_port
-    if ! validate_port "$new_port"; then
-        echo -e "\e[1;31mPort invalide.\e[0m"
-        return 1
-    fi
-
-    # Modifie la variable d'environnement PORT="" dans le docker-compose
-    if grep -qE 'PORT="?([0-9]+)"?' "$compose_file"; then
-        sed -i -E "s/(PORT=)\"?[0-9]+\"?/\1\"$new_port\"/" "$compose_file"
-        echo -e "\e[1;32mLe port de l’interface web a été modifié à : $new_port\e[0m"
-    else
-        echo -e "\e[1;31mImpossible de trouver la variable PORT dans $compose_file.\e[0m"
-        return 1
-    fi
-
-    # Redémarre le conteneur pour appliquer le changement
-    docker compose -f "$compose_file" down
-    docker compose -f "$compose_file" up -d
-    echo -e "\e[1;32mWireguard redémarré avec le nouveau port web.\e[0m"
-}
-
-##############################
-#     GESTION DES VERSIONS   #
-##############################
-
-version_gt() {
-    local IFS=.
-    local i ver1=($1) ver2=($2)
-    for ((i=${#ver1[@]}; i<3; i++)); do ver1[i]=0; done
-    for ((i=${#ver2[@]}; i<3; i++)); do ver2[i]=0; done
-    for ((i=0; i<3; i++)); do
-        if ((10#${ver1[i]} > 10#${ver2[i]})); then
-            return 0
-        elif ((10#${ver1[i]} < 10#${ver2[i]})); then
-            return 1
-        fi
-    done
-    return 1
-}
-
-##############################
-#   MISE À JOUR DU SCRIPT    #
-##############################
-
-update_all() {
-    clear
-    echo -e "\e[1;36m===== Mise à jour du script et de la librairie =====\e[0m"
-    local base_url="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main"
-    local main_script="config_wg.sh"
-    local lib_script="lib/utils.sh"
-    local updated=0
-
-    # Met à jour le script principal
-    if curl -fsSL "$base_url/$main_script" -o "$0.new"; then
-        if ! cmp -s "$0" "$0.new"; then
-            cp "$0" "$SCRIPT_BACKUP"
-            mv "$0.new" "$0"
-            chmod +x "$0"
-            echo -e "\e[32mScript principal mis à jour avec succès !\e[0m"
-            updated=1
-        else
-            rm "$0.new"
-            echo -e "\e[33mAucune mise à jour du script principal.\e[0m"
-        fi
-    else
-        echo -e "\e[31mLa mise à jour du script principal a échoué.\e[0m"
-    fi
-
-    # Met à jour la librairie
-    local lib_path="$(dirname "$0")/lib/utils.sh"
-    if curl -fsSL "$base_url/$lib_script" -o "$lib_path.new"; then
-        if ! cmp -s "$lib_path" "$lib_path.new"; then
-            cp "$lib_path" "${lib_path}.bak"
-            mv "$lib_path.new" "$lib_path"
-            chmod +x "$lib_path"
-            echo -e "\e[32mLibrairie utils.sh mise à jour avec succès !\e[0m"
-            updated=1
-        else
-            rm "$lib_path.new"
-            echo -e "\e[33mAucune mise à jour de la librairie utils.sh.\e[0m"
-        fi
-    else
-        echo -e "\e[31mLa mise à jour de la librairie utils.sh a échoué.\e[0m"
-    fi
-
-    if [[ $updated -eq 1 ]]; then
-        echo -e "\nAppuyez sur une touche pour relancer le script..."
-        read -n 1 -s
-        exec "$0"
-    fi
 }
 
 #########################

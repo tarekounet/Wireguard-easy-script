@@ -18,7 +18,6 @@ DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
 WG_CONF_DIR="$DOCKER_WG_DIR/config"
 VERSION_FILE="$SCRIPT_DIR/version.txt"
 WG_EASY_VERSION_FILE="$SCRIPT_DIR/WG_EASY_VERSION"
-CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
 
 # URLs GitHub
 GITHUB_BASE_URL="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main"
@@ -55,11 +54,6 @@ get_wg_easy_local_version() {
     # Priorité 1: docker-compose.yml
     if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
         version=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
-    fi
-    
-    # Priorité 2: fichier de configuration
-    if [[ -z "$version" && -f "$CONF_FILE" ]]; then
-        version=$(grep "^WG_EASY_VERSION=" "$CONF_FILE" 2>/dev/null | cut -d'"' -f2)
     fi
     
     echo "$version"
@@ -187,7 +181,6 @@ display_network_info() {
 
 # Construction et affichage du menu principal
 display_main_menu() {
-    echo -e "\e[48;5;236m\e[97m           📡 WIREGUARD EASY MANAGER              \e[0m"
 
     local labels=()
     local actions=()
@@ -233,8 +226,8 @@ build_configured_menu() {
     # Groupe 2 : Outils
     separators_ref+=(${#labels_ref[@]})
     titles_ref+=("🔧 OUTILS & INFORMATIONS")
-    labels_ref+=("Voir le changelog" "Changer mot de passe admin")
-    actions_ref+=("show_changelog" "change_tech_password")
+    labels_ref+=("Voir le changelog")
+    actions_ref+=("show_changelog")
 }
 
 # Construction du menu pour configuration initiale
@@ -246,8 +239,8 @@ build_initial_menu() {
 
     separators_ref+=(0)
     titles_ref+=("🛠️ CONFIGURATION INITIALE")
-    labels_ref+=("Créer la configuration Wireguard" "Voir le changelog" "Changer mot de passe admin")
-    actions_ref+=("configure_values" "show_changelog" "change_tech_password")
+    labels_ref+=("Créer la configuration Wireguard" "Voir le changelog")
+    actions_ref+=("configure_values" "show_changelog")
 }
 
 # Affichage des éléments du menu
@@ -266,7 +259,17 @@ display_menu_items() {
                 echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
                 echo ""
             fi
-            echo -e "\e[48;5;24m\e[97m  ${titles_ref[$group_idx]}  \e[0m"
+            
+            # Couleurs de fond différentes selon le groupe
+            local bg_color=""
+            case "${titles_ref[$group_idx]}" in
+                *"SERVICE WIREGUARD"*) bg_color="\e[48;5;22m" ;;  # Vert foncé
+                *"OUTILS & INFORMATIONS"*) bg_color="\e[48;5;94m" ;;  # Orange foncé
+                *"CONFIGURATION INITIALE"*) bg_color="\e[48;5;17m" ;;  # Bleu marine
+                *) bg_color="\e[48;5;24m" ;;  # Bleu par défaut
+            esac
+            
+            echo -e "${bg_color}\e[97m  ${titles_ref[$group_idx]}  \e[0m"
             echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
             ((group_idx++))
         fi
@@ -352,7 +355,6 @@ execute_action() {
         update_wireguard_container) update_wireguard_container; skip_ref=1 ;;
         show_changelog) show_changelog ;;
         configure_values) configure_values ;;
-        change_tech_password) change_tech_password ;;
         "") ;; # Option inactive
         *) echo -e "\e[1;31mChoix invalide.\e[0m" ;;
     esac

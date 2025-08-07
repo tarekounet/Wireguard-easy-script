@@ -51,10 +51,6 @@ if ! ensure_docker_dir; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONF_FILE="$SCRIPT_DIR/config/wg-easy.conf"
-
-# S'assurer que conf.sh est chargé
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/conf.sh"
 
 ##############################
 #   CONFIGURATION PRINCIPALE #

@@ -7,7 +7,6 @@
 GITHUB_USER="tarekounet"
 GITHUB_REPO="Wireguard-easy-script"
 BRANCH="main"
-CONF_FILE="config/wg-easy.conf"
 VERSION_FILE="version.txt"
 CHANGELOG_FILE="CHANGELOG.md"
 # Utilisation du HOME de l'utilisateur actuel
@@ -49,7 +48,7 @@ export GITHUB_REPO
 export BRANCH
 
 # Version par défaut pour fallback
-readonly DEFAULT_VERSION="0.14.2"
+readonly DEFAULT_VERSION="0.15.0"
 
 ##############################
 #   FONCTIONS UTILITAIRES    #
@@ -58,7 +57,7 @@ readonly DEFAULT_VERSION="0.14.2"
 # Fonction pour mettre à jour les modules depuis GitHub
 update_modules_from_github() {
     echo "🔄 Mise à jour des modules depuis GitHub..."
-    for mod in utils conf docker menu ; do
+    for mod in utils docker menu ; do
         echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
         if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
             chmod +x "lib/$mod.sh"
@@ -225,7 +224,7 @@ fi
 ##############################
 
 # Création des dossiers nécessaires
-for dir in lib config; do
+for dir in lib; do
     if [[ ! -d "$dir" ]]; then
         mkdir -p "$dir"
         echo "Dossier créé : $dir/"
@@ -238,7 +237,7 @@ done
 
 # Vérifier si les modules existent, sinon les télécharger une première fois
 MODULES_MISSING=false
-for mod in utils conf docker menu ; do
+for mod in utils docker menu ; do
     if [[ ! -f "lib/$mod.sh" ]]; then
         echo "⚠️  Module lib/$mod.sh manquant"
         MODULES_MISSING=true
@@ -268,129 +267,61 @@ echo "✓ Tous les modules sont chargés"
 #   INITIALISATION DE LA CONF
 ##############################
 
-# 1. Récupération depuis GitHub
-WG_EASY_VERSION_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/WG_EASY_VERSION"
-echo "Récupération de la version WG-Easy depuis GitHub..."
+# Détermination de la version WG-Easy (logique simplifiée)
+WG_EASY_VERSION_DEFAULT="15.1.0"
+WG_EASY_VERSION=""
 
-# Essayer de récupérer la version depuis GitHub
-WG_EASY_VERSION=$(curl -fsSL --connect-timeout 10 "$WG_EASY_VERSION_URL" 2>/dev/null | head -n1 | tr -d '\n\r')
+echo "🔍 Détermination de la version WG-Easy..."
 
-# Si échec, utiliser une version par défaut
-if [[ -z "$WG_EASY_VERSION" ]]; then
-    WG_EASY_VERSION="15.1.0"  # Version par défaut récente
-    echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $WG_EASY_VERSION"
-else
-    echo "✓ Version récupérée depuis GitHub : $WG_EASY_VERSION"
-fi
-
-# Vérification explicite de la version locale
-WG_EASY_VERSION_LOCAL_FILE="WG_EASY_VERSION"
-WG_EASY_VERSION_LOCAL=""
-
-# D'abord, essayer de lire le fichier WG_EASY_VERSION local (dans le répertoire du script)
-echo "Lecture du fichier WG_EASY_VERSION local..."
-if [[ -f "$WG_EASY_VERSION_LOCAL_FILE" && -s "$WG_EASY_VERSION_LOCAL_FILE" ]]; then
-    WG_EASY_VERSION_LOCAL=$(cat "$WG_EASY_VERSION_LOCAL_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
-    if [[ -n "$WG_EASY_VERSION_LOCAL" && "$WG_EASY_VERSION_LOCAL" != "" ]]; then
-        echo "✓ Version locale trouvée dans WG_EASY_VERSION : $WG_EASY_VERSION_LOCAL"
-    else
-        echo "✗ Fichier WG_EASY_VERSION vide"
-        WG_EASY_VERSION_LOCAL=""
-    fi
-else
-    echo "✗ Fichier WG_EASY_VERSION non trouvé ou vide"
-fi
-
-# Si pas de version locale trouvée, créer le fichier avec la version GitHub
-if [[ -z "$WG_EASY_VERSION_LOCAL" ]]; then
-    echo "$WG_EASY_VERSION" > "$WG_EASY_VERSION_LOCAL_FILE"
-    WG_EASY_VERSION_LOCAL="$WG_EASY_VERSION"
-    echo "✓ Fichier WG_EASY_VERSION créé avec la version $WG_EASY_VERSION"
-fi
-
-# Si docker-compose.yml existe, extraire la version actuelle
-echo "Vérification du fichier docker-compose.yml..."
-echo "Chemin recherché : $DOCKER_COMPOSE_FILE"
-
+# 1. Si docker-compose.yml existe, utiliser sa version (PRIORITÉ)
 if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-    echo "✓ Fichier docker-compose.yml trouvé dans $DOCKER_WG_DIR"
-    CURRENT_VERSION_IN_COMPOSE=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
-    if [[ -n "$CURRENT_VERSION_IN_COMPOSE" ]]; then
-        echo "Version actuelle dans docker-compose.yml : $CURRENT_VERSION_IN_COMPOSE"
-        # Utiliser la version du docker-compose comme référence locale (priorité sur le fichier WG_EASY_VERSION)
-        WG_EASY_VERSION_LOCAL="$CURRENT_VERSION_IN_COMPOSE"
-    else
-        echo "✗ Impossible d'extraire la version depuis docker-compose.yml"
-        echo "→ Utilisation de la version du fichier WG_EASY_VERSION : $WG_EASY_VERSION_LOCAL"
+    WG_EASY_VERSION=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
+    if [[ -n "$WG_EASY_VERSION" ]]; then
+        echo "✓ Version depuis docker-compose.yml : $WG_EASY_VERSION"
+    fi
+fi
+
+# 2. Si pas de version docker-compose, utiliser le fichier local WG_EASY_VERSION
+if [[ -z "$WG_EASY_VERSION" && -f "WG_EASY_VERSION" ]]; then
+    WG_EASY_VERSION=$(cat "WG_EASY_VERSION" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    if [[ -n "$WG_EASY_VERSION" ]]; then
+        echo "✓ Version depuis fichier local WG_EASY_VERSION : $WG_EASY_VERSION"
+    fi
+fi
+
+# 3. Si toujours vide, récupérer depuis GitHub
+if [[ -z "$WG_EASY_VERSION" ]]; then
+    WG_EASY_VERSION=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/WG_EASY_VERSION" 2>/dev/null | head -n1 | tr -d '\n\r')
+    if [[ -n "$WG_EASY_VERSION" ]]; then
+        echo "✓ Version depuis GitHub : $WG_EASY_VERSION"
+        # Sauvegarder dans fichier local
+        echo "$WG_EASY_VERSION" > "WG_EASY_VERSION"
+    fi
+fi
+
+# 4. Fallback sur version par défaut
+if [[ -z "$WG_EASY_VERSION" ]]; then
+    WG_EASY_VERSION="$WG_EASY_VERSION_DEFAULT"
+    echo "✗ Utilisation version par défaut : $WG_EASY_VERSION"
+    echo "$WG_EASY_VERSION" > "WG_EASY_VERSION"
+fi
+
+# Vérification des mises à jour WG-Easy disponibles
+echo "� Vérification des mises à jour WG-Easy..."
+WG_EASY_LATEST=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/WG_EASY_VERSION" 2>/dev/null | head -n1 | tr -d '\n\r')
+
+if [[ -n "$WG_EASY_LATEST" && "$WG_EASY_LATEST" != "$WG_EASY_VERSION" ]]; then
+    echo "🆕 Nouvelle version WG-Easy disponible : $WG_EASY_LATEST (actuelle : $WG_EASY_VERSION)"
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        echo "📥 Mise à jour automatique du docker-compose.yml..."
+        cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak.$(date +%Y%m%d_%H%M%S)"
+        sed -i "s|image: ghcr.io/wg-easy/wg-easy:.*|image: ghcr.io/wg-easy/wg-easy:$WG_EASY_LATEST|" "$DOCKER_COMPOSE_FILE"
+        echo "$WG_EASY_LATEST" > "WG_EASY_VERSION"
+        WG_EASY_VERSION="$WG_EASY_LATEST"
+        echo "✅ Mis à jour vers la version $WG_EASY_LATEST"
     fi
 else
-    echo "✗ Fichier docker-compose.yml non trouvé"
-    echo "→ Utilisation de la version du fichier WG_EASY_VERSION : $WG_EASY_VERSION_LOCAL"
-    echo "✗ Emplacements vérifiés :"
-    for dir in "${POSSIBLE_DOCKER_DIRS[@]}"; do
-        echo "   - $dir/docker-compose.yml"
-    done
-fi
-
-# Vérification et comparaison après détection du fichier local
-echo "=== DIAGNOSTIC COMPLET ==="
-echo "Répertoire de travail : $(pwd)"
-echo "Répertoire docker-wireguard : $DOCKER_WG_DIR"
-echo "Fichier version.txt : $VERSION_FILE (existe: $(test -f "$VERSION_FILE" && echo "OUI" || echo "NON"))"
-echo "Fichier WG_EASY_VERSION : $WG_EASY_VERSION_LOCAL_FILE (existe: $(test -f "$WG_EASY_VERSION_LOCAL_FILE" && echo "OUI" || echo "NON"))"
-echo "Fichier docker-compose : $DOCKER_COMPOSE_FILE (existe: $(test -f "$DOCKER_COMPOSE_FILE" && echo "OUI" || echo "NON"))"
-echo "=========================="
-
-echo "=== RÉSUMÉ DES VERSIONS ==="
-echo "Version GitHub : ${WG_EASY_VERSION:-VIDE}"
-echo "Version locale : ${WG_EASY_VERSION_LOCAL:-VIDE}"
-echo "Version script : ${SCRIPT_VERSION:-VIDE}"
-echo "=========================="
-
-if [[ "$WG_EASY_VERSION_LOCAL" != "$WG_EASY_VERSION" && "$WG_EASY_VERSION" != "inconnu" && -n "$WG_EASY_VERSION_LOCAL" && "$WG_EASY_VERSION_LOCAL" != "inconnu" ]]; then
-    echo -e "🆕 Nouvelle version Wireguard Easy disponible : $WG_EASY_VERSION (actuelle : $WG_EASY_VERSION_LOCAL)"
-    echo -e "📥 Mise à jour automatique du docker-compose.yml..."
-    
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
-        # Sauvegarder le fichier avant modification
-        cp "$DOCKER_COMPOSE_FILE" "$DOCKER_COMPOSE_FILE.bak.$(date +%Y%m%d_%H%M%S)"
-        sed -i "s|image: ghcr.io/wg-easy/wg-easy:.*|image: ghcr.io/wg-easy/wg-easy:$WG_EASY_VERSION|" "$DOCKER_COMPOSE_FILE"
-        # Mettre à jour le fichier de version locale
-        echo "$WG_EASY_VERSION" > "$WG_EASY_VERSION_LOCAL_FILE"
-        echo -e "✅ Docker-compose.yml mis à jour automatiquement vers la version $WG_EASY_VERSION"
-        echo -e "💾 Sauvegarde créée avec horodatage"
-    else
-        echo -e "❌ Le fichier docker-compose.yml est introuvable dans $DOCKER_COMPOSE_FILE"
-    fi
-elif [[ "$WG_EASY_VERSION_LOCAL" == "$WG_EASY_VERSION" ]]; then
-    echo -e "✅ Votre version Wireguard Easy est à jour : $WG_EASY_VERSION"
-elif [[ -z "$WG_EASY_VERSION_LOCAL" || "$WG_EASY_VERSION_LOCAL" == "inconnu" ]]; then
-    echo -e "⚠️  Impossible de déterminer la version actuelle. Fichier docker-compose.yml introuvable."
-    echo -e "📝 Assurez-vous que Wireguard Easy est installé et que le fichier docker-compose.yml existe."
-fi
-
-# 2. Création du fichier de conf (si besoin)
-if [[ ! -f "$CONF_FILE" ]]; then
-    msg_warn "Le fichier de configuration n'existe pas. Création en cours..."
-    set_tech_password
-    EXPECTED_HASH="$(get_conf_value "EXPECTED_HASH")"
-    HASH_SALT="$(get_conf_value "HASH_SALT")"
-    cat > "$CONF_FILE" <<EOF
-EXPECTED_HASH="$EXPECTED_HASH"
-HASH_SALT="$HASH_SALT"
-WG_EASY_VERSION="$WG_EASY_VERSION"
-EOF
-    msg_success "Fichier de configuration créé avec succès."
-fi
-
-# 3. Mise à jour de la version dans la conf à chaque lancement
-set_conf_value "WG_EASY_VERSION" "$WG_EASY_VERSION"
-
-# Vérification du mot de passe technique uniquement si le hash est encore vide
-EXPECTED_HASH=$(get_conf_value "EXPECTED_HASH")
-if [[ -z "$EXPECTED_HASH" ]]; then
-    msg_warn "Aucun mot de passe technique enregistré. Veuillez en définir un."
-    set_tech_password
+    echo "✅ WG-Easy à jour : $WG_EASY_VERSION"
 fi
 
 ##############################

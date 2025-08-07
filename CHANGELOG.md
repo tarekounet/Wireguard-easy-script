@@ -1,5 +1,13 @@
 # 📦 Wireguard Easy Script
 
+### [0.15.0] - 2025-08-07
+
+
+#### 🔄 Modifié
+- modification des couleur du menu
+- optimisation du scrit
+- suppression du fichier de conf et du mot de passe technique
+
 ### [0.14.2] - 2025-08-07
 
 
