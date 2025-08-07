@@ -51,8 +51,18 @@ get_wg_easy_github_version() {
 get_wg_easy_local_version() {
     local version=""
     
-    # Priorité 1: docker-compose.yml
-    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+    # Priorité 1: Version depuis le container en cours d'exécution
+    if docker ps --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep -q "wg-easy"; then
+        version=$(docker ps --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' | cut -d: -f3 | head -n1)
+    fi
+    
+    # Priorité 2: Version depuis le container arrêté
+    if [[ -z "$version" ]] && docker ps -a --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep -q "wg-easy"; then
+        version=$(docker ps -a --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' | cut -d: -f3 | head -n1)
+    fi
+    
+    # Priorité 3: Version depuis docker-compose.yml
+    if [[ -z "$version" && -f "$DOCKER_COMPOSE_FILE" ]]; then
         version=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
     fi
     
@@ -144,7 +154,13 @@ display_container_info() {
         elif [[ -n "$wg_easy_local" ]]; then
             echo -e "    \e[90m🐳 Container :\e[0m \e[1;36m$wg_easy_local\e[0m \e[1;32m(à jour)\e[0m"
         else
-            echo -e "    \e[90m🐳 Container :\e[0m \e[1;31mNon détectée\e[0m"
+            # Distinction entre container non configuré et container installé mais arrêté
+            if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+                echo -e "    \e[90m🐳 Container :\e[0m \e[1;33mConfiguration détectée\e[0m"
+                echo -e "    \e[90m   ⚠️  Version :\e[0m \e[1;31mImpossible à déterminer\e[0m"
+            else
+                echo -e "    \e[90m🐳 Container :\e[0m \e[1;31mNon configuré\e[0m"
+            fi
         fi
         
         # Informations réseau
