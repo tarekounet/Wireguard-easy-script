@@ -53,17 +53,17 @@ get_wg_easy_local_version() {
     
     # Priorité 1: Version depuis le container en cours d'exécution
     if docker ps --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep -q "wg-easy"; then
-        version=$(docker ps --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' | cut -d: -f3 | head -n1)
+        version=$(docker ps --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | sed 's/.*ghcr.io\/wg-easy\/wg-easy://' | head -n1)
     fi
     
     # Priorité 2: Version depuis le container arrêté
     if [[ -z "$version" ]] && docker ps -a --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep -q "wg-easy"; then
-        version=$(docker ps -a --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' | cut -d: -f3 | head -n1)
+        version=$(docker ps -a --format '{{.Names}}: {{.Image}}' 2>/dev/null | grep "wg-easy" | sed 's/.*ghcr.io\/wg-easy\/wg-easy://' | head -n1)
     fi
     
     # Priorité 3: Version depuis docker-compose.yml
     if [[ -z "$version" && -f "$DOCKER_COMPOSE_FILE" ]]; then
-        version=$(grep -o 'ghcr.io/wg-easy/wg-easy:[^[:space:]]*' "$DOCKER_COMPOSE_FILE" 2>/dev/null | cut -d: -f3 | head -n1)
+        version=$(grep "ghcr.io/wg-easy/wg-easy:" "$DOCKER_COMPOSE_FILE" 2>/dev/null | sed 's/.*ghcr.io\/wg-easy\/wg-easy://' | head -n1)
     fi
     
     echo "$version"

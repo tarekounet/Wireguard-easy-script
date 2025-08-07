@@ -66,9 +66,9 @@ __  _  _|__|______   ____   ____  __ _______ _______  __| _/
     local color_count=${#colors[@]}
     while IFS= read -r line; do
         if [[ $line_num -eq 0 || $line =~ ^=+$ ]]; then
-            printf "\033[97m%s\033[0m\n" "$line"
+            printf "\033[90m%s\033[0m\n" "$line"
         elif [[ $line =~ "Easy Script Manager" ]]; then
-            printf "\033[97m%s\033[0m\n" "$line"
+            printf "\033[90m%s\033[0m\n" "$line"
         else
             printf "\033[%sm%s\033[0m\n" "${colors[color_index]}" "$line"
             color_index=$(( (color_index + 1) % color_count ))

@@ -208,9 +208,128 @@ function Add-ChangelogSmart {
     Write-Host "`n✅ Changelog mis à jour avec la version $newVersion !" -ForegroundColor Green
     Write-Host "📝 Fichier version.txt également mis à jour" -ForegroundColor Green
     
+    # Proposition d'automatisation Git
+    Write-Host "`n🚀 Workflow Git automatique disponible :" -ForegroundColor Cyan
+    Write-Host "   📝 Commit des changements" -ForegroundColor White
+    Write-Host "   🏷️  Création du tag v$newVersion" -ForegroundColor White
+    Write-Host "   📤 Push vers le repository" -ForegroundColor White
+    
+    $gitWorkflow = Read-Host "`n🤖 Voulez-vous exécuter le workflow Git automatique ? (o/N)"
+    if ($gitWorkflow -match '^[oO]$') {
+        Execute-GitWorkflow -version $newVersion -changelogEntries ($added + $modified + $fixed)
+    } else {
+        Write-Host "`n💡 Workflow Git ignoré. Vous pouvez l'exécuter manuellement plus tard." -ForegroundColor Yellow
+    }
+    
     # Pause pour laisser le temps de lire
     Write-Host "`n🔄 Appuyez sur une touche pour continuer..." -ForegroundColor Yellow
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Execute-GitWorkflow {
+    param (
+        [string]$version,
+        [array]$changelogEntries
+    )
+    
+    Write-Host "`n🚀 Démarrage du workflow Git automatique..." -ForegroundColor Cyan
+    
+    # Vérification que nous sommes dans un repo Git
+    if (-not (Test-Path ".git")) {
+        Write-Host "❌ Erreur : Ce dossier n'est pas un repository Git." -ForegroundColor Red
+        return
+    }
+    
+    try {
+        # 1. Vérification du statut Git
+        Write-Host "`n📋 Vérification du statut Git..." -ForegroundColor Yellow
+        $gitStatus = git status --porcelain
+        
+        if ($gitStatus) {
+            Write-Host "📝 Fichiers modifiés détectés :" -ForegroundColor Green
+            git status --short
+            
+            # 2. Ajout des fichiers modifiés
+            Write-Host "`n➕ Ajout des fichiers au staging..." -ForegroundColor Yellow
+            git add CHANGELOG.md version.txt admin_menu.sh config_wg.sh
+            
+            # 3. Création du commit avec message automatique
+            $commitMessage = "🔖 Release v$version`n`n"
+            if ($changelogEntries.Count -gt 0) {
+                $commitMessage += "Changements:`n"
+                $changelogEntries | ForEach-Object { $commitMessage += "$_`n" }
+            }
+            
+            Write-Host "`n💾 Création du commit..." -ForegroundColor Yellow
+            git commit -m $commitMessage
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✅ Commit créé avec succès" -ForegroundColor Green
+            } else {
+                throw "Erreur lors de la création du commit"
+            }
+        } else {
+            Write-Host "ℹ️  Aucun fichier modifié détecté pour le commit" -ForegroundColor Blue
+        }
+        
+        # 4. Création du tag
+        Write-Host "`n🏷️  Création du tag v$version..." -ForegroundColor Yellow
+        
+        # Vérifier si le tag existe déjà
+        $existingTag = git tag -l "v$version"
+        if ($existingTag) {
+            Write-Host "⚠️  Le tag v$version existe déjà. Suppression de l'ancien tag..." -ForegroundColor Yellow
+            git tag -d "v$version"
+            git push origin ":refs/tags/v$version" 2>$null
+        }
+        
+        git tag -a "v$version" -m "Release v$version"
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Tag v$version créé avec succès" -ForegroundColor Green
+        } else {
+            throw "Erreur lors de la création du tag"
+        }
+        
+        # 5. Push vers le repository
+        Write-Host "`n📤 Push vers le repository..." -ForegroundColor Yellow
+        
+        # Push des commits
+        git push origin main
+        if ($LASTEXITCODE -ne 0) {
+            throw "Erreur lors du push des commits"
+        }
+        
+        # Push des tags
+        git push origin "v$version"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Erreur lors du push du tag"
+        }
+        
+        Write-Host "`n🎉 Workflow Git terminé avec succès !" -ForegroundColor Green
+        Write-Host "   ✅ Commit créé et pushé" -ForegroundColor White
+        Write-Host "   ✅ Tag v$version créé et pushé" -ForegroundColor White
+        Write-Host "   🌐 Repository mis à jour" -ForegroundColor White
+        
+        # Affichage des liens utiles
+        $repoUrl = git config --get remote.origin.url
+        if ($repoUrl -and $repoUrl -match "github\.com[:/]([^/]+)/([^/\.]+)") {
+            $owner = $matches[1]
+            $repo = $matches[2]
+            Write-Host "`n🔗 Liens utiles :" -ForegroundColor Cyan
+            Write-Host "   📦 Release : https://github.com/$owner/$repo/releases/tag/v$version" -ForegroundColor Blue
+            Write-Host "   📝 Commits : https://github.com/$owner/$repo/commits/main" -ForegroundColor Blue
+        }
+        
+    } catch {
+        Write-Host "`n❌ Erreur durant le workflow Git : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "💡 Vous pouvez exécuter les commandes manuellement :" -ForegroundColor Yellow
+        Write-Host "   git add ." -ForegroundColor Gray
+        Write-Host "   git commit -m `"Release v$version`"" -ForegroundColor Gray
+        Write-Host "   git tag -a v$version -m `"Release v$version`"" -ForegroundColor Gray
+        Write-Host "   git push origin main" -ForegroundColor Gray
+        Write-Host "   git push origin v$version" -ForegroundColor Gray
+    }
 }
 
 function Show-Menu {
@@ -247,6 +366,7 @@ function Show-Menu {
     
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host "1. 📝 Ajouter une entrée avec détection intelligente"
+    Write-Host "2. 🚀 Workflow Git (commit + tag + push)"
     Write-Host "0. 🚪 Quitter"
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
@@ -258,6 +378,14 @@ do {
 
     switch ($choice) {
         "1" { Add-ChangelogSmart }
+        "2" { 
+            $currentVersion = Get-LastVersion
+            if ($currentVersion -eq "0.0.0") {
+                Write-Host "❌ Aucune version trouvée dans le changelog. Créez d'abord une entrée." -ForegroundColor Red
+            } else {
+                Execute-GitWorkflow -version $currentVersion -changelogEntries @()
+            }
+        }
         "0" { Write-Host "👋 À bientôt, Tarek !" }
         default { Write-Host "❌ Choix invalide. Réessaie." }
     }
