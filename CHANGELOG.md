@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.15.2] - 2025-08-07
+
+
+#### 🐛 Corrigé
+- correction le la remonté d'info version docker
+
 ### [0.15.1] - 2025-08-07
 
 
