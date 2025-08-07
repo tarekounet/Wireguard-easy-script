@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.14.1
+# Version: 0.14.2
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -88,7 +88,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.14.1"
+readonly DEFAULT_VERSION="0.14.2"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -443,10 +443,14 @@ exit_menu() {
                 read -r CONFIRM_LOGOUT
                 
                 if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then
-                    echo -e "\e[1;31m🔒 Fermeture de la session en cours...\e[0m"                    # Déconnexion selon le type de session
+                    echo -e "\e[1;31m🔒 Fermeture de la session en cours...\e[0m"
+                    # Déconnexion selon le type de session
                     if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]; then
-                        # Session SSH
-                        pkill -TERM -u "$(whoami)" 2>/dev/null || true
+                        # Session SSH - fermeture propre de cette session uniquement
+                        echo -e "\e[1;36m👋 Au revoir !\e[0m"
+                        sleep 1
+                        # Fermer proprement cette session SSH sans affecter les autres
+                        exec bash -c 'exit 0'
                     else
                         # Session locale
                         if command -v loginctl &>/dev/null; then
@@ -486,7 +490,8 @@ network_ssh_config_menu() {
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mConfigurer le serveur SSH\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mModifier le port SSH\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mActiver/Désactiver SSH\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mRedémarrer les services réseau\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mFermer cette session SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mRedémarrer les services réseau\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
@@ -502,7 +507,8 @@ network_ssh_config_menu() {
             3) configure_ssh_server ;;
             4) configure_ssh_port ;;
             5) toggle_ssh_service ;;
-            6) restart_network_services ;;
+            6) close_current_ssh_session ;;
+            7) restart_network_services ;;
             0) break ;;
             *)
                 echo -e "\e[1;31mChoix invalide.\e[0m"                ;;
@@ -2100,6 +2106,49 @@ configure_ssh_port() {
     fi
 }
 
+# Close current SSH session only
+close_current_ssh_session() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🚪 FERMETURE SESSION SSH               \e[0m"
+    
+    # Vérifier si on est bien connecté via SSH
+    if [[ -z "${SSH_CLIENT:-}" && -z "${SSH_TTY:-}" && -z "${SSH_CONNECTION:-}" ]]; then
+        echo -e "\n\e[1;33m⚠️  Vous n'êtes pas connecté via SSH.\e[0m"
+        echo -e "\e[1;36mCette option n'est disponible que pour les sessions SSH.\e[0m"
+        return 0
+    fi
+    
+    # Afficher les informations de la session
+    echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS SESSION  \e[0m"
+    echo -e "\n    \e[90m🔗 Connexion SSH depuis :\e[0m \e[1;36m${SSH_CLIENT%% *}\e[0m"
+    echo -e "    \e[90m🖥️  Terminal :\e[0m \e[1;36m${SSH_TTY:-$TERM}\e[0m"
+    echo -e "    \e[90m👤 Utilisateur :\e[0m \e[1;36m$USER\e[0m"
+    echo -e "    \e[90m🔒 PID de session :\e[0m \e[1;36m$$\e[0m"
+    
+    # Lister les autres sessions SSH actives
+    local other_sessions=$(who | grep -v "^$USER.*$(tty | sed 's|/dev/||')" | wc -l)
+    if [[ $other_sessions -gt 0 ]]; then
+        echo -e "\n\e[1;32m✅ D'autres sessions SSH sont actives ($other_sessions sessions)\e[0m"
+        echo -e "\e[1;36m💡 Le service SSH restera actif pour les autres utilisateurs\e[0m"
+    else
+        echo -e "\n\e[1;33m⚠️  Vous êtes la seule session SSH active\e[0m"
+        echo -e "\e[1;36m💡 Le service SSH restera quand même actif\e[0m"
+    fi
+    
+    echo -e "\n\e[1;33m❓ Voulez-vous fermer cette session SSH ? [o/N] : \e[0m"
+    read -r CONFIRM_LOGOUT
+    
+    if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then
+        echo -e "\n\e[1;36m👋 Fermeture de la session en cours...\e[0m"
+        echo -e "\e[1;32m✅ Le service SSH reste actif pour les reconnexions\e[0m"
+        sleep 2
+        # Fermer seulement cette session SSH
+        kill -HUP $$
+    else
+        echo -e "\n\e[1;32m✅ Session conservée\e[0m"
+    fi
+}
+
 # Toggle SSH service
 toggle_ssh_service() {
     clear
@@ -2125,15 +2174,53 @@ toggle_ssh_service() {
     echo -e "    \e[90m⚙️  Service :\e[0m \e[1;36m$ssh_service\e[0m"
     
     if [[ "$ssh_status" == "Actif" ]]; then
-        echo -e "\n\e[1;31mATTENTION :\e[0m Désactiver SSH coupera toutes les connexions SSH actuelles."
-        echo -ne "\e[1;33mDésactiver le service SSH ? [o/N] : \e[0m"
-        read -r CONFIRM
-        
-        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-            systemctl stop "$ssh_service"
-            systemctl disable "$ssh_service"
-            echo -e "\e[1;32m✓ Service SSH désactivé\e[0m"
+        # Vérifier si on est connecté via SSH
+        if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" || -n "${SSH_CONNECTION:-}" ]]; then
+            echo -e "\n\e[1;31m🚨 DANGER - SESSION SSH DÉTECTÉE 🚨\e[0m"
+            echo -e "\e[1;33m⚠️  Vous êtes connecté via SSH depuis : ${SSH_CLIENT%% *}\e[0m"
+            echo -e "\e[1;31m❌ Désactiver SSH vous déconnectera IMMÉDIATEMENT !\e[0m"
+            echo -e "\n\e[1;36m💡 Solutions alternatives :\e[0m"
+            echo -e "   1. Configurer une connexion console/VNC d'abord"
+            echo -e "   2. Modifier seulement la configuration SSH"
+            echo -e "   3. Programmer un redémarrage automatique de SSH"
+            echo -e "\n\e[1;33mÊtes-vous ABSOLUMENT SÛR de vouloir désactiver SSH ? (tapez 'CONFIRME' en majuscules) : \e[0m"
+            read -r CONFIRM_DANGEROUS
+            
+            if [[ "$CONFIRM_DANGEROUS" != "CONFIRME" ]]; then
+                echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"
+                echo -e "\e[1;36m💡 Conseil : Configurez d'abord un accès alternatif (console, VNC, etc.)\e[0m"
+                echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"
+                read -n1 -s
+                return 0
+            else
+                echo -e "\n\e[1;31m⚠️  DERNIÈRE CHANCE : Cette action va vous déconnecter MAINTENANT !\e[0m"
+                echo -e "\e[1;33mTapez 'DECONNEXION' pour confirmer la désactivation : \e[0m"
+                read -r FINAL_CONFIRM
+                
+                if [[ "$FINAL_CONFIRM" != "DECONNEXION" ]]; then
+                    echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"
+                    echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"
+                    read -n1 -s
+                    return 0
+                fi
+            fi
+        else
+            echo -e "\n\e[1;31mATTENTION :\e[0m Désactiver SSH coupera toutes les connexions SSH actuelles."
+            echo -ne "\e[1;33mDésactiver le service SSH ? [o/N] : \e[0m"
+            read -r CONFIRM
+            
+            if [[ ! "$CONFIRM" =~ ^[oOyY]$ ]]; then
+                return 0
+            fi
         fi
+        
+        echo -e "\n\e[1;31m⏳ Désactivation SSH dans 5 secondes...\e[0m"
+        echo -e "\e[1;33m   Appuyez sur Ctrl+C pour annuler !\e[0m"
+        sleep 5
+        
+        systemctl stop "$ssh_service"
+        systemctl disable "$ssh_service"
+        echo -e "\e[1;32m✓ Service SSH désactivé\e[0m"
     else
         echo -ne "\n\e[1;33mActiver le service SSH ? [o/N] : \e[0m"
         read -r CONFIRM

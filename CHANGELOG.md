@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.14.2] - 2025-08-07
+
+
+#### 🐛 Corrigé
+- Dans le script admin correction de l'arrêt service SSH au lieu de fermer juste la session.
+
 ### [0.14.1] – 2025-08-06
 
 
@@ -66,13 +72,6 @@
 
 #### 🐛 Corrigé
 - test
-
-## 📌 Présentation générale
-
-Ce script Bash permet de gérer un serveur WireGuard avec Docker Compose, facilement et en toute sécurité.  
-Il propose une interface en ligne de commande colorée, des sauvegardes automatiques, la gestion du mot de passe technique, et la mise à jour automatique du script et de ses modules.
-
----
 
 ### [0.9.0] – 2025-08-05
 
