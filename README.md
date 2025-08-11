@@ -50,31 +50,41 @@ Script de configuration et d'initialisation pour l'environnement WireGuard.
 
 ## 🚀 Installation
 
-### Installation rapide
+### Installation automatique (recommandée)
+
+Le script principal **se configure automatiquement lors de la création d'un utilisateur WireGuard**. Aucune installation manuelle n'est requise pour l'utilisation standard.
 
 ```bash
-# Cloner le repository
+# Le script s'installe et se configure automatiquement
+# lors de la première utilisation ou création d'utilisateur
+```
+
+### Installation manuelle du menu d'administration
+
+Pour accéder au **menu d'administration avancé**, installation manuelle uniquement :
+
+```bash
+# Télécharger le menu d'administration
+wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh
+
+# Permissions d'exécution
+chmod +x admin_menu.sh
+
+# Lancer le menu d'administration (nécessite sudo)
+sudo ./admin_menu.sh
+```
+
+### Installation complète depuis le repository
+
+```bash
+# Cloner le repository complet (développeurs/contributeurs)
 git clone https://github.com/tarekounet/Wireguard-easy-script.git
 cd Wireguard-easy-script
 
 # Rendre les scripts exécutables
 chmod +x admin_menu.sh config_wg.sh
 
-# Lancer l'administration (nécessite sudo)
-sudo ./admin_menu.sh
-```
-
-### Installation manuelle
-
-```bash
-# Télécharger les scripts
-wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh
-wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/config_wg.sh
-
-# Permissions
-chmod +x admin_menu.sh config_wg.sh
-
-# Exécution
+# Lancer l'administration
 sudo ./admin_menu.sh
 ```
 
