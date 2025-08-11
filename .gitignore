@@ -1,0 +1,20 @@
+# Fichiers temporaires et de configuration obsolètes
+lib/conf.sh
+*.tmp
+*.backup.*
+*.log
+.env
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Sauvegarde automatique
+*~

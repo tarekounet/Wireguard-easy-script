@@ -111,14 +111,6 @@
 
 ---
 
-### [0.5.0] – 2025-06-15
-
-#### ✅ Ajouté
-- Nouveau script principal `config_wg.sh` avec auto-bootstrap
-- Modules séparés dans `lib/` : `utils.sh`, `conf.sh`, `docker.sh`, `menu.sh`, `debian_tools.sh`
-
----
-
 ### [0.4.1] – 2025-05-31
 
 #### ✅ Ajouté
