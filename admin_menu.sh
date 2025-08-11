@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.15.2
+# Version: 0.15.3
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -88,7 +88,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.15.2"
+readonly DEFAULT_VERSION="0.15.3"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -161,10 +161,26 @@ get_latest_version() {
         return 0
     fi
     
-    # Fetch new version
+    # Fetch new version with better error handling
     local github_version_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt"
-    CACHED_LATEST_VERSION=$(curl -fsSL --connect-timeout 5 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ')
-    CACHE_TIMESTAMP=$current_time
+    
+    # Try to fetch with multiple fallbacks
+    CACHED_LATEST_VERSION=""
+    
+    # First attempt: Primary URL with short timeout
+    if command -v curl >/dev/null 2>&1; then
+        CACHED_LATEST_VERSION=$(curl -fsSL --connect-timeout 3 --max-time 10 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
+    fi
+    
+    # Fallback: Try with wget if curl failed
+    if [[ -z "$CACHED_LATEST_VERSION" ]] && command -v wget >/dev/null 2>&1; then
+        CACHED_LATEST_VERSION=$(wget -qO- --timeout=5 --tries=1 "$github_version_url" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
+    fi
+    
+    # Update cache timestamp only if we got a result
+    if [[ -n "$CACHED_LATEST_VERSION" ]]; then
+        CACHE_TIMESTAMP=$current_time
+    fi
     
     echo "$CACHED_LATEST_VERSION"
 }
@@ -180,8 +196,9 @@ auto_update_admin_menu() {
     local LATEST_VERSION=$(get_latest_version)
     
     if [[ -z "$LATEST_VERSION" ]]; then
-        echo -e "${RED}❌ Impossible de vérifier la version en ligne${NC}"
-        return 1
+        echo -e "${YELLOW}⚠️  Impossible de vérifier la version en ligne - Connexion réseau ou serveur indisponible${NC}"
+        echo -e "${BLUE}📱 Continuons avec la version locale : $SCRIPT_VERSION${NC}"
+        return 0
     fi
     
     echo -e "${CYAN}📊 Version locale : $SCRIPT_VERSION${NC}"
@@ -212,7 +229,7 @@ auto_update_admin_menu() {
         cp "$0" "$backup_file" 2>/dev/null && echo -e "${GREEN}💾 Sauvegarde créée : $backup_file${NC}"
         
         # Télécharger la nouvelle version du script
-        if curl -fsSL -o "$0.tmp" "$github_script_url"; then
+        if curl -fsSL --connect-timeout 10 --max-time 30 -o "$0.tmp" "$github_script_url" 2>/dev/null; then
             chmod +x "$0.tmp"
             mv "$0.tmp" "$0"
             
@@ -225,9 +242,10 @@ auto_update_admin_menu() {
             # Relancer le script avec la nouvelle version
             exec bash "$0" "$@"
         else
-            echo -e "${RED}❌ Échec du téléchargement de la mise à jour${NC}"
+            echo -e "${YELLOW}⚠️  Échec du téléchargement de la mise à jour - Continuons avec la version actuelle${NC}"
             rm -f "$0.tmp" 2>/dev/null
-            return 1
+            echo -e "${BLUE}📱 Poursuite avec la version locale : $SCRIPT_VERSION${NC}"
+            return 0
         fi
     else
         echo -e "${GREEN}✅ Admin menu à jour (version $SCRIPT_VERSION)${NC}"

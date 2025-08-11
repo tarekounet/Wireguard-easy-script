@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.15.3] - 2025-08-11
+
+
+#### 🐛 Corrigé
+- impossible de lancer le script admin si il n'y a pas internet.
+
 ### [0.15.2] - 2025-08-07
 
 

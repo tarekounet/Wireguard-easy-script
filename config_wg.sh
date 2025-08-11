@@ -48,7 +48,7 @@ export GITHUB_REPO
 export BRANCH
 
 # Version par défaut pour fallback
-readonly DEFAULT_VERSION="0.15.2"
+readonly DEFAULT_VERSION="0.15.3"
 
 ##############################
 #   FONCTIONS UTILITAIRES    #
@@ -59,18 +59,17 @@ update_modules_from_github() {
     echo "🔄 Mise à jour des modules depuis GitHub..."
     for mod in utils docker menu ; do
         echo "Mise à jour de lib/$mod.sh depuis GitHub ($BRANCH)..."
-        if curl -fsSL -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh"; then
+        if curl -fsSL --connect-timeout 10 --max-time 20 -o "lib/$mod.sh" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/lib/$mod.sh" 2>/dev/null; then
             chmod +x "lib/$mod.sh"
             echo "✅ Module lib/$mod.sh mis à jour avec succès"
         else
-            echo "❌ Échec de la mise à jour de lib/$mod.sh"
-            log_error "Échec du téléchargement du module lib/$mod.sh depuis GitHub" 2>/dev/null || echo "Erreur: Échec du téléchargement du module lib/$mod.sh"
+            echo "⚠️  Échec de la mise à jour de lib/$mod.sh"
             if [[ ! -f "lib/$mod.sh" ]]; then
-                echo "❌ Module manquant et impossible à télécharger"
-                log_error "Module lib/$mod.sh manquant et impossible à télécharger - arrêt du script" 2>/dev/null || echo "Erreur: Module lib/$mod.sh manquant"
+                echo "❌ Module manquant et impossible à télécharger - Arrêt du script"
+                echo "💡 Vérifiez votre connexion réseau et réessayez"
                 exit 1
             else
-                echo "⚠️  Utilisation de la version locale existante"
+                echo "📱 Utilisation de la version locale existante de lib/$mod.sh"
             fi
         fi
     done
@@ -80,18 +79,28 @@ update_modules_from_github() {
 get_or_create_version() {
     if [[ ! -f "$VERSION_FILE" ]]; then
         echo "📥 Fichier version.txt manquant, récupération depuis GitHub..."
-        if REMOTE_VERSION=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r '); then
-            if [[ -n "$REMOTE_VERSION" ]]; then
-                echo "$REMOTE_VERSION" > "$VERSION_FILE"
-                echo "✓ Fichier version.txt créé avec la version : $REMOTE_VERSION"
-                echo "$REMOTE_VERSION"
-                return
-            fi
+        
+        # Try with curl first
+        REMOTE_VERSION=""
+        if command -v curl >/dev/null 2>&1; then
+            REMOTE_VERSION=$(curl -fsSL --connect-timeout 3 --max-time 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
         fi
+        
+        # Fallback with wget
+        if [[ -z "$REMOTE_VERSION" ]] && command -v wget >/dev/null 2>&1; then
+            REMOTE_VERSION=$(wget -qO- --timeout=5 --tries=1 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
+        fi
+        
+        if [[ -n "$REMOTE_VERSION" ]]; then
+            echo "$REMOTE_VERSION" > "$VERSION_FILE"
+            echo "✓ Fichier version.txt créé avec la version : $REMOTE_VERSION"
+            echo "$REMOTE_VERSION"
+            return
+        fi
+        
         # Si échec, créer avec la version par défaut
         echo "$DEFAULT_VERSION" > "$VERSION_FILE"
-        echo "✗ Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $DEFAULT_VERSION"
-        log_error "Impossible de récupérer version.txt depuis GitHub, utilisation version par défaut: $DEFAULT_VERSION"
+        echo "⚠️  Impossible de récupérer la version depuis GitHub, utilisation de la version par défaut : $DEFAULT_VERSION"
         echo "$DEFAULT_VERSION"
     else
         VERSION_FROM_FILE=$(cat "$VERSION_FILE" 2>/dev/null | head -n1 | tr -d '\n\r ')
@@ -99,7 +108,7 @@ get_or_create_version() {
             echo "$VERSION_FROM_FILE"
         else
             echo "$DEFAULT_VERSION" > "$VERSION_FILE"
-            log_error "Fichier version.txt vide, recréation avec version par défaut: $DEFAULT_VERSION"
+            echo "⚠️  Fichier version.txt vide, recréation avec version par défaut : $DEFAULT_VERSION"
             echo "$DEFAULT_VERSION"
         fi
     fi
@@ -109,14 +118,14 @@ get_or_create_version() {
 get_or_create_changelog() {
     if [[ ! -f "$CHANGELOG_FILE" ]]; then
         echo "📥 Fichier CHANGELOG.md manquant, récupération depuis GitHub..."
-        if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE" 2>/dev/null; then
+        if curl -fsSL --connect-timeout 10 --max-time 20 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE" 2>/dev/null; then
             if [[ -f "$CHANGELOG_FILE" && -s "$CHANGELOG_FILE" ]]; then
                 echo "✓ Fichier CHANGELOG.md récupéré avec succès depuis GitHub"
                 return 0
             fi
         fi
         # Si échec, ne pas créer de fichier
-        echo "✗ Changelog non disponible (impossible de récupérer depuis GitHub)"
+        echo "⚠️  Changelog non disponible (impossible de récupérer depuis GitHub)"
         return 1
     else
         echo "✓ Fichier CHANGELOG.md déjà présent"
@@ -153,8 +162,18 @@ compare_versions() {
 auto_update_on_startup() {
     echo "🔄 Vérification des mises à jour..."
     
-    # Vérifier la version du script sur GitHub
-    LATEST_SCRIPT_VERSION=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ')
+    # Vérifier la version du script sur GitHub avec gestion d'erreur robuste
+    LATEST_SCRIPT_VERSION=""
+    
+    # First attempt: Primary URL with short timeout
+    if command -v curl >/dev/null 2>&1; then
+        LATEST_SCRIPT_VERSION=$(curl -fsSL --connect-timeout 3 --max-time 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
+    fi
+    
+    # Fallback: Try with wget if curl failed
+    if [[ -z "$LATEST_SCRIPT_VERSION" ]] && command -v wget >/dev/null 2>&1; then
+        LATEST_SCRIPT_VERSION=$(wget -qO- --timeout=5 --tries=1 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/version.txt" 2>/dev/null | head -n1 | tr -d '\n\r ' || echo "")
+    fi
     
     if [[ -n "$LATEST_SCRIPT_VERSION" ]]; then
         # Comparer les versions - ne mettre à jour que si la version distante est plus récente
@@ -168,7 +187,7 @@ auto_update_on_startup() {
                 cp "$0" "${0}.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null
                 
                 # Télécharger la nouvelle version
-                if curl -fsSL -o "$0.tmp" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/config_wg.sh"; then
+                if curl -fsSL --connect-timeout 10 --max-time 30 -o "$0.tmp" "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/config_wg.sh" 2>/dev/null; then
                     chmod +x "$0.tmp"
                     mv "$0.tmp" "$0"
                     
@@ -177,7 +196,7 @@ auto_update_on_startup() {
                     
                     # Mettre à jour le changelog
                     echo "📥 Mise à jour du changelog..."
-                    if curl -fsSL --connect-timeout 10 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE.tmp" 2>/dev/null; then
+                    if curl -fsSL --connect-timeout 10 --max-time 20 "https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/CHANGELOG.md" -o "$CHANGELOG_FILE.tmp" 2>/dev/null; then
                         if [[ -f "$CHANGELOG_FILE.tmp" && -s "$CHANGELOG_FILE.tmp" ]]; then
                             mv "$CHANGELOG_FILE.tmp" "$CHANGELOG_FILE"
                             echo "✅ Changelog mis à jour"
@@ -199,8 +218,9 @@ auto_update_on_startup() {
                     # Relancer le script avec la nouvelle version
                     exec bash "$0" "$@"
                 else
-                    echo "❌ Échec de la mise à jour du script"
+                    echo "⚠️  Échec du téléchargement de la mise à jour - Continuons avec la version actuelle"
                     rm -f "$0.tmp" 2>/dev/null
+                    echo "📱 Poursuite avec la version locale : $SCRIPT_VERSION"
                 fi
             else
                 echo "✅ Script à jour (version locale $SCRIPT_VERSION >= version distante $LATEST_SCRIPT_VERSION)"
@@ -209,8 +229,8 @@ auto_update_on_startup() {
             echo "✅ Script à jour (version $SCRIPT_VERSION)"
         fi
     else
-        echo "⚠️  Impossible de vérifier la version distante"
-        echo "✅ Script version locale : $SCRIPT_VERSION"
+        echo "⚠️  Impossible de vérifier la version en ligne - Connexion réseau ou serveur indisponible"
+        echo "📱 Continuons avec la version locale : $SCRIPT_VERSION"
     fi
 }
 
