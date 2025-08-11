@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.15.3
+# Version: 0.16.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -26,33 +26,6 @@ readonly WG_CONFIG_DIR="config"
 # Cache for package manager detection
 PACKAGE_MANAGER=""
 
-# Vérification de la disponibilité de l'upgrade Debian 13
-is_debian13_stable() {
-    # Vérifier si Debian 13 est disponible en stable
-    if command -v apt-cache >/dev/null 2>&1; then
-        # Vérifier les sources stable pour Debian 13
-        local stable_sources=$(apt-cache policy 2>/dev/null | grep -c "stable.*trixie" || echo "0")
-        local debian13_available=$(apt list --upgradable 2>/dev/null | grep -c "trixie" || echo "0")
-        
-        # Vérifier aussi via les sources APT
-        if [[ -f /etc/apt/sources.list ]] && grep -q "trixie.*main" /etc/apt/sources.list 2>/dev/null; then
-            local trixie_status=$(grep "trixie" /etc/apt/sources.list | grep -v testing | grep -v unstable | wc -l)
-            if [[ $trixie_status -gt 0 ]]; then
-                return 0  # Debian 13 est stable
-            fi
-        fi
-        
-        # Vérifier via l'API Debian (si curl disponible)
-        if command -v curl >/dev/null 2>&1; then
-            local debian_releases=$(curl -s --connect-timeout 3 "https://api.debian.org/info/package/base-files" 2>/dev/null | grep -o "trixie.*stable" || echo "")
-            if [[ -n "$debian_releases" ]]; then
-                return 0  # Debian 13 est stable
-            fi
-        fi
-    fi
-    
-    return 1  # Debian 13 n'est pas encore stable
-}
 detect_package_manager() {
     [[ -n "$PACKAGE_MANAGER" ]] && return 0
     
@@ -88,7 +61,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.15.3"
+readonly DEFAULT_VERSION="0.16.0"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -321,33 +294,16 @@ technical_admin_menu() {
         echo -e "\n\e[48;5;22m\e[97m  🔄 MAINTENANCE SYSTÈME  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mMettre à jour le système\e[0m"
-        
-        # Vérifier si Debian 13 est stable pour afficher l'option d'upgrade majeur
-        if is_debian13_stable; then
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mMise à jour majeure (Debian 13 disponible!)\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mNettoyage du système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mConfiguration réseau et SSH\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mChanger le nom de la machine\e[0m"
-        else
-            # echo -e "\e[90m    ├─ \e[0m\e[90m 5\e[0m \e[90mMise à jour majeure (Debian 13 pas encore stable)\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mNettoyage du système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mConfiguration réseau et SSH\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mChanger le nom de la machine\e[0m"
-        fi
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mNettoyage du système\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mConfiguration réseau et SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mChanger le nom de la machine\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[48;5;52m\e[97m  ⚡ GESTION ALIMENTATION  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        
-        if is_debian13_stable; then
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mRedémarrer le système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mArrêter le système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m11\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
-        else
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mRedémarrer le système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mArrêter le système\e[0m"
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
-        fi
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 8\e[0m \e[97mRedémarrer le système\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 9\e[0m \e[97mArrêter le système\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m10\e[0m \e[97mProgrammer un redémarrage/arrêt\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         
         echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
@@ -365,62 +321,14 @@ technical_admin_menu() {
             2) user_management_menu ;;
             3) reset_user_docker_wireguard ;;
             4) full_system_update ;;
-            5) 
-                if is_debian13_stable; then
-                    major_system_upgrade
-                else
-                    system_cleanup_menu
-                fi
-                ;;
-            6) 
-                if is_debian13_stable; then
-                    system_cleanup_menu
-                else
-                    network_ssh_config_menu
-                fi
-                ;;
-            7) 
-                if is_debian13_stable; then
-                    network_ssh_config_menu
-                else
-                    change_hostname
-                fi
-                ;;
-            8) 
-                if is_debian13_stable; then
-                    change_hostname
-                else
-                    immediate_reboot
-                fi
-                ;;
-            9) 
-                if is_debian13_stable; then
-                    immediate_reboot
-                else
-                    immediate_shutdown
-                fi
-                ;;
-            10) 
-                if is_debian13_stable; then
-                    immediate_shutdown
-                else
-                    power_scheduling_menu
-                fi
-                ;;
-            11) 
-                if is_debian13_stable; then
-                    power_scheduling_menu
-                else
-                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro valide.\e[0m"
-                fi
-                ;;
+            5) system_cleanup_menu ;;
+            6) network_ssh_config_menu ;;
+            7) change_hostname ;;
+            8) immediate_reboot ;;
+            9) immediate_shutdown ;;
+            10) power_scheduling_menu ;;
             0) exit_menu ;;
-            *)
-                if is_debian13_stable; then
-                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 11.\e[0m"
-                else
-                    echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 10.\e[0m"
-                fi                ;;
+            *) echo -e "\e[1;31mChoix invalide. Veuillez saisir un numéro entre 0 et 10.\e[0m" ;;
         esac
     done
 }
@@ -2814,165 +2722,6 @@ install_docker_compose() {
 # ═══════════════════════════════════════════════════════════════
 # MAIN EXECUTION
 # ═══════════════════════════════════════════════════════════════
-
-# Function to handle major system upgrades (stable versions only)
-major_system_upgrade() {
-    clear
-    echo -e "\e[48;5;196m\e[97m  ⚠️  MISE À JOUR MAJEURE DU SYSTÈME  ⚠️   \e[0m"
-    echo -e "\n\e[1;33m📋 Cette fonction permet de migrer vers une version majeure stable de Debian.\e[0m"
-    echo -e "\e[1;33mExemple : Debian 11 (bullseye) → 12 (bookworm)\e[0m"
-    echo -e "\e[1;90m💡 Note : Seules les versions stables officielles sont supportées.\e[0m"
-    
-    # Détecter la version actuelle
-    CURRENT_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "inconnue")
-    CURRENT_CODENAME=$(awk -F= '/^VERSION_CODENAME=/{gsub(/"/,"",$2); print $2}' /etc/os-release 2>/dev/null || echo "inconnu")
-    
-    echo -e "\n\e[1;36m🖥️  Version actuelle : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
-    
-    # Avertissements de sécurité
-    echo -e "\n\e[48;5;208m\e[97m  ⚠️  AVERTISSEMENTS IMPORTANTS  ⚠️   \e[0m"
-    echo -e "\e[1;31m• Cette opération est IRRÉVERSIBLE\e[0m"
-    echo -e "\e[1;31m• Sauvegardez TOUS vos données importantes\e[0m"
-    echo -e "\e[1;31m• La migration peut prendre plusieurs heures\e[0m"
-    echo -e "\e[1;31m• Le système sera redémarré plusieurs fois\e[0m"
-    echo -e "\e[1;31m• WireGuard et Docker seront reconfigurés\e[0m"
-    
-    echo -e "\n\e[1;33m📋 Étapes de la migration :\e[0m"
-    echo -e "  1. Sauvegarde des configurations"
-    echo -e "  2. Mise à jour des sources APT"
-    echo -e "  3. Mise à jour des paquets système"
-    echo -e "  4. Migration des configurations"
-    echo -e "  5. Redémarrage et vérifications"
-    
-    echo -e "\n\e[1;31m⚠️  VOULEZ-VOUS VRAIMENT CONTINUER ? ⚠️\e[0m"
-    echo -e "\e[1;33mTapez 'MIGRER' en majuscules pour confirmer, ou autre chose pour annuler :\e[0m "
-    read -r CONFIRM
-    
-    if [[ "$CONFIRM" != "MIGRER" ]]; then
-        echo -e "\e[1;32m✅ Migration annulée par l'utilisateur.\e[0m"
-        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
-        return
-    fi
-    
-    # Déterminer la version cible (versions stables uniquement)
-    case "$CURRENT_CODENAME" in
-        "bullseye"|"11")
-            TARGET_CODENAME="bookworm"
-            TARGET_VERSION="12"
-            ;;
-        # TODO: Ajouter le support Debian 13 quand il sera stable :
-        # "bookworm"|"12")
-        #     TARGET_CODENAME="trixie"
-        #     TARGET_VERSION="13"
-        #     ;;
-        "bookworm"|"12")
-            echo -e "\e[1;32m✅ Vous utilisez déjà la dernière version stable de Debian !\e[0m"
-            echo -e "\e[1;36m📊 Version actuelle : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
-            echo -e "\e[1;33m📝 Aucune mise à jour majeure stable disponible.\e[0m"
-            echo -e "\e[1;90m💡 Note : Seules les versions stables sont supportées par ce script.\e[0m"
-            echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-            read -n1 -s
-            return
-            ;;
-        *)
-            echo -e "\e[1;31m❌ Version source non supportée pour la migration automatique.\e[0m"
-            echo -e "\e[1;33mVersions supportées (stables uniquement) :\e[0m"
-            echo -e "\e[1;33m• Debian 11 (bullseye) → 12 (bookworm)\e[0m"
-            echo -e "\e[1;90m💡 Note : Ce script ne supporte que les versions stables officielles.\e[0m"
-            echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-            read -n1 -s
-            return
-            ;;
-    esac
-    
-    echo -e "\n\e[1;36m🎯 Migration vers : Debian $TARGET_VERSION ($TARGET_CODENAME)\e[0m"
-    echo -e "\e[1;33mDernière chance d'annuler ! Appuyez sur Entrée pour continuer ou Ctrl+C pour annuler...\e[0m"
-    read -r
-    
-    # Début de la migration
-    echo -e "\n\e[1;33m🚀 Début de la migration majeure...\e[0m"
-    
-    # Étape 1: Sauvegarde
-    echo -e "\n\e[1;33m📝 Étape 1/5 - Sauvegarde des configurations...\e[0m"
-    BACKUP_DIR="/root/debian_upgrade_backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-    
-    # Sauvegarder les sources APT
-    cp -r /etc/apt/ "$BACKUP_DIR/apt_backup/" 2>/dev/null
-    
-    # Sauvegarder les configurations réseau
-    cp /etc/hostname "$BACKUP_DIR/" 2>/dev/null
-    cp /etc/hosts "$BACKUP_DIR/" 2>/dev/null
-    
-    # Sauvegarder SSH
-    cp -r /etc/ssh/ "$BACKUP_DIR/ssh_backup/" 2>/dev/null
-    
-    echo -e "\e[1;32m✅ Sauvegarde créée dans : $BACKUP_DIR\e[0m"
-    
-    # Étape 2: Mise à jour sources APT
-    echo -e "\n\e[1;33m📝 Étape 2/5 - Mise à jour des sources APT...\e[0m"
-    
-    # Sauvegarder et modifier sources.list
-    cp /etc/apt/sources.list "$BACKUP_DIR/sources.list.backup"
-    sed -i "s/$CURRENT_CODENAME/$TARGET_CODENAME/g" /etc/apt/sources.list
-    
-    # Mettre à jour aussi les fichiers dans sources.list.d
-    find /etc/apt/sources.list.d/ -name "*.list" -exec sed -i "s/$CURRENT_CODENAME/$TARGET_CODENAME/g" {} \;
-    
-    echo -e "\e[1;32m✅ Sources APT mises à jour vers $TARGET_CODENAME\e[0m"
-    
-    # Étape 3: Mise à jour du cache APT
-    echo -e "\n\e[1;33m📝 Étape 3/5 - Mise à jour du cache APT...\e[0m"
-    apt update
-    
-    if [[ $? -ne 0 ]]; then
-        echo -e "\e[1;31m❌ Erreur lors de la mise à jour du cache APT.\e[0m"
-        echo -e "\e[1;33m🔄 Restauration des sources originales...\e[0m"
-        cp "$BACKUP_DIR/sources.list.backup" /etc/apt/sources.list
-        apt update
-        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
-        return
-    fi
-    
-    # Étape 4: Migration des paquets
-    echo -e "\n\e[1;33m📝 Étape 4/5 - Migration des paquets système...\e[0m"
-    echo -e "\e[1;31m⚠️ Cette étape peut prendre très longtemps...\e[0m"
-    
-    # Mise à jour minimale d'abord
-    apt upgrade -y
-    
-    # Puis distribution upgrade
-    apt full-upgrade -y
-    
-    # Étape 5: Nettoyage et finalisation
-    echo -e "\n\e[1;33m📝 Étape 5/5 - Nettoyage et finalisation...\e[0m"
-    
-    # Nettoyer les paquets obsolètes
-    apt autoremove -y
-    apt autoclean
-    
-    # Vérifier la nouvelle version
-    NEW_VERSION=$(cat /etc/debian_version 2>/dev/null || echo "inconnue")
-    
-    echo -e "\n\e[1;32m🎉 Migration terminée !\e[0m"
-    echo -e "\e[1;36m📊 Ancienne version : Debian $CURRENT_VERSION ($CURRENT_CODENAME)\e[0m"
-    echo -e "\e[1;36m📊 Nouvelle version : Debian $NEW_VERSION ($TARGET_CODENAME)\e[0m"
-    echo -e "\e[1;36m💾 Sauvegarde disponible : $BACKUP_DIR\e[0m"
-    
-    echo -e "\n\e[1;33m🔄 Un redémarrage est FORTEMENT recommandé.\e[0m"
-    echo -e "\e[1;33mVoulez-vous redémarrer maintenant ? (o/N) :\e[0m "
-    read -r REBOOT_CHOICE
-    
-    if [[ "$REBOOT_CHOICE" =~ ^[Oo]$ ]]; then
-        echo -e "\e[1;33m🔄 Redémarrage dans 10 secondes...\e[0m"        reboot
-    else
-        echo -e "\e[1;33m⚠️ N'oubliez pas de redémarrer le système dès que possible !\e[0m"
-        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
-    fi
-}
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then

@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.16.0] - 2025-08-11
+
+
+#### 🔄 Modifié
+- suppression de l'upgrade en debian 13
+
 ### [0.15.3] - 2025-08-11
 
 
