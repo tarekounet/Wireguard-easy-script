@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.17.0] - 2025-08-12
+
+
+#### 🔄 Modifié
+- modif de du menu gestion utilisateur
+
 ### [0.16.0] - 2025-08-11
 
 

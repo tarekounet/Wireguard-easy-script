@@ -1,6 +1,6 @@
 #!/bin/bash
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.16.0
+# Version: 0.17.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -61,7 +61,7 @@ get_or_create_version() {
     fi
 }
 
-readonly DEFAULT_VERSION="0.16.0"
+readonly DEFAULT_VERSION="0.17.0"
 readonly SCRIPT_VERSION="$(get_or_create_version)"
 readonly SCRIPT_AUTHOR="Tarek.E"
 
@@ -363,22 +363,25 @@ exit_menu() {
                 ;;
             2)
                 clear
-                echo -e "\e[1;31m⚠️  ATTENTION :\e[0m Ceci fermera complètement votre session."
-                echo -e "Vous devrez vous reconnecter pour utiliser le système."
+                if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]; then
+                    echo -e "\e[1;31m⚠️  ATTENTION :\e[0m Ceci fermera votre session SSH en cours."
+                    echo -e "Vous devrez vous reconnecter via SSH pour revenir."
+                else
+                    echo -e "\e[1;31m⚠️  ATTENTION :\e[0m Ceci fermera complètement votre session locale."
+                    echo -e "Vous devrez vous reconnecter sur la machine pour revenir."
+                fi
                 echo -ne "\n\e[1;33mConfirmer la fermeture de session ? [o/N] : \e[0m"
                 read -r CONFIRM_LOGOUT
-                
                 if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then
                     echo -e "\e[1;31m🔒 Fermeture de la session en cours...\e[0m"
-                    # Déconnexion selon le type de session
                     if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]; then
-                        # Session SSH - fermeture propre de cette session uniquement
-                        echo -e "\e[1;36m👋 Au revoir !\e[0m"
+                        echo -e "\e[1;36m👋 Déconnexion de la session SSH...\e[0m"
                         sleep 1
-                        # Fermer proprement cette session SSH sans affecter les autres
-                        exec bash -c 'exit 0'
+                        # Fermer proprement cette session SSH
+                        kill -HUP $$
                     else
-                        # Session locale
+                        echo -e "\e[1;36m👋 Fermeture de la session locale...\e[0m"
+                        sleep 1
                         if command -v loginctl &>/dev/null; then
                             loginctl terminate-user "$(whoami)" 2>/dev/null || logout
                         else
@@ -778,7 +781,7 @@ user_management_menu() {
         
         echo -e "\n\e[48;5;24m\e[97m  👥 UTILISATEURS DISPONIBLES  \e[0m"
         for i in "${!USERS[@]}"; do
-            echo -e "\e[90m    ├─ \e[0m\e[1;36m$((i+1))\e[0m \e[97m${USERS[i]}\e[0m"
+            echo -e "\e[90m    ├─ \e[0m\e[97m${USERS[i]}\e[0m"
         done
         
         echo -e "\n\e[48;5;22m\e[97m  🔧 ACTIONS DISPONIBLES  \e[0m"
@@ -828,7 +831,7 @@ modify_user_menu() {
         local user="${USERS[$i]}"
         local shell=$(getent passwd "$user" | cut -d: -f7)
         local home=$(getent passwd "$user" | cut -d: -f6)
-        printf "\e[90m│\e[0m \e[1;33m%3d\e[0m \e[90m│\e[0m %-15s \e[90m│\e[0m %-15s \e[90m│\e[0m %-27s \e[90m│\e[0m\n" $((i+1)) "$user" "$(basename "$shell")" "$home"
+    printf "\e[90m│\e[0m %-15s \e[90m│\e[0m %-15s \e[90m│\e[0m %-27s \e[90m│\e[0m\n" "$user" "$(basename "$shell")" "$home"
     done
     
     echo -e "\e[90m└─────┴─────────────────┴─────────────────┴─────────────────────────────┘\e[0m"
@@ -906,7 +909,7 @@ remove_user_secure() {
         local user="${USERS[$i]}"
         local shell=$(getent passwd "$user" | cut -d: -f7)
         local home=$(getent passwd "$user" | cut -d: -f6)
-        printf "${WHITE}%2d)${NC} %-15s ${CYAN}Shell:${NC} %-15s ${BLUE}Home:${NC} %s\n" $((i+1)) "$user" "$shell" "$home"
+    printf "${WHITE}•${NC} %-15s ${CYAN}Shell:${NC} %-15s ${BLUE}Home:${NC} %s\n" "$user" "$shell" "$home"
     done
     echo -ne "${WHITE}Numéro de l'utilisateur à supprimer [1-${#USERS[@]}] : ${NC}"
     read -r IDX
@@ -966,7 +969,7 @@ reset_user_docker_wireguard() {
             fi
         fi
         
-        printf "\e[90m    ├─ \e[0m\e[1;36m%2d\e[0m \e[97m%-15s\e[0m $status_color$status_text\e[0m\n" $((i+1)) "$user"
+    printf "\e[90m    ├─ \e[0m\e[97m%-15s\e[0m $status_color$status_text\e[0m\n" "$user"
     done
     
     echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
