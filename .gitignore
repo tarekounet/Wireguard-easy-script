@@ -15,7 +15,6 @@ desktop.ini
 .idea/
 *.swp
 *.swo
-
+./update_changelog.ps1
 # Sauvegarde automatique
 *~
-update_changelog.ps1
