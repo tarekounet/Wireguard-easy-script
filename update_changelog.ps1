@@ -216,7 +216,7 @@ function Add-ChangelogSmart {
     
     $gitWorkflow = Read-Host "`n🤖 Voulez-vous exécuter le workflow Git automatique ? (o/N)"
     if ($gitWorkflow -match '^[oO]$') {
-        Execute-GitWorkflow -version $newVersion -changelogEntries ($added + $modified + $fixed)
+        Start-GitWorkflow -version $newVersion -changelogEntries ($added + $modified + $fixed)
     } else {
         Write-Host "`n💡 Workflow Git ignoré. Vous pouvez l'exécuter manuellement plus tard." -ForegroundColor Yellow
     }
@@ -226,7 +226,7 @@ function Add-ChangelogSmart {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
-function Execute-GitWorkflow {
+function Start-GitWorkflow {
     param (
         [string]$version,
         [array]$changelogEntries
@@ -283,7 +283,13 @@ function Execute-GitWorkflow {
             git push origin ":refs/tags/v$version" 2>$null
         }
         
-        git tag -a "v$version" -m "Release v$version"
+        # Récupérer la dernière version avant incrément
+        $lastVersion = Get-LastVersion
+        if ($lastVersion -eq "0.0.0") {
+            git tag -a "v$version" -m "v$version"
+        } else {
+            git tag -a "v$version" -m "v$lastVersion > v$version"
+        }
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Tag v$version créé avec succès" -ForegroundColor Green
@@ -383,7 +389,7 @@ do {
             if ($currentVersion -eq "0.0.0") {
                 Write-Host "❌ Aucune version trouvée dans le changelog. Créez d'abord une entrée." -ForegroundColor Red
             } else {
-                Execute-GitWorkflow -version $currentVersion -changelogEntries @()
+                Start-GitWorkflow -version $currentVersion -changelogEntries @()
             }
         }
         "0" { Write-Host "👋 À bientôt, Tarek !" }
