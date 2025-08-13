@@ -231,16 +231,20 @@ function Start-GitWorkflow {
         [string]$version,
         [array]$changelogEntries
     )
-    
+   
     Write-Host "`n🚀 Démarrage du workflow Git automatique..." -ForegroundColor Cyan
     
     # Conversion en LF (format Unix) pour tous les .sh avant le commit/push
-    foreach ($folder in @('.', 'lib_admin', 'lib')) {
-        Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
-            if (Get-Command dos2unix -ErrorAction SilentlyContinue) {
-                dos2unix $_.FullName
-            } else {
-                (Get-Content $_.FullName) | Set-Content $_.FullName
+    if (Get-Command bash -ErrorAction SilentlyContinue) {
+        bash -c "find . -type f -name '*.sh' -exec dos2unix {} \;"
+    } else {
+        foreach ($folder in @('.', 'lib_admin', 'lib')) {
+            Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
+                if (Get-Command dos2unix -ErrorAction SilentlyContinue) {
+                    dos2unix $_.FullName
+                } else {
+                    (Get-Content $_.FullName) | Set-Content $_.FullName
+                }
             }
         }
     }
