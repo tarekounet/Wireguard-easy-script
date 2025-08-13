@@ -73,7 +73,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.18.1
+# Version: 0.18.2
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -920,8 +920,14 @@ technical_admin_menu() {
     echo -e "\n    \e[90m🖥️  Système :\e[0m \e[1;36mDebian $(cat /etc/debian_version 2>/dev/null || echo 'GNU/Linux')\e[0m"
     echo -e "    \e[90m⏱️  Uptime :\e[0m \e[1;32m$(uptime -p 2>/dev/null || echo 'Non disponible')\e[0m"
         echo -e "    \e[90m🌐 IP actuelle :\e[0m \e[1;36m$(hostname -I | awk '{print $1}')\e[0m"
-        UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || echo "0")
-        if [ "$UPGRADABLE" -gt 0 ]; then
+    UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" | head -n1)
+    # Nettoyage pour éviter les retours multiples ou espaces
+    UPGRADABLE=$(echo "$UPGRADABLE" | tr -d '[:space:]')
+    # Si UPGRADABLE n'est pas un entier, on force à 0
+    if ! [[ "$UPGRADABLE" =~ ^[0-9]+$ ]]; then
+        UPGRADABLE=0
+    fi
+    if [ "$UPGRADABLE" -gt 0 ]; then
             echo -e "    \e[1;33m⚠️  $UPGRADABLE mise(s) à jour système disponible(s)\e[0m"
         else
             echo -e "    \e[1;32m✓ Système à jour\e[0m"
@@ -953,7 +959,8 @@ technical_admin_menu() {
         echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mOptions de sortie\e[0m \e[1;31m🚪\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
-        echo -e "\n\e[90m    Tarek.E • v0.17.0\e[0m"
+    VERSION_DISPLAY=$(head -n1 version.txt 2>/dev/null | tr -d '\n\r ')
+    echo -e "\n\e[90m    Tarek.E • v$VERSION_DISPLAY\e[0m"
         echo -ne "\n\e[1;33mEntrez votre choix : \e[0m"
         read -r CHOICE
             case $CHOICE in

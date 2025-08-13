@@ -1,5 +1,12 @@
 # 📦 Wireguard Easy Script
 
+### [0.18.2] - 2025-08-13
+
+
+#### 🐛 Corrigé
+- bug d'affichage du nombre de mise a jour system
+- Numéro de version du script erroné.
+
 ### [0.18.1] - 2025-08-13
 
 
