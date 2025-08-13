@@ -43,9 +43,15 @@ auto_update_admin_menu() {
         fi
         rm -rf "$tmp_dir"
         unzip -q "$tmp_zip" -d /tmp
-        rm -rf "$(dirname "$0")/lib_admin"
-        mv "$tmp_dir/Wireguard-easy-script-main/lib_admin" "$(dirname "$0")/lib_admin"
-        rm -rf "$tmp_zip" "$tmp_dir"
+        # Détection automatique du dossier extrait
+        extracted_dir=$(find /tmp -maxdepth 1 -type d -name 'Wireguard-easy-script-*' | head -1)
+        if [ -d "$extracted_dir/lib_admin" ]; then
+            rm -rf "$(dirname "$0")/lib_admin"
+            mv "$extracted_dir/lib_admin" "$(dirname "$0")/lib_admin"
+        else
+            echo -e "\e[1;31mErreur : Dossier lib_admin introuvable dans l'archive GitHub.\e[0m"
+        fi
+        rm -rf "$tmp_zip" "$extracted_dir"
         echo "$latest_version" > "$local_version_file"
     echo -e "\033[1;32mScript et modules mis à jour. Redémarrage...\033[0m"
         exec bash "$0" "$@"
@@ -67,7 +73,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.18.0
+# Version: 0.18.1
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -832,9 +838,9 @@ install_docker() {
     fi
     
     echo -e "\n\e[1;33m📝 Étape 3/8 - Installation des outils essentiels...\e[0m"
-    echo -e "\e[1;36m🔧 Installation de vim et sudo...\e[0m"
-    apt-get install -y vim sudo || { echo -e "\e[1;31m❌ Échec installation outils essentiels\e[0m"; return 1; }
-    echo -e "\e[1;32m✓ vim et sudo installés\e[0m"
+    echo -e "\e[1;36m🔧 Installation de vim, sudo et unzip...\e[0m"
+    apt-get install -y vim sudo unzip || { echo -e "\e[1;31m❌ Échec installation outils essentiels\e[0m"; return 1; }
+    echo -e "\e[1;32m✓ vim, sudo et unzip installés\e[0m"
     
     echo -e "\n\e[1;33m📝 Étape 4/8 - Installation des prérequis Docker...\e[0m"
     apt-get install -y ca-certificates curl || { echo -e "\e[1;31m❌ Échec installation prérequis\e[0m"; return 1; }
