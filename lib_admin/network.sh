@@ -1,1 +1,167 @@
-#!/bin/bash# Fonctions réseau et SSH pour admin_menu.sh# Fonctions de gestion réseauget_physical_interface() {    # Récupère l'interface réseau physique principale    ip -o link show | awk -F': ' '{print $2}' | head -1}is_dhcp_enabled() {    local interface="$1"    # Vérifie si le DHCP est activé pour l'interface donnée    grep -q "iface $interface inet dhcp" /etc/network/interfaces 2>/dev/null}configure_ip_address() {    local interface="$1"    local ip_address="$2"    local netmask="$3"    local gateway="$4"    # Configure l'adresse IP, le masque et la passerelle pour une interface donnée    ip addr flush dev "$interface"    ip addr add "$ip_address/$netmask" dev "$interface"    ip route add default via "$gateway" dev "$interface"}apply_static_ip_config() {    local interface="$1"    local ip_address="$2"    local netmask="$3"    local gateway="$4"    # Applique la configuration IP statique    configure_ip_address "$interface" "$ip_address" "$netmask" "$gateway"    echo "Configuration IP statique appliquée : $ip_address/$netmask via $gateway sur $interface"}configure_interfaces() {    # Configure les interfaces réseau en fonction des paramètres définis    local interface=$(get_physical_interface)    if is_dhcp_enabled "$interface"; then        configure_network_mode "$interface" "dhcp"    else        configure_network_mode "$interface" "static"    fi}configure_network_mode() {    local interface="$1"    local mode="$2"    # Configure le mode réseau (DHCP ou statique) pour une interface donnée    if [ "$mode" == "dhcp" ]; then        echo "auto $interface" >> /etc/network/interfaces        echo "iface $interface inet dhcp" >> /etc/network/interfaces    else        echo "auto $interface" >> /etc/network/interfaces        echo "iface $interface inet static" >> /etc/network/interfaces        echo "    address $ip_address" >> /etc/network/interfaces        echo "    netmask $netmask" >> /etc/network/interfaces        echo "    gateway $gateway" >> /etc/network/interfaces    fi}configure_dhcp_mode() {    local interface="$1"    # Configure le mode DHCP pour une interface donnée    configure_network_mode "$interface" "dhcp"    systemctl restart networking}configure_interfaces_dhcp() {    # Configure toutes les interfaces en mode DHCP    for interface in $(ip -o link show | awk -F': ' '{print $2}'); do        configure_dhcp_mode "$interface"    done}restart_network_services() {    # Redémarre les services réseau    systemctl restart networking}change_hostname() {    local current_hostname    current_hostname=$(hostname)    echo -e "\e[48;5;236m\e[97m           🏷️  CHANGER LE NOM DE LA MACHINE         \e[0m"    echo -e "\n\e[1;36mNom actuel : $current_hostname\e[0m"    while true; do        echo -ne "\n\e[1;33mNouveau nom de machine (ou 0 pour retour) : \e[0m\e[1;36m→ \e[0m"        read -r new_hostname        if [[ "$new_hostname" == "0" ]]; then            echo -e "\e[1;33mRetour au menu précédent.\e[0m"            break        fi        if [[ -z "$new_hostname" ]]; then            echo -e "\e[1;31m✗ Le nom ne peut pas être vide\e[0m"            continue        fi        if [[ ${#new_hostname} -gt 63 ]]; then            echo -e "\e[1;31m✗ Le nom est trop long (maximum 63 caractères)\e[0m"            continue        fi        if ! [[ "$new_hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then            echo -e "\e[1;31m✗ Format invalide\e[0m"            echo -e "\e[90m  Utilisez uniquement : lettres, chiffres, tirets\e[0m"            echo -e "\e[90m  Commence et finit par une lettre ou un chiffre\e[0m"            continue        fi        if [[ "$new_hostname" == "$current_hostname" ]]; then            echo -e "\e[1;33m⚠️  Le nom est identique au nom actuel\e[0m"            continue        fi        echo -ne "\n\e[1;33mConfirmer le changement ? [o/N] : \e[0m"        read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            hostnamectl set-hostname "$new_hostname"            echo -e "\e[1;32mNom d'hôte changé en : $new_hostname\e[0m"            break        else            echo -e "\e[1;33mChangement annulé.\e[0m"            break        fi    done}display_current_network_info() {    local physical_interface=$(get_physical_interface)    if [[ -n "$physical_interface" ]]; then        local ip_address=$(ip addr show "$physical_interface" | grep -oP 'inet \K[^/]+' | head -1)        local netmask_cidr=$(ip addr show "$physical_interface" | grep -oP 'inet [^/]+/\K[0-9]+' | head -1)        local netmask_decimal=""        if [[ -n "$netmask_cidr" ]]; then            netmask_decimal=$(cidr_to_netmask "$netmask_cidr" 2>/dev/null)            # Vérifie que le masque n'est pas vide ou nul            if [[ -z "$netmask_decimal" || "$netmask_decimal" == "0.0.0.0" ]]; then                netmask_decimal="Non défini"            fi        else            netmask_decimal="Non défini"        fi        local gateway=$(ip route | grep default | grep "$physical_interface" | awk '{print $3}' | head -1)        local mac_address=$(ip link show "$physical_interface" | grep -oP 'link/ether \K[^ ]+')        local link_status=$(ip link show "$physical_interface" | grep -oP 'state \K[A-Z]+')        echo -e "\n    \e[90m🔌 Interface :\e[0m \e[1;36m$physical_interface\e[0m \e[90m($link_status)\e[0m"        echo -e "    \e[90m🌐 Adresse IP :\e[0m \e[1;36m${ip_address:-Non configurée}\e[0m"        echo -e "    \e[90m📊 Masque :\e[0m \e[1;36m${netmask_decimal:-Non défini}\e[0m"        echo -e "    \e[90m🚪 Passerelle :\e[0m \e[1;36m${gateway:-Non définie}\e[0m"        echo -e "    \e[90m🏷️  MAC :\e[0m \e[1;36m$mac_address\e[0m"        local network_mode="Statique"        if is_dhcp_enabled "$physical_interface"; then            network_mode="DHCP"        fi        echo -e "    \e[90m⚙️  Mode :\e[0m \e[1;36m$network_mode\e[0m"    else        echo -e "\n    \e[1;31m❌ Aucune interface réseau physique détectée\e[0m"    fi    local ssh_status="Inactif"    local ssh_port="22"    local ssh_color="\e[1;31m"    if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then        ssh_status="Actif"        ssh_color="\e[1;32m"    fi    if [[ -f /etc/ssh/sshd_config ]]; then        ssh_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")    fi    echo -e "    \e[90m🔐 SSH :\e[0m $ssh_color$ssh_status\e[0m \e[90m(Port: $ssh_port)\e[0m"}
+#!/bin/bash
+# Fonctions réseau et SSH pour admin_menu.sh
+
+# Fonctions de gestion réseau
+get_physical_interface() {
+    # Récupère l'interface réseau physique principale
+    ip -o link show | awk -F': ' '{print $2}' | head -1
+}
+is_dhcp_enabled() {
+    local interface="$1"
+    # Vérifie si le DHCP est activé pour l'interface donnée
+    grep -q "iface $interface inet dhcp" /etc/network/interfaces 2>/dev/null
+}
+
+configure_ip_address() {
+    local interface="$1"
+    local ip_address="$2"
+    local netmask="$3"
+    local gateway="$4"
+    # Configure l'adresse IP, le masque et la passerelle pour une interface donnée
+    ip addr flush dev "$interface"
+    ip addr add "$ip_address/$netmask" dev "$interface"
+    ip route add default via "$gateway" dev "$interface"
+}
+
+apply_static_ip_config() {
+    local interface="$1"
+    local ip_address="$2"
+    local netmask="$3"
+    local gateway="$4"
+    # Applique la configuration IP statique
+    configure_ip_address "$interface" "$ip_address" "$netmask" "$gateway"
+    echo "Configuration IP statique appliquée : $ip_address/$netmask via $gateway sur $interface"
+}
+
+configure_interfaces() {
+    # Configure les interfaces réseau en fonction des paramètres définis
+    local interface=$(get_physical_interface)
+    if is_dhcp_enabled "$interface"; then
+        configure_network_mode "$interface" "dhcp"
+    else
+        configure_network_mode "$interface" "static"
+    fi
+}
+
+configure_network_mode() {
+    local interface="$1"
+    local mode="$2"
+    # Configure le mode réseau (DHCP ou statique) pour une interface donnée
+    if [ "$mode" == "dhcp" ]; then
+        echo "auto $interface" >> /etc/network/interfaces
+        echo "iface $interface inet dhcp" >> /etc/network/interfaces
+    else
+        echo "auto $interface" >> /etc/network/interfaces
+        echo "iface $interface inet static" >> /etc/network/interfaces
+        echo "    address $ip_address" >> /etc/network/interfaces
+        echo "    netmask $netmask" >> /etc/network/interfaces
+        echo "    gateway $gateway" >> /etc/network/interfaces
+    fi
+}
+
+configure_dhcp_mode() {
+    local interface="$1"
+    # Configure le mode DHCP pour une interface donnée
+    configure_network_mode "$interface" "dhcp"
+    systemctl restart networking
+}
+
+configure_interfaces_dhcp() {
+    # Configure toutes les interfaces en mode DHCP
+    for interface in $(ip -o link show | awk -F': ' '{print $2}'); do
+        configure_dhcp_mode "$interface"
+    done
+}
+
+restart_network_services() {
+    # Redémarre les services réseau
+    systemctl restart networking
+}
+
+change_hostname() {
+    local current_hostname
+    current_hostname=$(hostname)
+    echo -e "\e[48;5;236m\e[97m           🏷️  CHANGER LE NOM DE LA MACHINE         \e[0m"
+    echo -e "\n\e[1;36mNom actuel : $current_hostname\e[0m"
+    while true; do
+        echo -ne "\n\e[1;33mNouveau nom de machine (ou 0 pour retour) : \e[0m\e[1;36m→ \e[0m"
+        read -r new_hostname
+        if [[ "$new_hostname" == "0" ]]; then
+            echo -e "\e[1;33mRetour au menu précédent.\e[0m"
+            break
+        fi
+        if [[ -z "$new_hostname" ]]; then
+            echo -e "\e[1;31m✗ Le nom ne peut pas être vide\e[0m"
+            continue
+        fi
+        if [[ ${#new_hostname} -gt 63 ]]; then
+            echo -e "\e[1;31m✗ Le nom est trop long (maximum 63 caractères)\e[0m"
+            continue
+        fi
+        if ! [[ "$new_hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then
+            echo -e "\e[1;31m✗ Format invalide\e[0m"
+            echo -e "\e[90m  Utilisez uniquement : lettres, chiffres, tirets\e[0m"
+            echo -e "\e[90m  Commence et finit par une lettre ou un chiffre\e[0m"
+            continue
+        fi
+        if [[ "$new_hostname" == "$current_hostname" ]]; then
+            echo -e "\e[1;33m⚠️  Le nom est identique au nom actuel\e[0m"
+            continue
+        fi
+        echo -ne "\n\e[1;33mConfirmer le changement ? [o/N] : \e[0m"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            hostnamectl set-hostname "$new_hostname"
+            echo -e "\e[1;32mNom d'hôte changé en : $new_hostname\e[0m"
+            break
+        else
+            echo -e "\e[1;33mChangement annulé.\e[0m"
+            break
+        fi
+    done
+}
+
+
+display_current_network_info() {
+    local physical_interface=$(get_physical_interface)
+    if [[ -n "$physical_interface" ]]; then
+        local ip_address=$(ip addr show "$physical_interface" | grep -oP 'inet \K[^/]+' | head -1)
+        local netmask_cidr=$(ip addr show "$physical_interface" | grep -oP 'inet [^/]+/\K[0-9]+' | head -1)
+        local netmask_decimal=""
+        if [[ -n "$netmask_cidr" ]]; then
+            netmask_decimal=$(cidr_to_netmask "$netmask_cidr" 2>/dev/null)
+            # Vérifie que le masque n'est pas vide ou nul
+            if [[ -z "$netmask_decimal" || "$netmask_decimal" == "0.0.0.0" ]]; then
+                netmask_decimal="Non défini"
+            fi
+        else
+            netmask_decimal="Non défini"
+        fi
+        local gateway=$(ip route | grep default | grep "$physical_interface" | awk '{print $3}' | head -1)
+        local mac_address=$(ip link show "$physical_interface" | grep -oP 'link/ether \K[^ ]+')
+        local link_status=$(ip link show "$physical_interface" | grep -oP 'state \K[A-Z]+')
+        echo -e "\n    \e[90m🔌 Interface :\e[0m \e[1;36m$physical_interface\e[0m \e[90m($link_status)\e[0m"
+        echo -e "    \e[90m🌐 Adresse IP :\e[0m \e[1;36m${ip_address:-Non configurée}\e[0m"
+        echo -e "    \e[90m📊 Masque :\e[0m \e[1;36m${netmask_decimal:-Non défini}\e[0m"
+        echo -e "    \e[90m🚪 Passerelle :\e[0m \e[1;36m${gateway:-Non définie}\e[0m"
+        echo -e "    \e[90m🏷️  MAC :\e[0m \e[1;36m$mac_address\e[0m"
+        local network_mode="Statique"
+        if is_dhcp_enabled "$physical_interface"; then
+            network_mode="DHCP"
+        fi
+        echo -e "    \e[90m⚙️  Mode :\e[0m \e[1;36m$network_mode\e[0m"
+    else
+        echo -e "\n    \e[1;31m❌ Aucune interface réseau physique détectée\e[0m"
+    fi
+    local ssh_status="Inactif"
+    local ssh_port="22"
+    local ssh_color="\e[1;31m"
+    if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then
+        ssh_status="Actif"
+        ssh_color="\e[1;32m"
+    fi
+    if [[ -f /etc/ssh/sshd_config ]]; then
+        ssh_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")
+    fi
+    echo -e "    \e[90m🔐 SSH :\e[0m $ssh_color$ssh_status\e[0m \e[90m(Port: $ssh_port)\e[0m"
+}

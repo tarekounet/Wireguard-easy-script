@@ -1,1 +1,26 @@
-#!/bin/bash# Fonctions de maintenance système pour admin_menu.shfull_system_update() {    # Met à jour tous les paquets installés vers les dernières versions    echo -e "\nMise à jour de tous les paquets installés..."    apt upgrade -y    echo -e "\nNettoyage des paquets inutiles..."    apt autoremove -y    if [ -f /var/run/reboot-required ]; then        echo -e "\n\e[1;33mUn redémarrage est requis pour terminer l'installation des mises à jour.\e[0m"        echo -ne "\n\e[1;33mVoulez-vous redémarrer maintenant ? [o/N] : \e[0m"        read -r REBOOT_CHOICE        if [[ "$REBOOT_CHOICE" =~ ^[oOyY]$ ]]; then            echo -e "\n\e[1;32mRedémarrage en cours...\e[0m"            sleep 2            reboot        else            echo -e "\n\e[1;32mRedémarrage ignoré.\e[0m"            read -n1 -s -r -p "Appuyez sur une touche pour continuer..."        fi    else        echo -e "\n\e[1;32mAucun redémarrage n'est requis.\e[0m"    read -n1 -s -r -p "Appuyez sur une touche pour continuer..."    fi}
+#!/bin/bash
+# Fonctions de maintenance système pour admin_menu.sh
+
+full_system_update() {
+    # Met à jour tous les paquets installés vers les dernières versions
+    echo -e "\nMise à jour de tous les paquets installés..."
+    apt upgrade -y
+    echo -e "\nNettoyage des paquets inutiles..."
+    apt autoremove -y
+    if [ -f /var/run/reboot-required ]; then
+        echo -e "\n\e[1;33mUn redémarrage est requis pour terminer l'installation des mises à jour.\e[0m"
+        echo -ne "\n\e[1;33mVoulez-vous redémarrer maintenant ? [o/N] : \e[0m"
+        read -r REBOOT_CHOICE
+        if [[ "$REBOOT_CHOICE" =~ ^[oOyY]$ ]]; then
+            echo -e "\n\e[1;32mRedémarrage en cours...\e[0m"
+            sleep 2
+            reboot
+        else
+            echo -e "\n\e[1;32mRedémarrage ignoré.\e[0m"
+            read -n1 -s -r -p "Appuyez sur une touche pour continuer..."
+        fi
+    else
+        echo -e "\n\e[1;32mAucun redémarrage n'est requis.\e[0m"
+    read -n1 -s -r -p "Appuyez sur une touche pour continuer..."
+    fi
+}

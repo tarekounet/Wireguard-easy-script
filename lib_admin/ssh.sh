@@ -1,1 +1,349 @@
-#!/bin/bash# Fonctions de gestion SSHnetwork_ssh_config_menu() {    while true; do        clear        echo -e "\e[48;5;236m\e[97m           🌐 CONFIGURATION RÉSEAU & SSH          \e[0m"        echo -e "\n\e[1;36mVeuillez choisir une option :\e[0m"        echo "1) Configurer le serveur SSH"        echo "2) Changer le port SSH"        echo "3) Fermer la session SSH actuelle"        echo "4) Activer/Désactiver le service SSH"        echo "5) Activer/Désactiver l'accès root"        echo "6) Activer/Désactiver l'authentification par mot de passe"        echo "7) Configurer les clés SSH"        echo "8) Redémarrer le service SSH"        echo "9) Retour au menu principal"        read -rp "Entrez votre choix [1-9]: " choix        case $choix in            1) configure_ssh_server ;;            2) configure_ssh_port ;;            3) close_current_ssh_session ;;            4) toggle_ssh_service ;;            5) toggle_root_login ;;            6) toggle_password_auth ;;            7) configure_ssh_keys ;;            8) restart_ssh_service ;;            9) return ;;            *) echo -e "\e[31mChoix invalide. Veuillez réessayer.\e[0m" ;;        esac    done}configure_ssh_server() {    clear    echo -e "\e[48;5;236m\e[97m           🔐 CONFIGURATION SERVEUR SSH           \e[0m"        # Vérifier si SSH est installé    if ! command -v sshd >/dev/null 2>&1; then        echo -e "\n\e[1;31m❌ Le serveur SSH n'est pas installé.\e[0m"        echo -ne "\e[1;33mInstaller le serveur SSH ? [o/N] : \e[0m"        read -r INSTALL_SSH                if [[ "$INSTALL_SSH" =~ ^[oOyY]$ ]]; then            echo -e "\e[1;33m📦 Installation du serveur SSH...\e[0m"            apt update && apt install -y openssh-server        else            return 0        fi    fi        # Afficher l'état actuel    echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL SSH  \e[0m"    local ssh_status="Inactif"    local ssh_color="\e[1;31m"        if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then        ssh_status="Actif"        ssh_color="\e[1;32m"    fi        local ssh_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")    local root_login=$(grep -oP '^PermitRootLogin \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")    local password_auth=$(grep -oP '^PasswordAuthentication \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")        echo -e "\n    \e[90m🔐 Statut :\e[0m $ssh_color$ssh_status\e[0m"    echo -e "    \e[90m🔗 Port :\e[0m \e[1;36m$ssh_port\e[0m"    echo -e "    \e[90m👤 Connexion root :\e[0m \e[1;36m$root_login\e[0m"    echo -e "    \e[90m🔑 Auth par mot de passe :\e[0m \e[1;36m$password_auth\e[0m"        echo -e "\n\e[48;5;24m\e[97m  ⚙️  OPTIONS DE CONFIGURATION  \e[0m"    echo -e "\e[90m┌─────┬─────────────────────────────────────────────────┐\e[0m"    echo -e "\e[90m│\e[0m \e[1;36m 1\e[0m  \e[90m│\e[0m \e[97mActiver/Désactiver connexion root\e[0m           \e[90m│\e[0m"    echo -e "\e[90m│\e[0m \e[1;36m 2\e[0m  \e[90m│\e[0m \e[97mActiver/Désactiver auth par mot de passe\e[0m    \e[90m│\e[0m"    echo -e "\e[90m│\e[0m \e[1;36m 3\e[0m  \e[90m│\e[0m \e[97mConfigurer les clés SSH\e[0m                    \e[90m│\e[0m"    echo -e "\e[90m│\e[0m \e[1;36m 4\e[0m  \e[90m│\e[0m \e[97mRedémarrer le service SSH\e[0m                  \e[90m│\e[0m"    echo -e "\e[90m└─────┴─────────────────────────────────────────────────┘\e[0m"        echo -ne "\n\e[1;33mChoisissez une option [1-4] ou 0 pour annuler : \e[0m"    read -r SSH_CHOICE        case $SSH_CHOICE in        1) toggle_root_login ;;        2) toggle_password_auth ;;        3) configure_ssh_keys ;;        4) restart_ssh_service ;;        0) return 0 ;;        *) echo -e "\e[1;31m✗ Choix invalide\e[0m" ;;    esac}configure_ssh_port() {    clear    echo -e "\e[48;5;236m\e[97m           🔗 CONFIGURATION PORT SSH              \e[0m"        local current_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")        echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL  \e[0m"    echo -e "\n    \e[90m🔗 Port SSH actuel :\e[0m \e[1;36m$current_port\e[0m"        echo -e "\n\e[1;33mNouveau port SSH (1-65535) :\e[0m"    echo -ne "\e[1;36m→ \e[0m"    read -r NEW_PORT        if ! validate_input "port" "$NEW_PORT"; then        echo -e "\e[1;31m✗ Port invalide\e[0m"        return 1    fi        if [[ "$NEW_PORT" == "$current_port" ]]; then        echo -e "\e[1;33m⚠️  Le port est déjà configuré sur $NEW_PORT\e[0m"        return 0    fi        echo -e "\n\e[1;31mATTENTION :\e[0m Changer le port SSH peut couper votre connexion actuelle."    echo -e "Assurez-vous de pouvoir accéder au serveur par un autre moyen."    echo -ne "\e[1;33mConfirmer le changement de port vers $NEW_PORT ? [o/N] : \e[0m"    read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then        # Backup de la configuration        cp /etc/ssh/sshd_config "/etc/ssh/sshd_config.backup-$(date +%Y%m%d-%H%M%S)"                # Modifier le port        if grep -q "^Port " /etc/ssh/sshd_config; then            sed -i "s/^Port .*/Port $NEW_PORT/" /etc/ssh/sshd_config        else            echo "Port $NEW_PORT" >> /etc/ssh/sshd_config        fi                # Tester la configuration        if sshd -t; then            echo -e "\e[1;32m✓ Configuration SSH valide\e[0m"                        # Redémarrer SSH            if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then                echo -e "\e[1;32m✓ Service SSH redémarré sur le port $NEW_PORT\e[0m"            else                echo -e "\e[1;31m✗ Erreur lors du redémarrage SSH\e[0m"            fi        else            echo -e "\e[1;31m✗ Configuration SSH invalide, restauration...\e[0m"            cp "/etc/ssh/sshd_config.backup-$(date +%Y%m%d-%H%M%S)" /etc/ssh/sshd_config        fi    else        echo -e "\e[1;33mChangement annulé.\e[0m"    fi}close_current_ssh_session() {    clear    echo -e "\e[48;5;236m\e[97m           🚪 FERMETURE SESSION SSH               \e[0m"        # Vérifier si on est bien connecté via SSH    if [[ -z "${SSH_CLIENT:-}" && -z "${SSH_TTY:-}" && -z "${SSH_CONNECTION:-}" ]]; then        echo -e "\n\e[1;33m⚠️  Vous n'êtes pas connecté via SSH.\e[0m"        echo -e "\e[1;36mCette option n'est disponible que pour les sessions SSH.\e[0m"        return 0    fi        # Afficher les informations de la session    echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS SESSION  \e[0m"    echo -e "\n    \e[90m🔗 Connexion SSH depuis :\e[0m \e[1;36m${SSH_CLIENT%% *}\e[0m"    echo -e "    \e[90m🖥️  Terminal :\e[0m \e[1;36m${SSH_TTY:-$TERM}\e[0m"    echo -e "    \e[90m👤 Utilisateur :\e[0m \e[1;36m$USER\e[0m"    echo -e "    \e[90m🔒 PID de session :\e[0m \e[1;36m$$\e[0m"        # Lister les autres sessions SSH actives    local other_sessions=$(who | grep -v "^$USER.*$(tty | sed 's|/dev/||')" | wc -l)    if [[ $other_sessions -gt 0 ]]; then        echo -e "\n\e[1;32m✅ D'autres sessions SSH sont actives ($other_sessions sessions)\e[0m"        echo -e "\e[1;36m💡 Le service SSH restera actif pour les autres utilisateurs\e[0m"    else        echo -e "\n\e[1;33m⚠️  Vous êtes la seule session SSH active\e[0m"        echo -e "\e[1;36m💡 Le service SSH restera quand même actif\e[0m"    fi        echo -e "\n\e[1;33m❓ Voulez-vous fermer cette session SSH ? [o/N] : \e[0m"    read -r CONFIRM_LOGOUT        if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then        echo -e "\n\e[1;36m👋 Fermeture de la session en cours...\e[0m"        echo -e "\e[1;32m✅ Le service SSH reste actif pour les reconnexions\e[0m"        sleep 2        # Fermer seulement cette session SSH        kill -HUP $$    else        echo -e "\n\e[1;32m✅ Session conservée\e[0m"    fi}toggle_ssh_service() {    clear    echo -e "\e[48;5;236m\e[97m           🔐 GESTION SERVICE SSH                 \e[0m"        local ssh_status="Inactif"    local ssh_color="\e[1;31m"    local ssh_service="ssh"        # Détecter le nom du service SSH    if systemctl is-active sshd >/dev/null 2>&1; then        ssh_service="sshd"        ssh_status="Actif"        ssh_color="\e[1;32m"    elif systemctl is-active ssh >/dev/null 2>&1; then        ssh_service="ssh"        ssh_status="Actif"        ssh_color="\e[1;32m"    fi        echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL  \e[0m"    echo -e "\n    \e[90m🔐 Service SSH :\e[0m $ssh_color$ssh_status\e[0m"    echo -e "    \e[90m⚙️  Service :\e[0m \e[1;36m$ssh_service\e[0m"        if [[ "$ssh_status" == "Actif" ]]; then        # Vérifier si on est connecté via SSH        if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" || -n "${SSH_CONNECTION:-}" ]]; then            echo -e "\n\e[1;31m🚨 DANGER - SESSION SSH DÉTECTÉE 🚨\e[0m"            echo -e "\e[1;33m⚠️  Vous êtes connecté via SSH depuis : ${SSH_CLIENT%% *}\e[0m"            echo -e "\e[1;31m❌ Désactiver SSH vous déconnectera IMMÉDIATEMENT !\e[0m"            echo -e "\n\e[1;36m💡 Solutions alternatives :\e[0m"            echo -e "   1. Configurer une connexion console/VNC d'abord"            echo -e "   2. Modifier seulement la configuration SSH"            echo -e "   3. Programmer un redémarrage automatique de SSH"            echo -e "\n\e[1;33mÊtes-vous ABSOLUMENT SÛR de vouloir désactiver SSH ? (tapez 'CONFIRME' en majuscules) : \e[0m"            read -r CONFIRM_DANGEROUS                        if [[ "$CONFIRM_DANGEROUS" != "CONFIRME" ]]; then                echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"                echo -e "\e[1;36m💡 Conseil : Configurez d'abord un accès alternatif (console, VNC, etc.)\e[0m"                echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"                return 0            else                echo -e "\n\e[1;31m⚠️  DERNIÈRE CHANCE : Cette action va vous déconnecter MAINTENANT !\e[0m"                echo -e "\e[1;33mTapez 'DECONNEXION' pour confirmer la désactivation : \e[0m"                read -r FINAL_CONFIRM                                if [[ "$FINAL_CONFIRM" != "DECONNEXION" ]]; then                    echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"                    echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"                    return 0                fi            fi        else            echo -e "\n\e[1;31mATTENTION :\e[0m Désactiver SSH coupera toutes les connexions SSH actuelles."            echo -ne "\e[1;33mDésactiver le service SSH ? [o/N] : \e[0m"            read -r CONFIRM                        if [[ ! "$CONFIRM" =~ ^[oOyY]$ ]]; then                return 0            fi        fi                echo -e "\n\e[1;31m⏳ Désactivation SSH dans 5 secondes...\e[0m"        echo -e "\e[1;33m   Appuyez sur Ctrl+C pour annuler !\e[0m"        sleep 5                systemctl stop "$ssh_service"        systemctl disable "$ssh_service"        echo -e "\e[1;32m✓ Service SSH désactivé\e[0m"    else        echo -ne "\n\e[1;33mActiver le service SSH ? [o/N] : \e[0m"        read -r CONFIRM                if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            systemctl enable "$ssh_service"            systemctl start "$ssh_service"            echo -e "\e[1;32m✓ Service SSH activé\e[0m"        fi    fi}# Toggle root logintoggle_root_login() {    local current_setting=$(grep -oP '^PermitRootLogin \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")        echo -e "\n\e[1;33m📊 Configuration actuelle :\e[0m PermitRootLogin $current_setting"        if [[ "$current_setting" == "yes" ]]; then        echo -ne "\e[1;33mDésactiver la connexion root via SSH ? [o/N] : \e[0m"        read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config            echo -e "\e[1;32m✓ Connexion root désactivée\e[0m"        fi    else        echo -ne "\e[1;33mActiver la connexion root via SSH ? [o/N] : \e[0m"        read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config            echo -e "\e[1;32m✓ Connexion root activée\e[0m"        fi    fi        restart_ssh_service}# Toggle password authenticationtoggle_password_auth() {    local current_setting=$(grep -oP '^PasswordAuthentication \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")        echo -e "\n\e[1;33m📊 Configuration actuelle :\e[0m PasswordAuthentication $current_setting"        if [[ "$current_setting" == "yes" ]]; then        echo -e "\e[1;31mATTENTION :\e[0m Désactiver l'authentification par mot de passe nécessite des clés SSH configurées."        echo -ne "\e[1;33mDésactiver l'authentification par mot de passe ? [o/N] : \e[0m"        read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config            echo -e "\e[1;32m✓ Authentification par mot de passe désactivée\e[0m"        fi    else        echo -ne "\e[1;33mActiver l'authentification par mot de passe ? [o/N] : \e[0m"        read -r CONFIRM        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then            sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config            echo -e "\e[1;32m✓ Authentification par mot de passe activée\e[0m"        fi    fi        restart_ssh_service}# Configure SSH keysconfigure_ssh_keys() {    echo -e "\n\e[1;33m🔑 Configuration des clés SSH\e[0m"    echo -e "Cette fonctionnalité permettra de gérer les clés SSH autorisées."    echo -e "\e[1;33mFonctionnalité en cours de développement...\e[0m"        # TODO: Implémenter la gestion des clés SSH    # - Afficher les clés autorisées    # - Ajouter une nouvelle clé    # - Supprimer une clé    # - Générer une nouvelle paire de clés}# Restart SSH servicerestart_ssh_service() {    echo -e "\n\e[1;33m🔄 Redémarrage du service SSH...\e[0m"        if systemctl restart ssh 2>/dev/null; then        echo -e "\e[1;32m✓ Service SSH redémarré (ssh)\e[0m"    elif systemctl restart sshd 2>/dev/null; then        echo -e "\e[1;32m✓ Service SSH redémarré (sshd)\e[0m"    else        echo -e "\e[1;31m✗ Erreur lors du redémarrage SSH\e[0m"    fi}
+#!/bin/bash
+# Fonctions de gestion SSH
+
+network_ssh_config_menu() {
+    while true; do
+        clear
+        echo -e "\e[48;5;236m\e[97m           🌐 CONFIGURATION RÉSEAU & SSH          \e[0m"
+        echo -e "\n\e[1;36mVeuillez choisir une option :\e[0m"
+        echo "1) Configurer le serveur SSH"
+        echo "2) Changer le port SSH"
+        echo "3) Fermer la session SSH actuelle"
+        echo "4) Activer/Désactiver le service SSH"
+        echo "5) Activer/Désactiver l'accès root"
+        echo "6) Activer/Désactiver l'authentification par mot de passe"
+        echo "7) Configurer les clés SSH"
+        echo "8) Redémarrer le service SSH"
+        echo "9) Retour au menu principal"
+        read -rp "Entrez votre choix [1-9]: " choix
+
+        case $choix in
+            1) configure_ssh_server ;;
+            2) configure_ssh_port ;;
+            3) close_current_ssh_session ;;
+            4) toggle_ssh_service ;;
+            5) toggle_root_login ;;
+            6) toggle_password_auth ;;
+            7) configure_ssh_keys ;;
+            8) restart_ssh_service ;;
+            9) return ;;
+            *) echo -e "\e[31mChoix invalide. Veuillez réessayer.\e[0m" ;;
+        esac
+    done
+}
+
+configure_ssh_server() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🔐 CONFIGURATION SERVEUR SSH           \e[0m"
+    
+    # Vérifier si SSH est installé
+    if ! command -v sshd >/dev/null 2>&1; then
+        echo -e "\n\e[1;31m❌ Le serveur SSH n'est pas installé.\e[0m"
+        echo -ne "\e[1;33mInstaller le serveur SSH ? [o/N] : \e[0m"
+        read -r INSTALL_SSH
+        
+        if [[ "$INSTALL_SSH" =~ ^[oOyY]$ ]]; then
+            echo -e "\e[1;33m📦 Installation du serveur SSH...\e[0m"
+            apt update && apt install -y openssh-server
+        else
+            return 0
+        fi
+    fi
+    
+    # Afficher l'état actuel
+    echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL SSH  \e[0m"
+    local ssh_status="Inactif"
+    local ssh_color="\e[1;31m"
+    
+    if systemctl is-active ssh >/dev/null 2>&1 || systemctl is-active sshd >/dev/null 2>&1; then
+        ssh_status="Actif"
+        ssh_color="\e[1;32m"
+    fi
+    
+    local ssh_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")
+    local root_login=$(grep -oP '^PermitRootLogin \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")
+    local password_auth=$(grep -oP '^PasswordAuthentication \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")
+    
+    echo -e "\n    \e[90m🔐 Statut :\e[0m $ssh_color$ssh_status\e[0m"
+    echo -e "    \e[90m🔗 Port :\e[0m \e[1;36m$ssh_port\e[0m"
+    echo -e "    \e[90m👤 Connexion root :\e[0m \e[1;36m$root_login\e[0m"
+    echo -e "    \e[90m🔑 Auth par mot de passe :\e[0m \e[1;36m$password_auth\e[0m"
+    
+    echo -e "\n\e[48;5;24m\e[97m  ⚙️  OPTIONS DE CONFIGURATION  \e[0m"
+    echo -e "\e[90m┌─────┬─────────────────────────────────────────────────┐\e[0m"
+    echo -e "\e[90m│\e[0m \e[1;36m 1\e[0m  \e[90m│\e[0m \e[97mActiver/Désactiver connexion root\e[0m           \e[90m│\e[0m"
+    echo -e "\e[90m│\e[0m \e[1;36m 2\e[0m  \e[90m│\e[0m \e[97mActiver/Désactiver auth par mot de passe\e[0m    \e[90m│\e[0m"
+    echo -e "\e[90m│\e[0m \e[1;36m 3\e[0m  \e[90m│\e[0m \e[97mConfigurer les clés SSH\e[0m                    \e[90m│\e[0m"
+    echo -e "\e[90m│\e[0m \e[1;36m 4\e[0m  \e[90m│\e[0m \e[97mRedémarrer le service SSH\e[0m                  \e[90m│\e[0m"
+    echo -e "\e[90m└─────┴─────────────────────────────────────────────────┘\e[0m"
+    
+    echo -ne "\n\e[1;33mChoisissez une option [1-4] ou 0 pour annuler : \e[0m"
+    read -r SSH_CHOICE
+    
+    case $SSH_CHOICE in
+        1) toggle_root_login ;;
+        2) toggle_password_auth ;;
+        3) configure_ssh_keys ;;
+        4) restart_ssh_service ;;
+        0) return 0 ;;
+        *) echo -e "\e[1;31m✗ Choix invalide\e[0m" ;;
+    esac
+}
+
+configure_ssh_port() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🔗 CONFIGURATION PORT SSH              \e[0m"
+    
+    local current_port=$(grep -oP '^Port \K[0-9]+' /etc/ssh/sshd_config 2>/dev/null || echo "22")
+    
+    echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL  \e[0m"
+    echo -e "\n    \e[90m🔗 Port SSH actuel :\e[0m \e[1;36m$current_port\e[0m"
+    
+    echo -e "\n\e[1;33mNouveau port SSH (1-65535) :\e[0m"
+    echo -ne "\e[1;36m→ \e[0m"
+    read -r NEW_PORT
+    
+    if ! validate_input "port" "$NEW_PORT"; then
+        echo -e "\e[1;31m✗ Port invalide\e[0m"
+        return 1
+    fi
+    
+    if [[ "$NEW_PORT" == "$current_port" ]]; then
+        echo -e "\e[1;33m⚠️  Le port est déjà configuré sur $NEW_PORT\e[0m"
+        return 0
+    fi
+    
+    echo -e "\n\e[1;31mATTENTION :\e[0m Changer le port SSH peut couper votre connexion actuelle."
+    echo -e "Assurez-vous de pouvoir accéder au serveur par un autre moyen."
+    echo -ne "\e[1;33mConfirmer le changement de port vers $NEW_PORT ? [o/N] : \e[0m"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+        # Backup de la configuration
+        cp /etc/ssh/sshd_config "/etc/ssh/sshd_config.backup-$(date +%Y%m%d-%H%M%S)"
+        
+        # Modifier le port
+        if grep -q "^Port " /etc/ssh/sshd_config; then
+            sed -i "s/^Port .*/Port $NEW_PORT/" /etc/ssh/sshd_config
+        else
+            echo "Port $NEW_PORT" >> /etc/ssh/sshd_config
+        fi
+        
+        # Tester la configuration
+        if sshd -t; then
+            echo -e "\e[1;32m✓ Configuration SSH valide\e[0m"
+            
+            # Redémarrer SSH
+            if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
+                echo -e "\e[1;32m✓ Service SSH redémarré sur le port $NEW_PORT\e[0m"
+            else
+                echo -e "\e[1;31m✗ Erreur lors du redémarrage SSH\e[0m"
+            fi
+        else
+            echo -e "\e[1;31m✗ Configuration SSH invalide, restauration...\e[0m"
+            cp "/etc/ssh/sshd_config.backup-$(date +%Y%m%d-%H%M%S)" /etc/ssh/sshd_config
+        fi
+    else
+        echo -e "\e[1;33mChangement annulé.\e[0m"
+    fi
+}
+
+close_current_ssh_session() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🚪 FERMETURE SESSION SSH               \e[0m"
+    
+    # Vérifier si on est bien connecté via SSH
+    if [[ -z "${SSH_CLIENT:-}" && -z "${SSH_TTY:-}" && -z "${SSH_CONNECTION:-}" ]]; then
+        echo -e "\n\e[1;33m⚠️  Vous n'êtes pas connecté via SSH.\e[0m"
+        echo -e "\e[1;36mCette option n'est disponible que pour les sessions SSH.\e[0m"
+        return 0
+    fi
+    
+    # Afficher les informations de la session
+    echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS SESSION  \e[0m"
+    echo -e "\n    \e[90m🔗 Connexion SSH depuis :\e[0m \e[1;36m${SSH_CLIENT%% *}\e[0m"
+    echo -e "    \e[90m🖥️  Terminal :\e[0m \e[1;36m${SSH_TTY:-$TERM}\e[0m"
+    echo -e "    \e[90m👤 Utilisateur :\e[0m \e[1;36m$USER\e[0m"
+    echo -e "    \e[90m🔒 PID de session :\e[0m \e[1;36m$$\e[0m"
+    
+    # Lister les autres sessions SSH actives
+    local other_sessions=$(who | grep -v "^$USER.*$(tty | sed 's|/dev/||')" | wc -l)
+    if [[ $other_sessions -gt 0 ]]; then
+        echo -e "\n\e[1;32m✅ D'autres sessions SSH sont actives ($other_sessions sessions)\e[0m"
+        echo -e "\e[1;36m💡 Le service SSH restera actif pour les autres utilisateurs\e[0m"
+    else
+        echo -e "\n\e[1;33m⚠️  Vous êtes la seule session SSH active\e[0m"
+        echo -e "\e[1;36m💡 Le service SSH restera quand même actif\e[0m"
+    fi
+    
+    echo -e "\n\e[1;33m❓ Voulez-vous fermer cette session SSH ? [o/N] : \e[0m"
+    read -r CONFIRM_LOGOUT
+    
+    if [[ "$CONFIRM_LOGOUT" =~ ^[oOyY]$ ]]; then
+        echo -e "\n\e[1;36m👋 Fermeture de la session en cours...\e[0m"
+        echo -e "\e[1;32m✅ Le service SSH reste actif pour les reconnexions\e[0m"
+        sleep 2
+        # Fermer seulement cette session SSH
+        kill -HUP $$
+    else
+        echo -e "\n\e[1;32m✅ Session conservée\e[0m"
+    fi
+}
+
+toggle_ssh_service() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🔐 GESTION SERVICE SSH                 \e[0m"
+    
+    local ssh_status="Inactif"
+    local ssh_color="\e[1;31m"
+    local ssh_service="ssh"
+    
+    # Détecter le nom du service SSH
+    if systemctl is-active sshd >/dev/null 2>&1; then
+        ssh_service="sshd"
+        ssh_status="Actif"
+        ssh_color="\e[1;32m"
+    elif systemctl is-active ssh >/dev/null 2>&1; then
+        ssh_service="ssh"
+        ssh_status="Actif"
+        ssh_color="\e[1;32m"
+    fi
+    
+    echo -e "\n\e[48;5;24m\e[97m  📊 ÉTAT ACTUEL  \e[0m"
+    echo -e "\n    \e[90m🔐 Service SSH :\e[0m $ssh_color$ssh_status\e[0m"
+    echo -e "    \e[90m⚙️  Service :\e[0m \e[1;36m$ssh_service\e[0m"
+    
+    if [[ "$ssh_status" == "Actif" ]]; then
+        # Vérifier si on est connecté via SSH
+        if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" || -n "${SSH_CONNECTION:-}" ]]; then
+            echo -e "\n\e[1;31m🚨 DANGER - SESSION SSH DÉTECTÉE 🚨\e[0m"
+            echo -e "\e[1;33m⚠️  Vous êtes connecté via SSH depuis : ${SSH_CLIENT%% *}\e[0m"
+            echo -e "\e[1;31m❌ Désactiver SSH vous déconnectera IMMÉDIATEMENT !\e[0m"
+            echo -e "\n\e[1;36m💡 Solutions alternatives :\e[0m"
+            echo -e "   1. Configurer une connexion console/VNC d'abord"
+            echo -e "   2. Modifier seulement la configuration SSH"
+            echo -e "   3. Programmer un redémarrage automatique de SSH"
+            echo -e "\n\e[1;33mÊtes-vous ABSOLUMENT SÛR de vouloir désactiver SSH ? (tapez 'CONFIRME' en majuscules) : \e[0m"
+            read -r CONFIRM_DANGEROUS
+            
+            if [[ "$CONFIRM_DANGEROUS" != "CONFIRME" ]]; then
+                echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"
+                echo -e "\e[1;36m💡 Conseil : Configurez d'abord un accès alternatif (console, VNC, etc.)\e[0m"
+                echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"
+                return 0
+            else
+                echo -e "\n\e[1;31m⚠️  DERNIÈRE CHANCE : Cette action va vous déconnecter MAINTENANT !\e[0m"
+                echo -e "\e[1;33mTapez 'DECONNEXION' pour confirmer la désactivation : \e[0m"
+                read -r FINAL_CONFIRM
+                
+                if [[ "$FINAL_CONFIRM" != "DECONNEXION" ]]; then
+                    echo -e "\e[1;32m✅ Opération annulée - SSH conservé actif\e[0m"
+                    echo -e "\e[1;33mAppuyez sur une touche pour continuer...\e[0m"
+                    return 0
+                fi
+            fi
+        else
+            echo -e "\n\e[1;31mATTENTION :\e[0m Désactiver SSH coupera toutes les connexions SSH actuelles."
+            echo -ne "\e[1;33mDésactiver le service SSH ? [o/N] : \e[0m"
+            read -r CONFIRM
+            
+            if [[ ! "$CONFIRM" =~ ^[oOyY]$ ]]; then
+                return 0
+            fi
+        fi
+        
+        echo -e "\n\e[1;31m⏳ Désactivation SSH dans 5 secondes...\e[0m"
+        echo -e "\e[1;33m   Appuyez sur Ctrl+C pour annuler !\e[0m"
+        sleep 5
+        
+        systemctl stop "$ssh_service"
+        systemctl disable "$ssh_service"
+        echo -e "\e[1;32m✓ Service SSH désactivé\e[0m"
+    else
+        echo -ne "\n\e[1;33mActiver le service SSH ? [o/N] : \e[0m"
+        read -r CONFIRM
+        
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            systemctl enable "$ssh_service"
+            systemctl start "$ssh_service"
+            echo -e "\e[1;32m✓ Service SSH activé\e[0m"
+        fi
+    fi
+}
+
+# Toggle root login
+toggle_root_login() {
+    local current_setting=$(grep -oP '^PermitRootLogin \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")
+    
+    echo -e "\n\e[1;33m📊 Configuration actuelle :\e[0m PermitRootLogin $current_setting"
+    
+    if [[ "$current_setting" == "yes" ]]; then
+        echo -ne "\e[1;33mDésactiver la connexion root via SSH ? [o/N] : \e[0m"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+            echo -e "\e[1;32m✓ Connexion root désactivée\e[0m"
+        fi
+    else
+        echo -ne "\e[1;33mActiver la connexion root via SSH ? [o/N] : \e[0m"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+            echo -e "\e[1;32m✓ Connexion root activée\e[0m"
+        fi
+    fi
+    
+    restart_ssh_service
+}
+
+# Toggle password authentication
+toggle_password_auth() {
+    local current_setting=$(grep -oP '^PasswordAuthentication \K\w+' /etc/ssh/sshd_config 2>/dev/null || echo "yes")
+    
+    echo -e "\n\e[1;33m📊 Configuration actuelle :\e[0m PasswordAuthentication $current_setting"
+    
+    if [[ "$current_setting" == "yes" ]]; then
+        echo -e "\e[1;31mATTENTION :\e[0m Désactiver l'authentification par mot de passe nécessite des clés SSH configurées."
+        echo -ne "\e[1;33mDésactiver l'authentification par mot de passe ? [o/N] : \e[0m"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+            echo -e "\e[1;32m✓ Authentification par mot de passe désactivée\e[0m"
+        fi
+    else
+        echo -ne "\e[1;33mActiver l'authentification par mot de passe ? [o/N] : \e[0m"
+        read -r CONFIRM
+        if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
+            sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+            echo -e "\e[1;32m✓ Authentification par mot de passe activée\e[0m"
+        fi
+    fi
+    
+    restart_ssh_service
+}
+
+# Configure SSH keys
+configure_ssh_keys() {
+    echo -e "\n\e[1;33m🔑 Configuration des clés SSH\e[0m"
+    echo -e "Cette fonctionnalité permettra de gérer les clés SSH autorisées."
+    echo -e "\e[1;33mFonctionnalité en cours de développement...\e[0m"
+    
+    # TODO: Implémenter la gestion des clés SSH
+    # - Afficher les clés autorisées
+    # - Ajouter une nouvelle clé
+    # - Supprimer une clé
+    # - Générer une nouvelle paire de clés
+}
+
+# Restart SSH service
+restart_ssh_service() {
+    echo -e "\n\e[1;33m🔄 Redémarrage du service SSH...\e[0m"
+    
+    if systemctl restart ssh 2>/dev/null; then
+        echo -e "\e[1;32m✓ Service SSH redémarré (ssh)\e[0m"
+    elif systemctl restart sshd 2>/dev/null; then
+        echo -e "\e[1;32m✓ Service SSH redémarré (sshd)\e[0m"
+    else
+        echo -e "\e[1;31m✗ Erreur lors du redémarrage SSH\e[0m"
+    fi
+}
