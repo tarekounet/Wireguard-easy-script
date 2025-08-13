@@ -234,6 +234,13 @@ function Start-GitWorkflow {
     
     Write-Host "`n🚀 Démarrage du workflow Git automatique..." -ForegroundColor Cyan
     
+    # Conversion en LF (format Unix) pour tous les .sh avant le commit/push
+    foreach ($folder in @('.', 'lib_admin', 'lib')) {
+        Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
+            (Get-Content $_.FullName) | Set-Content -NoNewline $_.FullName
+        }
+    }
+
     # Vérification que nous sommes dans un repo Git
     if (-not (Test-Path ".git")) {
         Write-Host "❌ Erreur : Ce dossier n'est pas un repository Git." -ForegroundColor Red
