@@ -21,6 +21,6 @@ full_system_update() {
         fi
     else
         echo -e "\n\e[1;32mAucun redémarrage n'est requis.\e[0m"
-        read -n1 -s -r -p "Appuyez sur une touche pour continuer..."
+    read -n1 -s -r -p "Appuyez sur une touche pour continuer..."
     fi
 }

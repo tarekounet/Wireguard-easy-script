@@ -25,7 +25,7 @@ auto_update_admin_menu() {
         current_version=$(head -n1 "$local_version_file" | tr -d '\n\r ')
     fi
     if [ -n "$latest_version" ] && [ "$latest_version" != "$current_version" ]; then
-    echo -e "\033[1;33mMise à jour disponible : $current_version → $latest_version\033[0m"
+        echo -e "\033[1;33m[INFO] Une nouvelle version du script est disponible : $current_version → $latest_version\033[0m"
         # Mise à jour du script principal
         if command -v curl >/dev/null 2>&1; then
             curl -fsSL "$github_script_url" -o "$0.tmp" && mv "$0.tmp" "$0" && chmod +x "$0"
@@ -43,20 +43,14 @@ auto_update_admin_menu() {
         fi
         rm -rf "$tmp_dir"
         unzip -q "$tmp_zip" -d /tmp
-        # Détection automatique du dossier extrait
-        extracted_dir=$(find /tmp -maxdepth 1 -type d -name 'Wireguard-easy-script-*' | head -1)
-        if [ -d "$extracted_dir/lib_admin" ]; then
-            rm -rf "$(dirname "$0")/lib_admin"
-            mv "$extracted_dir/lib_admin" "$(dirname "$0")/lib_admin"
-        else
-            echo -e "\e[1;31mErreur : Dossier lib_admin introuvable dans l'archive GitHub.\e[0m"
-        fi
-        rm -rf "$tmp_zip" "$extracted_dir"
+        rm -rf "$(dirname "$0")/lib_admin"
+        mv "$tmp_dir/Wireguard-easy-script-main/lib_admin" "$(dirname "$0")/lib_admin"
+        rm -rf "$tmp_zip" "$tmp_dir"
         echo "$latest_version" > "$local_version_file"
     echo -e "\033[1;32mScript et modules mis à jour. Redémarrage...\033[0m"
         exec bash "$0" "$@"
     else
-    echo -e "\033[1;32mAucune mise à jour disponible. Version actuelle : $current_version\033[0m"
+    echo -e "\033[1;36m[INFO] Vous utilisez déjà la dernière version du script ($current_version).\033[0m"
     fi
 }
 # Gestion unifiée des paquets (APT)
@@ -73,7 +67,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.18.2
+# Version: 0.18.3
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -778,18 +772,36 @@ change_hostname() {
 # Check and install Docker if needed
 check_and_install_docker() {
     clear
-    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DOCKER                 \e[0m"
-    
-    echo -e "\n\e[1;33m🔍 Vérification de l'installation Docker...\e[0m"
-    
+    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DES PRÉREQUIS SYSTÈME           \e[0m"
+
+    echo -e "\n\e[1;33m🔍 Vérification de l'installation Docker, zip et unzip...\e[0m"
+
+    # Vérifier zip
+    if ! command -v zip &>/dev/null; then
+        echo -e "\e[1;31m❌ zip n'est pas installé\e[0m"
+        echo -e "\e[1;33mInstallation de zip...\e[0m"
+        apt-get update && apt-get install -y zip
+    else
+        echo -e "\e[1;32m✓ zip est déjà installé\e[0m"
+    fi
+
+    # Vérifier unzip
+    if ! command -v unzip &>/dev/null; then
+        echo -e "\e[1;31m❌ unzip n'est pas installé\e[0m"
+        echo -e "\e[1;33mInstallation de unzip...\e[0m"
+        apt-get update && apt-get install -y unzip
+    else
+        echo -e "\e[1;32m✓ unzip est déjà installé\e[0m"
+    fi
+
     # Vérifier si Docker est installé
     if command -v docker &>/dev/null; then
         echo -e "\e[1;32m✓ Docker est déjà installé\e[0m"
-        
+
         # Vérifier si Docker Compose est installé
         if command -v docker-compose &>/dev/null || docker compose version &>/dev/null; then
             echo -e "\e[1;32m✓ Docker Compose est déjà installé\e[0m"
-            
+
             # Vérifier si le service Docker est actif
             if systemctl is-active docker &>/dev/null; then
                 echo -e "\e[1;32m✓ Service Docker est actif\e[0m"
@@ -799,7 +811,8 @@ check_and_install_docker() {
                 echo -e "\e[1;33m⚠️  Service Docker inactif, démarrage...\e[0m"
                 systemctl start docker
                 systemctl enable docker
-                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"                return 0
+                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"
+                return 0
             fi
         else
             echo -e "\e[1;33m⚠️  Docker Compose manquant, installation...\e[0m"
@@ -838,9 +851,9 @@ install_docker() {
     fi
     
     echo -e "\n\e[1;33m📝 Étape 3/8 - Installation des outils essentiels...\e[0m"
-    echo -e "\e[1;36m🔧 Installation de vim, sudo et unzip...\e[0m"
-    apt-get install -y vim sudo unzip || { echo -e "\e[1;31m❌ Échec installation outils essentiels\e[0m"; return 1; }
-    echo -e "\e[1;32m✓ vim, sudo et unzip installés\e[0m"
+    echo -e "\e[1;36m🔧 Installation de vim et sudo...\e[0m"
+    apt-get install -y vim sudo || { echo -e "\e[1;31m❌ Échec installation outils essentiels\e[0m"; return 1; }
+    echo -e "\e[1;32m✓ vim et sudo installés\e[0m"
     
     echo -e "\n\e[1;33m📝 Étape 4/8 - Installation des prérequis Docker...\e[0m"
     apt-get install -y ca-certificates curl || { echo -e "\e[1;31m❌ Échec installation prérequis\e[0m"; return 1; }
@@ -919,19 +932,7 @@ technical_admin_menu() {
         echo -e "\n\e[48;5;237m\e[97m            📊 INFORMATIONS SYSTÈME              \e[0m"
     echo -e "\n    \e[90m🖥️  Système :\e[0m \e[1;36mDebian $(cat /etc/debian_version 2>/dev/null || echo 'GNU/Linux')\e[0m"
     echo -e "    \e[90m⏱️  Uptime :\e[0m \e[1;32m$(uptime -p 2>/dev/null || echo 'Non disponible')\e[0m"
-        echo -e "    \e[90m🌐 IP actuelle :\e[0m \e[1;36m$(hostname -I | awk '{print $1}')\e[0m"
-    UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" | head -n1)
-    # Nettoyage pour éviter les retours multiples ou espaces
-    UPGRADABLE=$(echo "$UPGRADABLE" | tr -d '[:space:]')
-    # Si UPGRADABLE n'est pas un entier, on force à 0
-    if ! [[ "$UPGRADABLE" =~ ^[0-9]+$ ]]; then
-        UPGRADABLE=0
-    fi
-    if [ "$UPGRADABLE" -gt 0 ]; then
-            echo -e "    \e[1;33m⚠️  $UPGRADABLE mise(s) à jour système disponible(s)\e[0m"
-        else
-            echo -e "    \e[1;32m✓ Système à jour\e[0m"
-        fi
+    echo -e "    \e[90m🌐 IP actuelle :\e[0m \e[1;36m$(hostname -I | awk '{print $1}')\e[0m"
         echo -e "\n\e[48;5;24m\e[97m  👥 GESTION DES UTILISATEURS  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;36m 1\e[0m \e[97mGestion des utilisateurs\e[0m"
@@ -942,11 +943,7 @@ technical_admin_menu() {
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         echo -e "\n\e[48;5;22m\e[97m  🔄 MAINTENANCE SYSTÈME  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-    if [ "$UPGRADABLE" -gt 0 ]; then
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mMettre à jour le système\e[0m"
-    else
-        echo -e "\e[90m    ├─ \e[0m\e[90m 3\e[0m \e[37mMettre à jour le système (aucune MAJ)\e[0m"
-    fi
+    echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mMettre à jour le système\e[0m"
     echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mConfiguration réseau et SSH\e[0m"
     echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mChanger le nom de la machine\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
@@ -958,7 +955,7 @@ technical_admin_menu() {
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
         echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mOptions de sortie\e[0m \e[1;31m🚪\e[0m"
-        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+    echo -e "\e[90m    └─────────────────────────────────────────────────\e[0m"
     VERSION_DISPLAY=$(head -n1 version.txt 2>/dev/null | tr -d '\n\r ')
     echo -e "\n\e[90m    Tarek.E • v$VERSION_DISPLAY\e[0m"
         echo -ne "\n\e[1;33mEntrez votre choix : \e[0m"
