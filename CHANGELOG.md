@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.18.0] - 2025-08-13
+
+
+#### 🔄 Modifié
+- restructure le menu admin
+
 ### [0.17.0] - 2025-08-12
 
 
