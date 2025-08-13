@@ -216,7 +216,7 @@ function Add-ChangelogSmart {
     
     $gitWorkflow = Read-Host "`n🤖 Voulez-vous exécuter le workflow Git automatique ? (o/N)"
     if ($gitWorkflow -match '^[oO]$') {
-        Execute-GitWorkflow -version $newVersion -changelogEntries ($added + $modified + $fixed)
+        Start-GitWorkflow -version $newVersion -changelogEntries ($added + $modified + $fixed)
     } else {
         Write-Host "`n💡 Workflow Git ignoré. Vous pouvez l'exécuter manuellement plus tard." -ForegroundColor Yellow
     }
@@ -226,7 +226,7 @@ function Add-ChangelogSmart {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
-function Execute-GitWorkflow {
+function Start-GitWorkflow {
     param (
         [string]$version,
         [array]$changelogEntries
@@ -251,7 +251,7 @@ function Execute-GitWorkflow {
             
             # 2. Ajout des fichiers modifiés
             Write-Host "`n➕ Ajout des fichiers au staging..." -ForegroundColor Yellow
-            git add CHANGELOG.md version.txt admin_menu.sh config_wg.sh
+            git add .
             
             # 3. Création du commit avec message automatique
             $commitMessage = "🔖 Release v$version`n`n"
@@ -389,7 +389,7 @@ do {
             if ($currentVersion -eq "0.0.0") {
                 Write-Host "❌ Aucune version trouvée dans le changelog. Créez d'abord une entrée." -ForegroundColor Red
             } else {
-                Execute-GitWorkflow -version $currentVersion -changelogEntries @()
+                Start-GitWorkflow -version $currentVersion -changelogEntries @()
             }
         }
         "0" { Write-Host "👋 À bientôt, Tarek !" }

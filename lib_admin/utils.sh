@@ -1,0 +1,34 @@
+#!/bin/bash
+# Fonctions utilitaires pour admin_menu.sh
+
+declare -A COLORS=(
+    [RED]='\033[0;31m'
+    [GREEN]='\033[0;32m'
+    [YELLOW]='\033[1;33m'
+    [BLUE]='\033[0;34m'
+    [PURPLE]='\033[0;35m'
+    [CYAN]='\033[0;36m'
+    [WHITE]='\033[1;37m'
+    [NC]='\033[0m'
+)
+
+color() {
+    local c="$1"; shift
+    echo -e "${COLORS[$c]}$*${COLORS[NC]}"
+}
+
+error_exit() {
+    color RED "[ERROR] $1" >&2
+    exit 1
+}
+
+show_menu() {
+    local title="$1"
+    shift
+    local -n menu_options=$1
+    color BLUE "\n$title"
+    for i in "${!menu_options[@]}"; do
+        color CYAN "  $((i+1))) ${menu_options[$i]}"
+    done
+    color YELLOW "\nEntrez votre choix : "
+}

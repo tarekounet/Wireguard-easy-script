@@ -1,0 +1,128 @@
+#!/bin/bash
+# Fonctions de gestion Docker pour admin_menu.sh
+
+reset_user_docker_wireguard() {
+    clear
+    echo -e "\e[48;5;236m\e[97m           🔄 RAZ DOCKER-WIREGUARD UTILISATEUR     \e[0m"
+    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd)
+    if [[ ${#USERS[@]} -eq 0 ]]; then
+        echo -e "\n\e[1;31m❌ Aucun utilisateur trouvé\e[0m"
+        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+        return
+    fi
+    echo -e "\n\e[48;5;24m\e[97m  👥 SÉLECTION UTILISATEUR  \e[0m"
+    echo -e "\n\e[1;33mUtilisateurs disponibles :\e[0m"
+    for i in "${!USERS[@]}"; do
+        local user="${USERS[$i]}"
+        local home=$(getent passwd "$user" | cut -d: -f6)
+        local docker_wg_path="$home/docker-wireguard"
+        local status_color="\e[1;31m"
+        local status_text="❌ Inexistant"
+        if [[ -d "$docker_wg_path" ]]; then
+            local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
+            if [[ $file_count -gt 0 ]]; then
+                status_color="\e[1;32m"
+                status_text="✓ Présent ($file_count fichiers)"
+            else
+                status_color="\e[1;33m"
+                status_text="⚠️  Vide"
+            fi
+        fi
+        printf "\e[90m    ├─ \e[0m\e[97m%-15s\e[0m $status_color$status_text\e[0m\n" "$user"
+    done
+    echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+    echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mRetour au menu principal\e[0m"
+    echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+    echo -ne "\n\e[1;33mNuméro de l'utilisateur [1-${#USERS[@]}] ou 0 pour annuler : \e[0m"
+    read -r IDX
+    if [[ "$IDX" == "0" ]]; then
+        return
+    fi
+    IDX=$((IDX-1))
+    if [[ $IDX -ge 0 && $IDX -lt ${#USERS[@]} ]]; then
+        local TARGET_USER="${USERS[$IDX]}"
+        local user_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+        local docker_wg_path="$user_home/docker-wireguard"
+        clear
+        echo -e "\e[48;5;236m\e[97m           🔄 CONFIRMATION RAZ DOCKER-WIREGUARD   \e[0m"
+        echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS  \e[0m"
+        echo -e "\n    \e[90m👤 Utilisateur :\e[0m \e[1;36m$TARGET_USER\e[0m"
+        echo -e "    \e[90m📁 Répertoire :\e[0m \e[1;33m$docker_wg_path\e[0m"
+        if [[ ! -d "$docker_wg_path" ]]; then
+            echo -e "\n\e[1;31m❌ Le dossier docker-wireguard n'existe pas pour cet utilisateur\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
+        local dir_count=$(find "$docker_wg_path" -mindepth 1 -type d 2>/dev/null | wc -l)
+        echo -e "    \e[90m📄 Fichiers :\e[0m \e[1;32m$file_count\e[0m"
+        echo -e "    \e[90m📂 Dossiers :\e[0m \e[1;32m$dir_count\e[0m"
+        if [[ $file_count -eq 0 && $dir_count -eq 0 ]]; then
+            echo -e "\n\e[1;33m⚠️  Le dossier est déjà vide\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
+        echo -e "    \e[97m• Tout le contenu du dossier docker-wireguard sera supprimé\e[0m"
+        echo -e "    \e[97m• Cette action est irréversible\e[0m"
+        echo -e "    \e[97m• Les configurations WireGuard seront perdues\e[0m"
+        echo -e "\n\e[1;33mTapez exactement 'RAZ $TARGET_USER' pour confirmer :\e[0m"
+        echo -ne "\e[1;36m→ \e[0m"
+        read -r CONFIRMATION
+        if [[ "$CONFIRMATION" == "RAZ $TARGET_USER" ]]; then
+            rm -rf "$docker_wg_path"/* "$docker_wg_path"/.??* 2>/dev/null
+            echo -e "\n\e[1;32m✓ Dossier docker-wireguard réinitialisé pour $TARGET_USER\e[0m"
+        else
+            echo -e "\n\e[1;33mOpération annulée\e[0m"
+        fi
+        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+    else
+        echo -e "\n\e[1;31mSélection invalide\e[0m"
+        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+        read -n1 -s
+    fi
+}
+
+# Fonctions de gestion Docker
+check_and_install_docker() {
+    if ! command -v docker &> /dev/null; then
+        echo -e "\n\e[1;31mDocker n'est pas installé. Installation en cours...\e[0m"
+        install_docker
+    else
+        echo -e "\n\e[1;32mDocker est déjà installé.\e[0m"
+    fi
+}
+
+install_docker() {
+    # Mise à jour des paquets
+    echo -e "\n\e[1;34mMise à jour des paquets...\e[0m"
+    apt-get update -y
+
+    # Installation des paquets nécessaires
+    echo -e "\n\e[1;34mInstallation des paquets nécessaires...\e[0m"
+    apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+
+    # Ajout de la clé GPG de Docker
+    echo -e "\n\e[1;34mAjout de la clé GPG de Docker...\e[0m"
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+    # Ajout du dépôt Docker
+    echo -e "\n\e[1;34mAjout du dépôt Docker...\e[0m"
+    add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+
+    # Installation de Docker
+    echo -e "\n\e[1;34mInstallation de Docker...\e[0m"
+    apt-get update -y
+    apt-get install -y docker-ce
+
+    # Vérification de l'installation
+    if command -v docker &> /dev/null; then
+        echo -e "\n\e[1;32mDocker installé avec succès.\e[0m"
+    else
+        echo -e "\n\e[1;31mÉchec de l'installation de Docker.\e[0m"
+    fi
+}
