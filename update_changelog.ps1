@@ -237,7 +237,7 @@ function Start-GitWorkflow {
     # Conversion en LF (format Unix) pour tous les .sh avant le commit/push
     foreach ($folder in @('.', 'lib_admin', 'lib')) {
         Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
-            (Get-Content $_.FullName) | Set-Content -NoNewline $_.FullName
+            (Get-Content $_.FullName) | Set-Content $_.FullName
         }
     }
 
