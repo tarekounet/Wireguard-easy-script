@@ -8,8 +8,18 @@ source "$(dirname "$0")/lib_admin/network.sh"
 source "$(dirname "$0")/lib_admin/maintenance.sh"
 source "$(dirname "$0")/lib_admin/docker.sh"
 source "$(dirname "$0")/lib_admin/utils.sh"
+VERSION_LOCAL="$(head -n1 version.txt | tr -d '\n\r ')"
 # Fonction de mise à jour automatique du script principal
 auto_update_admin_menu() {
+        # Synchronisation directe de version.txt et admin_menu.sh
+        for f in version.txt admin_menu.sh; do
+            url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/$f"
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsSL "$url" -o "$(dirname "$0")/$f"
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q "$url" -O "$(dirname "$0")/$f"
+            fi
+        done
     local github_script_url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh"
     local github_libadmin_url="https://github.com/tarekounet/Wireguard-easy-script/archive/refs/heads/main.zip"
     local local_version_file="version.txt"
@@ -20,10 +30,7 @@ auto_update_admin_menu() {
     elif command -v wget >/dev/null 2>&1; then
         latest_version=$(wget -qO- "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt" | head -n1 | tr -d '\n\r ')
     fi
-    local current_version=""
-    if [ -f "$local_version_file" ]; then
-        current_version=$(head -n1 "$local_version_file" | tr -d '\n\r ')
-    fi
+    local current_version="$VERSION_LOCAL"
     if [ -n "$latest_version" ] && [ "$latest_version" != "$current_version" ]; then
         echo -e "\033[1;33m[INFO] Une nouvelle version du script est disponible : $current_version → $latest_version\033[0m"
         # Mise à jour du script principal
@@ -32,20 +39,19 @@ auto_update_admin_menu() {
         elif command -v wget >/dev/null 2>&1; then
             wget -q "$github_script_url" -O "$0.tmp" && mv "$0.tmp" "$0" && chmod +x "$0"
         fi
-        # Synchronisation complète du dossier lib_admin
-    echo -e "\033[1;33mSynchronisation du dossier lib_admin...\033[0m"
-        tmp_zip="/tmp/wg-easy-main.zip"
-        tmp_dir="/tmp/wg-easy-main"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL "$github_libadmin_url" -o "$tmp_zip"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q "$github_libadmin_url" -O "$tmp_zip"
-        fi
-        rm -rf "$tmp_dir"
-        unzip -q "$tmp_zip" -d /tmp
-        rm -rf "$(dirname "$0")/lib_admin"
-        mv "$tmp_dir/Wireguard-easy-script-main/lib_admin" "$(dirname "$0")/lib_admin"
-        rm -rf "$tmp_zip" "$tmp_dir"
+        # Synchronisation directe des fichiers du dossier lib_admin
+        echo -e "\033[1;33mSynchronisation du dossier lib_admin...\033[0m"
+        local lib_admin_files=(ssh.sh user_management.sh power.sh user.sh network.sh maintenance.sh docker.sh utils.sh)
+        local lib_admin_dir="$(dirname "$0")/lib_admin"
+        mkdir -p "$lib_admin_dir"
+        for f in "${lib_admin_files[@]}"; do
+            url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib_admin/$f"
+            if command -v curl >/dev/null 2>&1; then
+                curl -fsSL "$url" -o "$lib_admin_dir/$f"
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q "$url" -O "$lib_admin_dir/$f"
+            fi
+        done
         echo "$latest_version" > "$local_version_file"
     echo -e "\033[1;32mScript et modules mis à jour. Redémarrage...\033[0m"
         exec bash "$0" "$@"
@@ -67,7 +73,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.18.3
+# Version: 0.18.4
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
