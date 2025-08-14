@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.20.6] - 2025-08-14
+
+
+#### 🐛 Corrigé
+- correction du sript power.sh
+
 ### [0.20.5] - 2025-08-14
 
 

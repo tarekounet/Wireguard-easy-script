@@ -1,3 +1,9 @@
+# Définition des couleurs ANSI
+YELLOW="\033[1;33m"
+WHITE="\033[1;37m"
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+NC="\033[0m"
 #!/bin/bash
 # Fonctions de planification et gestion alimentation pour admin_menu.sh
 
