@@ -171,8 +171,21 @@ show_scheduled_tasks() {
     fi
     
     echo -e "\n${WHITE}Tâches cron système :${NC}"
-    crontab -l 2>/dev/null | head -10 || echo "Aucune tâche cron utilisateur"
+        local cron_tasks=$(crontab -l 2>/dev/null)
+        if [ -n "$cron_tasks" ]; then
+            echo "$cron_tasks" | head -10
+        else
+            echo -e "${GREEN}Aucune tâche cron utilisateur programmée${NC}"
+        fi
     
     echo -e "\n${WHITE}Timers systemd actifs :${NC}"
-    systemctl list-timers --no-pager | head -10
+        local timers=$(systemctl list-timers --no-pager | head -10)
+        if [ -n "$timers" ]; then
+            echo "$timers"
+        else
+            echo -e "${GREEN}Aucun timer systemd actif${NC}"
+        fi
+
+        echo -e "\n${YELLOW}Appuyez sur une touche pour revenir au menu...${NC}"
+        read -n 1 -r
 }

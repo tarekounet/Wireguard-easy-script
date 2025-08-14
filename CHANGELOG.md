@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.20.7] - 2025-08-14
+
+
+#### 🐛 Corrigé
+- affichage des tâche programmé
+
 ### [0.20.6] - 2025-08-14
 
 
