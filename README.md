@@ -74,6 +74,18 @@ chmod +x admin_menu.sh
 sudo ./admin_menu.sh
 ```
 
+## Installation manuelle
+
+Téléchargez le script principal et le dossier de modules :
+
+```bash
+wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh
+mkdir -p lib_admin
+for f in ssh.sh user_management.sh power.sh user.sh network.sh maintenance.sh docker.sh utils.sh; do \
+  wget https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib_admin/$f -O lib_admin/$f; \
+done
+```
+
 ### Installation complète depuis le repository
 
 ```bash
