@@ -158,8 +158,15 @@ function Add-ChangelogSmart {
     # Écriture du nouveau contenu
     $newContent | Set-Content $changelogPath
 
+    # Conversion LF automatique
+    Convert-ToLF $changelogPath
+    Convert-ToLF "version.txt"
+    Convert-ToLF "admin_menu.sh"
+    Convert-ToLF "config_wg.sh"
+
     # Mise à jour du fichier version.txt
     $newVersion | Set-Content "version.txt"
+    Convert-ToLF "version.txt"
 
     # Mise à jour de admin_menu.sh
     if (Test-Path "admin_menu.sh") {
@@ -181,6 +188,7 @@ function Add-ChangelogSmart {
         
         if ($updated) {
             $adminContent | Set-Content "admin_menu.sh"
+            Convert-ToLF "admin_menu.sh"
             Write-Host "📝 Fichier admin_menu.sh mis à jour" -ForegroundColor Green
         }
     }
@@ -201,6 +209,7 @@ function Add-ChangelogSmart {
         
         if ($updated) {
             $configContent | Set-Content "config_wg.sh"
+            Convert-ToLF "config_wg.sh"
             Write-Host "📝 Fichier config_wg.sh mis à jour" -ForegroundColor Green
         }
     }
@@ -411,3 +420,23 @@ do {
         default { Write-Host "❌ Choix invalide. Réessaie." }
     }
 } while ($choice -ne "0")
+
+function Convert-ToLF {
+    param (
+        [string]$FilePath
+    )
+    $dos2unix = $null
+    # Chemin prioritaire pour Windows/Git Bash
+    if (Test-Path 'C:/Program Files/Git/usr/bin/dos2unix.exe') {
+        $dos2unix = 'C:/Program Files/Git/usr/bin/dos2unix.exe'
+    } elseif (Get-Command dos2unix -ErrorAction SilentlyContinue) {
+        $dos2unix = 'dos2unix'
+    } elseif (Test-Path 'C:/Program Files/Git/usr/bin/dos2unix') {
+        $dos2unix = 'C:/Program Files/Git/usr/bin/dos2unix'
+    }
+    if ($dos2unix) {
+        & $dos2unix $FilePath
+    } else {
+        Write-Warning "dos2unix n'est pas installé ou introuvable. Conversion LF ignorée."
+    }
+}
