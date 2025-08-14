@@ -48,7 +48,7 @@ export GITHUB_REPO
 export BRANCH
 
 # Version par défaut pour fallback
-readonly DEFAULT_VERSION="0.20.7"
+readonly DEFAULT_VERSION="0.21.0"
 
 ##############################
 #   FONCTIONS UTILITAIRES    #

@@ -1,5 +1,15 @@
 # 📦 Wireguard Easy Script
 
+### [0.21.0] - 2025-08-14
+
+
+#### 🔄 Modifié
+- modification visuel du menu RAZ docker
+
+#### 🐛 Corrigé
+- creation d'un utilisateur menu pour créer absent
+- problème de correspondense pour le mot de passe
+
 ### [0.20.7] - 2025-08-14
 
 
