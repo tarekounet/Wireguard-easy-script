@@ -73,7 +73,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.18.4
+# Version: 0.19.0
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -916,6 +916,7 @@ install_docker() {
 source "$(dirname "$0")/lib_admin/power.sh"
 echo -e "\e[1;33mVérification de la version du script...\e[0m"
 local_version="$(head -n1 version.txt 2>/dev/null | tr -d '\n\r ')"
+# Vérification de la connexion Internet avant la mise à jour
 if ping -c 1 -W 1 github.com >/dev/null 2>&1; then
     github_version="$(curl -fsSL --connect-timeout 5 https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt | head -n1 | tr -d '\n\r ')"
     echo -e "\e[1;36mVersion locale : $local_version\e[0m"
@@ -923,7 +924,7 @@ if ping -c 1 -W 1 github.com >/dev/null 2>&1; then
     sleep 1
     auto_update_admin_menu "$@"
 else
-    echo -e "\e[1;33mConnexion Internet indisponible : vérification de mise à jour ignorée.\e[0m"
+    echo -e "\e[1;33mConnexion Internet indisponible : étape de mise à jour ignorée.\e[0m"
     sleep 1
 fi
 echo -e "\e[1;33mVérification des prérequis système...\e[0m"
