@@ -55,47 +55,118 @@ power_management_menu() {
 }
 
 immediate_reboot() {
-    echo -ne "\n\e[1;33mConfirmer le redémarrage ? [o/N] : \e[0m"
+    clear
+    echo -e "${COLORS[RED]}═══ REDÉMARRAGE IMMÉDIAT ═══${COLORS[NC]}"
+    echo -e "${COLORS[RED]}ATTENTION : Le système va redémarrer immédiatement !${COLORS[NC]}"
+    echo -ne "${COLORS[WHITE]}Confirmer le redémarrage ? [o/N] : ${COLORS[NC]}"
     read -r CONFIRM
+    
     if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-        echo -e "\n\e[1;33mRedémarrage en cours...\e[0m"
-        sudo reboot
+    echo -e "${COLORS[RED]}Redémarrage en cours...${COLORS[NC]}"
+        shutdown -r now
     else
-        echo -e "\n\e[1;33mRedémarrage annulé.\e[0m"
+    echo -e "${COLORS[YELLOW]}Redémarrage annulé.${COLORS[NC]}"
     fi
 }
 
+# Immediate shutdown
 immediate_shutdown() {
-    echo -ne "\n\e[1;33mConfirmer l'arrêt du système ? [o/N] : \e[0m"
+    clear
+    echo -e "${COLORS[RED]}═══ ARRÊT IMMÉDIAT ═══${COLORS[NC]}"
+    echo -e "${COLORS[RED]}ATTENTION : Le système va s'arrêter immédiatement !${COLORS[NC]}"
+    echo -ne "${COLORS[WHITE]}Confirmer l'arrêt ? [o/N] : ${COLORS[NC]}"
     read -r CONFIRM
+    
     if [[ "$CONFIRM" =~ ^[oOyY]$ ]]; then
-        echo -e "\n\e[1;33mArrêt en cours...\e[0m"
-        sudo shutdown now
+    echo -e "${COLORS[RED]}Arrêt en cours...${COLORS[NC]}"
+        shutdown -h now
     else
-        echo -e "\n\e[1;33mArrêt annulé.\e[0m"
+    echo -e "${COLORS[YELLOW]}Arrêt annulé.${COLORS[NC]}"
     fi
 }
 
+# Schedule reboot
 schedule_reboot() {
-    echo -ne "\n\e[1;33mEntrez l'heure du redémarrage (HH:MM) : \e[0m"
-    read -r REBOOT_TIME
-    sudo shutdown -r "$REBOOT_TIME"
-    echo -e "\n\e[1;32mRedémarrage programmé à $REBOOT_TIME.\e[0m"
+    clear
+    echo -e "${YELLOW}═══ PROGRAMMER UN REDÉMARRAGE ═══${NC}"
+    echo -e "${WHITE}Formats acceptés :${NC}"
+    echo -e "  - +X (dans X minutes)"
+    echo -e "  - HH:MM (heure spécifique)"
+    echo -e "  - now (immédiatement)"
+    echo -ne "${WHITE}Quand redémarrer ? : ${NC}"
+    read -r WHEN
+    
+    if [[ -n "$WHEN" ]]; then
+        echo -ne "${WHITE}Message optionnel : ${NC}"
+        read -r MESSAGE
+        
+        if [[ -n "$MESSAGE" ]]; then
+            shutdown -r "$WHEN" "$MESSAGE"
+        else
+            shutdown -r "$WHEN"
+        fi
+        
+        echo -e "${GREEN}✓ Redémarrage programmé${NC}"
+    else
+        echo -e "${RED}Heure invalide.${NC}"
+    fi
 }
 
+# Schedule shutdown
 schedule_shutdown() {
-    echo -ne "\n\e[1;33mEntrez l'heure de l'arrêt (HH:MM) : \e[0m"
-    read -r SHUTDOWN_TIME
-    sudo shutdown -h "$SHUTDOWN_TIME"
-    echo -e "\n\e[1;32mArrêt programmé à $SHUTDOWN_TIME.\e[0m"
+    clear
+    echo -e "${YELLOW}═══ PROGRAMMER UN ARRÊT ═══${NC}"
+    echo -e "${WHITE}Formats acceptés :${NC}"
+    echo -e "  - +X (dans X minutes)"
+    echo -e "  - HH:MM (heure spécifique)"
+    echo -e "  - now (immédiatement)"
+    echo -ne "${WHITE}Quand arrêter ? : ${NC}"
+    read -r WHEN
+    
+    if [[ -n "$WHEN" ]]; then
+        echo -ne "${WHITE}Message optionnel : ${NC}"
+        read -r MESSAGE
+        
+        if [[ -n "$MESSAGE" ]]; then
+            shutdown -h "$WHEN" "$MESSAGE"
+        else
+            shutdown -h "$WHEN"
+        fi
+        
+        echo -e "${GREEN}✓ Arrêt programmé${NC}"
+    else
+        echo -e "${RED}Heure invalide.${NC}"
+    fi
 }
 
+# Cancel scheduled task
 cancel_scheduled_task() {
-    sudo killall at
-    echo -e "\n\e[1;32mToutes les tâches programmées ont été annulées.\e[0m"
+    clear
+    echo -e "${YELLOW}═══ ANNULER UNE PROGRAMMATION ═══${NC}"
+    
+    if shutdown -c 2>/dev/null; then
+        echo -e "${GREEN}✓ Tâche programmée annulée${NC}"
+    else
+        echo -e "${RED}Aucune tâche programmée ou erreur lors de l'annulation${NC}"
+    fi
 }
 
+# Show scheduled tasks
 show_scheduled_tasks() {
-    echo -e "\n\e[1;34mTâches programmées :\e[0m"
-    atq
+    clear
+    echo -e "${YELLOW}═══ TÂCHES PROGRAMMÉES ═══${NC}"
+    
+    echo -e "${WHITE}Tâches shutdown/reboot :${NC}"
+    if pgrep shutdown &>/dev/null; then
+        echo -e "${YELLOW}Une tâche shutdown est active${NC}"
+        ps aux | grep shutdown | grep -v grep
+    else
+        echo -e "${GREEN}Aucune tâche shutdown programmée${NC}"
+    fi
+    
+    echo -e "\n${WHITE}Tâches cron système :${NC}"
+    crontab -l 2>/dev/null | head -10 || echo "Aucune tâche cron utilisateur"
+    
+    echo -e "\n${WHITE}Timers systemd actifs :${NC}"
+    systemctl list-timers --no-pager | head -10
 }

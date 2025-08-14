@@ -1,6 +1,27 @@
-﻿# ===============================
+﻿
+# ===============================
 # 📦 WireGuard Easy – Changelog Generator
 # ===============================
+
+function Convert-ToLF {
+    param (
+        [string]$FilePath
+    )
+    $dos2unix = $null
+    # Chemin prioritaire pour Windows/Git Bash
+    if (Test-Path 'C:/Program Files/Git/usr/bin/dos2unix.exe') {
+        $dos2unix = 'C:/Program Files/Git/usr/bin/dos2unix.exe'
+    } elseif (Get-Command dos2unix -ErrorAction SilentlyContinue) {
+        $dos2unix = 'dos2unix'
+    } elseif (Test-Path 'C:/Program Files/Git/usr/bin/dos2unix') {
+        $dos2unix = 'C:/Program Files/Git/usr/bin/dos2unix'
+    }
+    if ($dos2unix) {
+        & $dos2unix $FilePath
+    } else {
+        Write-Warning "dos2unix n'est pas installé ou introuvable. Conversion LF ignorée."
+    }
+}
 
 function Get-LastVersion {
     $changelogPath = "CHANGELOG.md"

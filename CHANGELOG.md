@@ -1,5 +1,12 @@
 # 📦 Wireguard Easy Script
 
+### [0.20.0] - 2025-08-14
+
+
+#### 🔄 Modifié
+- nettoyage du script admin
+- Suppression des fonctions en doublon
+
 ### [0.19.0] - 2025-08-14
 
 

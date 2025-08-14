@@ -5,30 +5,43 @@ network_ssh_config_menu() {
     while true; do
         clear
         echo -e "\e[48;5;236m\e[97m           🌐 CONFIGURATION RÉSEAU & SSH          \e[0m"
-        echo -e "\n\e[1;36mVeuillez choisir une option :\e[0m"
-        echo "1) Configurer le serveur SSH"
-        echo "2) Changer le port SSH"
-        echo "3) Fermer la session SSH actuelle"
-        echo "4) Activer/Désactiver le service SSH"
-        echo "5) Activer/Désactiver l'accès root"
-        echo "6) Activer/Désactiver l'authentification par mot de passe"
-        echo "7) Configurer les clés SSH"
-        echo "8) Redémarrer le service SSH"
-        echo "9) Retour au menu principal"
-        read -rp "Entrez votre choix [1-9]: " choix
-
-        case $choix in
-            1) configure_ssh_server ;;
-            2) configure_ssh_port ;;
-            3) close_current_ssh_session ;;
-            4) toggle_ssh_service ;;
-            5) toggle_root_login ;;
-            6) toggle_password_auth ;;
-            7) configure_ssh_keys ;;
-            8) restart_ssh_service ;;
-            9) return ;;
-            *) echo -e "\e[31mChoix invalide. Veuillez réessayer.\e[0m" ;;
+        
+        # Affichage des informations réseau actuelles
+        echo -e "\n\e[48;5;237m\e[97m            📊 ÉTAT ACTUEL DU RÉSEAU             \e[0m"
+        display_current_network_info
+        
+        echo -e "\n\e[48;5;24m\e[97m  🔧 OPTIONS DE CONFIGURATION  \e[0m"
+        echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 1\e[0m \e[97mConfigurer l'adresse IP\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 2\e[0m \e[97mChanger le mode réseau (DHCP/Statique)\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 3\e[0m \e[97mConfigurer le serveur SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 4\e[0m \e[97mModifier le port SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 5\e[0m \e[97mActiver/Désactiver SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 6\e[0m \e[97mFermer cette session SSH\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 7\e[0m \e[97mRedémarrer les services réseau\e[0m"
+        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+        
+        echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mRetour au menu principal\e[0m"
+        echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
+        
+        echo -ne "\n\e[1;33mEntrez votre choix : \e[0m"
+        read -r NET_CHOICE
+        
+        case $NET_CHOICE in
+            1) configure_ip_address ;;
+            2) configure_network_mode ;;
+            3) configure_ssh_server ;;
+            4) configure_ssh_port ;;
+            5) toggle_ssh_service ;;
+            6) close_current_ssh_session ;;
+            7) restart_network_services ;;
+            0) break ;;
+            *)
+                echo -e "\e[1;31mChoix invalide.\e[0m"                ;;
         esac
+        
+    # ...rien à afficher ici...
     done
 }
 
