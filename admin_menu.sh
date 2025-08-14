@@ -1,3 +1,33 @@
+# Fonction de comparaison et mise à jour automatique au lancement
+
+auto_update_if_needed() {
+    local local_version="$(head -n1 version.txt 2>/dev/null | tr -d '\n\r ')"
+    local github_version=""
+    if ping -c 1 -W 1 github.com >/dev/null 2>&1; then
+        github_version="$(curl -fsSL --connect-timeout 5 https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt | head -n1 | tr -d '\n\r ')"
+        if [ -n "$github_version" ] && [ "$github_version" != "$local_version" ]; then
+            echo -e "\033[1;33mMise à jour disponible : $local_version → $github_version\033[0m"
+            # Téléchargement du script principal
+            curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/admin_menu.sh" -o "$(dirname "$0")/admin_menu.sh"
+            # Synchronisation complète du dossier lib_admin
+            local lib_admin_files=(ssh.sh user_management.sh power.sh user.sh network.sh maintenance.sh docker.sh utils.sh)
+            local lib_admin_dir="$(dirname "$0")/lib_admin"
+            mkdir -p "$lib_admin_dir"
+            for f in "${lib_admin_files[@]}"; do
+                curl -fsSL "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib_admin/$f" -o "$lib_admin_dir/$f"
+            done
+            # Mise à jour du fichier version.txt à la fin
+            echo "$github_version" > "version.txt"
+            echo -e "\033[1;32mMise à jour effectuée. Redémarrage du script...\033[0m"
+            exec bash "$0" "$@"
+        fi
+    else
+        echo -e "\033[1;33mConnexion Internet indisponible : étape de mise à jour ignorée.\033[0m"
+    fi
+}
+
+# Appel de la fonction de mise à jour automatique au lancement
+auto_update_if_needed "$@"
 #!/bin/bash
 # Sourcing de tous les modules
 source "$(dirname "$0")/lib_admin/ssh.sh"
@@ -9,44 +39,7 @@ source "$(dirname "$0")/lib_admin/maintenance.sh"
 source "$(dirname "$0")/lib_admin/docker.sh"
 source "$(dirname "$0")/lib_admin/utils.sh"
 # Fonction de mise à jour automatique du script principal
-auto_update_admin_menu() {
-    # Téléchargement du script principal et du fichier version.txt
-    for f in admin_menu.sh version.txt; do
-        url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/$f"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL "$url" -o "$(dirname "$0")/$f"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q "$url" -O "$(dirname "$0")/$f"
-        fi
-    done
 
-    # Synchronisation complète du dossier lib_admin
-    echo -e "\033[1;33mSynchronisation du dossier lib_admin...\033[0m"
-    local lib_admin_files=(ssh.sh user_management.sh power.sh user.sh network.sh maintenance.sh docker.sh utils.sh)
-    local lib_admin_dir="$(dirname "$0")/lib_admin"
-    mkdir -p "$lib_admin_dir"
-    for f in "${lib_admin_files[@]}"; do
-        url="https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/lib_admin/$f"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL "$url" -o "$lib_admin_dir/$f"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q "$url" -O "$lib_admin_dir/$f"
-        fi
-    done
-    # Mise à jour du fichier version.txt avec la version distante
-    local latest_version=""
-    if command -v curl >/dev/null 2>&1; then
-        latest_version=$(curl -fsSL --connect-timeout 5 "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt" | head -n1 | tr -d '\n\r ')
-    elif command -v wget >/dev/null 2>&1; then
-        latest_version=$(wget -qO- "https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt" | head -n1 | tr -d '\n\r ')
-    fi
-    if [ -n "$latest_version" ]; then
-        echo "$latest_version" > "version.txt"
-    fi
-
-    echo -e "\033[1;32mScript et modules mis à jour. Redémarrage...\033[0m"
-    exec bash "$0" "$@"
-}
 # Gestion unifiée des paquets (APT)
 execute_package_cmd() {
     local action="$1"
@@ -61,7 +54,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.20.4
+
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
@@ -71,21 +64,7 @@ set -euo pipefail
 
 
 
-# Vérification et affichage des versions locale et distante avant toute mise à jour
-local_version="$(head -n1 version.txt 2>/dev/null | tr -d '\n\r ')"
-if ping -c 1 -W 1 github.com >/dev/null 2>&1; then
-    github_version="$(curl -fsSL --connect-timeout 5 https://raw.githubusercontent.com/tarekounet/Wireguard-easy-script/main/version.txt | head -n1 | tr -d '\n\r ')"
-    echo -e "\e[1;36mVersion locale : $local_version\e[0m"
-    echo -e "\e[1;36mVersion disponible sur GitHub : $github_version\e[0m"
-    sleep 1
-    if [ -n "$github_version" ] && [ "$github_version" != "$local_version" ]; then
-        auto_update_admin_menu "$@"
-        exit 0
-    fi
-else
-    echo -e "\e[1;33mConnexion Internet indisponible : étape de mise à jour ignorée.\e[0m"
-    sleep 1
-fi
+
 
 # ═══════════════════════════════════════════════════════════════
 echo -e "\e[1;33mVérification des prérequis système...\e[0m"
