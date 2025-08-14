@@ -73,7 +73,7 @@ execute_package_cmd() {
     esac
 }
 # Advanced Technical Administration Menu for Wireguard Environment
-# Version: 0.20.0
+# Version: 0.20.1
 # Author: Tarek.E
 # Project: Wireguard Easy Script
 # Repository: https://github.com/tarekounet/Wireguard-easy-script
