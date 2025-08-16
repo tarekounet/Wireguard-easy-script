@@ -86,7 +86,7 @@ technical_admin_menu() {
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         echo -e "\n\e[48;5;94m\e[97m  🐳 GESTION DOCKER  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-        echo -e "\e[90m    ├─ \e[0m\e[1;36m 2\e[0m \e[97mRAZ Docker-WireGuard utilisateur\e[0m"
+        echo -e "\e[90m    ├─ \e[0m\e[1;36m 2\e[0m \e[97mRAZ Docker-WireGuard\e[0m"
         echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
         echo -e "\n\e[48;5;22m\e[97m  🔄 MAINTENANCE SYSTÈME  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"

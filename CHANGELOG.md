@@ -1,5 +1,18 @@
 # 📦 Wireguard Easy Script
 
+### [0.22.0] - 2025-08-16
+
+#### ✅ Ajouté
+- Détection d'une instance Docker : si oui, arrêter le processus avant de supprimer l'utilisateur
+
+#### 🔄 Modifié
+- modification de la phrase pour supprimer RAZ docker-wireguard
+- le menu RAZ n'affichera que les profils avec docker configuré
+- modif sur le récapitulatif quand on crée un utilisateur on pourra changer le nom avant de valider
+
+#### 🐛 Corrigé
+- correction du menu GESTION ALIMENTATION
+
 ### [0.21.0] - 2025-08-14
 
 

@@ -170,7 +170,6 @@ display_container_info() {
         echo -e "\e[48;5;235m\e[97m           ⚠️  CONFIGURATION REQUISE             \e[0m"
 
         echo -e "\n    \e[1;43m\e[30m ! CONFIG \e[0m \e[97mLe serveur Wireguard n'est pas encore configuré\e[0m"
-        echo -e "    \e[90m📝 Utilisez l'option de configuration pour commencer\e[0m"
     fi
     
     # Export pour les autres fonctions
@@ -255,7 +254,7 @@ build_initial_menu() {
 
     separators_ref+=(0)
     titles_ref+=("🛠️ CONFIGURATION INITIALE")
-    labels_ref+=("Créer la configuration Wireguard" "Voir le changelog")
+    labels_ref+=("Initialiser la configuration de Wireguard" "Voir le changelog")
     actions_ref+=("configure_values" "show_changelog")
 }
 
@@ -345,6 +344,7 @@ handle_user_choice() {
     if [[ "$CHOICE" == "0" ]]; then
         clear
         echo -e "\e[1;32mAu revoir ! 👋\e[0m"
+        echo -e "\e[1;33mFermeture du script...\e[0m"
         exit 0
     elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#MENU_ACTIONS[@]}" ]]; then
         local action="${MENU_ACTIONS[$((CHOICE-1))]}"

@@ -42,23 +42,31 @@ create_technical_user() {
         fi
         
         echo -e "\e[1;32m✓ Nom d'utilisateur valide : $NEWUSER\e[0m"
-        echo -e "\n\e[1;33mConfirmer ce nom d'utilisateur ? [o/N/retour] : \e[0m"
-        read -r CONFIRM_USER
-        
-        case "$CONFIRM_USER" in
-            [oOyY])
-                break
-                ;;
-            [rR]|retour)
-                continue
-                ;;
-            *)
-                echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
-                echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-                read -n1 -s
-                return
-                ;;
-        esac
+        while true; do
+            echo -e "\n\e[1;33mQue souhaitez-vous faire ?\e[0m"
+            echo -e "\e[90m[1]\e[0m Valider ce nom"
+            echo -e "\e[90m[2]\e[0m Modifier le nom d'utilisateur"
+            echo -e "\e[90m[0]\e[0m Annuler la création"
+            echo -ne "\n\e[1;33mVotre choix : \e[0m"
+            read -r CHOICE_USER
+            case "$CHOICE_USER" in
+                1)
+                    break 2
+                    ;;
+                2)
+                    continue 1
+                    ;;
+                0)
+                    echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
+                    echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+                    read -n1 -s
+                    return
+                    ;;
+                *)
+                    echo -e "\e[1;31mChoix invalide.\e[0m"
+                    ;;
+            esac
+        done
     done
     
     # Étape 2: Mot de passe
@@ -119,17 +127,18 @@ create_technical_user() {
                     
                     echo -e "\n\e[1;33mOptions disponibles :\e[0m"
                     echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;32m C\e[0m \e[97mCréer l'utilisateur\e[0m"
+                    echo -e "\e[90m    ├─ \e[0m\e[1;32m V\e[0m \e[97mValider l'utilisateur\e[0m"
+                    echo -e "\e[90m    ├─ \e[0m\e[1;36m N\e[0m \e[97mModifier le nom d'utilisateur\e[0m"
                     echo -e "\e[90m    ├─ \e[0m\e[1;33m R\e[0m \e[97mRevenir au mot de passe\e[0m"
                     echo -e "\e[90m    ├─ \e[0m\e[1;31m A\e[0m \e[97mAnnuler complètement\e[0m"
                     echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
                     
-                    echo -ne "\n\e[1;33mVotre choix [C/R/A] : \e[0m"
+                    echo -ne "\n\e[1;33mVotre choix [V/N/R/A] : \e[0m"
                     read -r FINAL_CHOICE
                     
                     case "$FINAL_CHOICE" in
-                        [cC])
-                            # Création de l'utilisateur
+                        [vV])
+                            # Validation de l'utilisateur
                             echo -e "\n\e[1;33m🔄 Création de l'utilisateur en cours...\e[0m"
                             
                             if useradd -m -s /bin/bash -G docker "$NEWUSER" 2>/dev/null; then

@@ -4,44 +4,44 @@
 reset_user_docker_wireguard() {
     clear
     echo -e "\e[48;5;236m\e[97m           🔄 RAZ DOCKER-WIREGUARD UTILISATEUR     \e[0m"
-    mapfile -t USERS < <(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd)
-    if [[ ${#USERS[@]} -eq 0 ]]; then
-        echo -e "\n\e[1;31m❌ Aucun utilisateur trouvé\e[0m"
+    # Filtrer uniquement les utilisateurs avec un dossier docker-wireguard non vide
+    local FILTERED_USERS=()
+    local USER_DISPLAY=()
+    local idx=1
+    for user in $(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd); do
+        local home=$(getent passwd "$user" | cut -d: -f6)
+        local docker_wg_path="$home/docker-wireguard"
+        if [[ -d "$docker_wg_path" ]] && [[ $(find "$docker_wg_path" -type f 2>/dev/null | wc -l) -gt 0 ]]; then
+            local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
+            FILTERED_USERS+=("$user")
+            USER_DISPLAY+=("\e[90m│\e[0m [\e[1;36m$idx\e[0m] \e[97m$user\e[0m  \e[1;32m✓ docker-wireguard ($file_count fichiers)\e[0m")
+            idx=$((idx+1))
+        fi
+    done
+    if [[ ${#FILTERED_USERS[@]} -eq 0 ]]; then
+        echo -e "\n\e[1;31m❌ Aucun utilisateur avec docker-wireguard configuré\e[0m"
         echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
         read -n1 -s
         return
     fi
     echo -e "\n\e[48;5;24m\e[97m  👥 SÉLECTION UTILISATEUR  \e[0m"
-    echo -e "\n\e[1;33mUtilisateurs disponibles :\e[0m"
-    for i in "${!USERS[@]}"; do
-        local user="${USERS[$i]}"
-        local home=$(getent passwd "$user" | cut -d: -f6)
-        local docker_wg_path="$home/docker-wireguard"
-        local status_color="\e[1;31m"
-        local status_text="❌ Inexistant"
-        if [[ -d "$docker_wg_path" ]]; then
-            local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
-            if [[ $file_count -gt 0 ]]; then
-                status_color="\e[1;32m"
-                status_text="✓ Présent ($file_count fichiers)"
-            else
-                status_color="\e[1;33m"
-                status_text="⚠️  Vide"
-            fi
-        fi
-        printf "\e[90m    ├─ \e[0m\e[97m%-15s\e[0m $status_color$status_text\e[0m\n" "$user"
+    echo -e "\e[90m┌─────────────────────────────────────────────────────────────┐\e[0m"
+    for line in "${USER_DISPLAY[@]}"; do
+        echo -e "$line"
     done
-    echo -e "\n\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-    echo -e "\e[90m    ├─ \e[0m\e[1;31m 0\e[0m \e[97mRetour au menu principal\e[0m"
-    echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
-    echo -ne "\n\e[1;33mNuméro de l'utilisateur [1-${#USERS[@]}] ou 0 pour annuler : \e[0m"
+    echo -e "\e[90m└─────────────────────────────────────────────────────────────┘\e[0m"
+    echo -e "\n\e[48;5;22m\e[97m  🔧 ACTIONS DISPONIBLES  \e[0m"
+    echo -e "\e[90m┌─────────────────────────────────────────────────────────────┐\e[0m"
+    echo -e "\e[90m│\e[0m \e[1;31m0\e[0m Retour au menu principal"
+    echo -e "\e[90m└─────────────────────────────────────────────────────────────┘\e[0m"
+    echo -ne "\n\e[1;33mNuméro de l'utilisateur [1-${#FILTERED_USERS[@]}] ou 0 pour annuler : \e[0m"
     read -r IDX
     if [[ "$IDX" == "0" ]]; then
         return
     fi
     IDX=$((IDX-1))
-    if [[ $IDX -ge 0 && $IDX -lt ${#USERS[@]} ]]; then
-        local TARGET_USER="${USERS[$IDX]}"
+    if [[ $IDX -ge 0 && $IDX -lt ${#FILTERED_USERS[@]} ]]; then
+        local TARGET_USER="${FILTERED_USERS[$IDX]}"
         local user_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
         local docker_wg_path="$user_home/docker-wireguard"
         clear
@@ -69,10 +69,16 @@ reset_user_docker_wireguard() {
         echo -e "    \e[97m• Tout le contenu du dossier docker-wireguard sera supprimé\e[0m"
         echo -e "    \e[97m• Cette action est irréversible\e[0m"
         echo -e "    \e[97m• Les configurations WireGuard seront perdues\e[0m"
-        echo -e "\n\e[1;33mTapez exactement 'RAZ $TARGET_USER' pour confirmer :\e[0m"
-        echo -ne "\e[1;36m→ \e[0m"
-        read -r CONFIRMATION
-        if [[ "$CONFIRMATION" == "RAZ $TARGET_USER" ]]; then
+    echo -e "\n\e[1;33mTapez exactement 'RAZ WIREGUARD' pour confirmer :\e[0m"
+    echo -ne "\e[1;36m→ \e[0m"
+    read -r CONFIRMATION
+    if [[ "$CONFIRMATION" == "RAZ WIREGUARD" ]]; then
+            # Détection et arrêt du conteneur wg-easy si actif
+            if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
+                echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
+                docker stop wg-easy
+                echo -e "\e[1;32m✓ Conteneur wg-easy arrêté\e[0m"
+            fi
             rm -rf "$docker_wg_path"/* "$docker_wg_path"/.??* 2>/dev/null
             echo -e "\n\e[1;32m✓ Dossier docker-wireguard réinitialisé pour $TARGET_USER\e[0m"
         else
