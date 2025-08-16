@@ -150,7 +150,7 @@ technical_admin_menu() {
                             kill -9 $PPID
                         else
                             echo -e "\e[1;32mFermeture de la session locale...\e[0m"
-                            exit
+                            kill -9 $PPID
                         fi
                         ;;
                     0)

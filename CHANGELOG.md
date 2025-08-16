@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.23.2] - 2025-08-16
+
+
+#### 🐛 Corrigé
+- fermeture de session local
+
 ### [0.23.1] - 2025-08-16
 
 
