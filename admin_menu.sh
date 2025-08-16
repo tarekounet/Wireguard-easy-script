@@ -78,7 +78,15 @@ technical_admin_menu() {
         echo -e "\e[48;5;236m\e[97m                                                    \e[0m"
         echo -e "\n\e[48;5;237m\e[97m            📊 INFORMATIONS SYSTÈME              \e[0m"
     echo -e "\n    \e[90m🖥️  Système :\e[0m \e[1;36mDebian $(cat /etc/debian_version 2>/dev/null || echo 'GNU/Linux')\e[0m"
-    echo -e "    \e[90m⏱️  Uptime :\e[0m \e[1;32m$(uptime -p 2>/dev/null || echo 'Non disponible')\e[0m"
+    # Traduction uptime en français
+    RAW_UPTIME=$(uptime -p 2>/dev/null || echo 'Non disponible')
+    FR_UPTIME="$RAW_UPTIME"
+    FR_UPTIME=${FR_UPTIME//hours/heure}
+    FR_UPTIME=${FR_UPTIME//hour/heure}
+    FR_UPTIME=${FR_UPTIME//minutes/minute}
+    FR_UPTIME=${FR_UPTIME//minute/minute}
+    FR_UPTIME=${FR_UPTIME//,/, }
+    echo -e "    \e[90m⏱️ Actif depuis :\e[0m \e[1;32m$FR_UPTIME\e[0m"
     echo -e "    \e[90m🌐 IP actuelle :\e[0m \e[1;36m$(hostname -I | awk '{print $1}')\e[0m"
         echo -e "\n\e[48;5;24m\e[97m  👥 GESTION DES UTILISATEURS  \e[0m"
         echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
@@ -139,9 +147,10 @@ technical_admin_menu() {
                         if [[ -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" || -n "${SSH_CONNECTION:-}" ]]; then
                             echo -e "\e[1;32mFermeture de la session SSH...\e[0m"
                             sleep 1
-                            kill -HUP $$
+                            kill -9 $PPID
                         else
-                            echo -e "\e[1;31mVous n'êtes pas en session SSH.\e[0m"
+                            echo -e "\e[1;32mFermeture de la session locale...\e[0m"
+                            exit
                         fi
                         ;;
                     0)

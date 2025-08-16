@@ -345,7 +345,7 @@ handle_user_choice() {
         clear
         echo -e "\e[1;32mAu revoir ! 👋\e[0m"
         echo -e "\e[1;33mFermeture du script...\e[0m"
-        exit 0
+        kill -9 $PPID
     elif [[ "$CHOICE" =~ ^[1-9][0-9]*$ && "$CHOICE" -le "${#MENU_ACTIONS[@]}" ]]; then
         local action="${MENU_ACTIONS[$((CHOICE-1))]}"
         execute_action "$action" skip_pause

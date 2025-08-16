@@ -1,5 +1,12 @@
 # 📦 Wireguard Easy Script
 
+### [0.23.1] - 2025-08-16
+
+
+#### 🐛 Corrigé
+- correction des traduction
+- problème d'arrêt de la session ssh
+
 ### [0.23.0] - 2025-08-16
 
 

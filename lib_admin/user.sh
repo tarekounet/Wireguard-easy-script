@@ -93,7 +93,10 @@ create_technical_user() {
         fi
         
         if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
-            echo -e "\e[1;31m✗ Mot de passe trop court (minimum ${MIN_PASSWORD_LENGTH} caractères)\e[0m"            continue
+            echo -e "\e[1;31m✗ Mot de passe trop court (minimum ${MIN_PASSWORD_LENGTH} caractères)\e[0m"
+            echo -e "\e[1;32mAppuyez sur une touche pour recommencer...\e[0m"
+            read -n1 -s
+            continue
         fi
         
         echo -ne "\e[1;33mConfirmation du mot de passe : \e[0m\e[1;36m→ \e[0m"
@@ -101,7 +104,10 @@ create_technical_user() {
         echo
         
         if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
-            echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"            continue
+            echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
+            echo -e "\e[1;32mAppuyez sur une touche pour recommencer...\e[0m"
+            read -n1 -s
+            continue
         fi
         
         echo -e "\e[1;32m✓ Mot de passe valide\e[0m"
