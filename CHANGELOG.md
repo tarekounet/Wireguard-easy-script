@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.23.0] - 2025-08-16
+
+
+#### 🔄 Modifié
+- modification de d'etape 3 pour la création d'un utilisateur
+
 ### [0.22.0] - 2025-08-16
 
 #### ✅ Ajouté

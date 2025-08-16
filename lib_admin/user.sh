@@ -127,10 +127,10 @@ create_technical_user() {
                     
                     echo -e "\n\e[1;33mOptions disponibles :\e[0m"
                     echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;32m V\e[0m \e[97mValider l'utilisateur\e[0m"
+                    echo -e "\e[90m    ├─ \e[0m\e[1;32m V\e[0m \e[97mValider\e[0m"
                     echo -e "\e[90m    ├─ \e[0m\e[1;36m N\e[0m \e[97mModifier le nom d'utilisateur\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;33m R\e[0m \e[97mRevenir au mot de passe\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;31m A\e[0m \e[97mAnnuler complètement\e[0m"
+                    echo -e "\e[90m    ├─ \e[0m\e[1;33m R\e[0m \e[97mModifier le mot de passe\e[0m"
+                    echo -e "\e[90m    ├─ \e[0m\e[1;31m A\e[0m \e[97mAnnuler\e[0m"
                     echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
                     
                     echo -ne "\n\e[1;33mVotre choix [V/N/R/A] : \e[0m"
