@@ -3,6 +3,18 @@ MIN_PASSWORD_LENGTH=8
 #!/bin/bash
 # Fonctions de gestion des utilisateurs
 
+check_human_users() {
+    local count=$(awk -F: '($3>=1000)&&($1!~/^(root|nobody|systemd|sshd|www-data|backup|games|mail|news|uucp|proxy|bin|daemon|lp|sync|list|ftp|_.*)$/){print $1}' /etc/passwd | wc -l)
+    if [[ "$count" -eq 0 ]]; then
+        echo -e "\e[1;33mAucun utilisateur humain n'existe sur ce système.\e[0m"
+        echo -ne "\e[1;32mVoulez-vous en créer un maintenant ? [o/N] : \e[0m"
+        read -r CREATE_USER
+        if [[ "$CREATE_USER" =~ ^[oOyY]$ ]]; then
+            create_technical_user
+        fi
+    fi
+}
+
 create_technical_user() {
     clear
     echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
