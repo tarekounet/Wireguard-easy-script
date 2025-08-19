@@ -9,8 +9,11 @@ check_human_users() {
         clear
         echo -e "\e[48;5;24m\e[97m  👥 GESTION DES UTILISATEURS  \e[0m"
         echo -e "\n\e[1;31m❌ Aucun utilisateur humain trouvé.\e[0m"
-        echo -e "\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
+        echo -e "\e[1;32mVoulez-vous ajouter un utilisateur ? [o/N] : \e[0m"
+        read -r REP
+        if [[ "$REP" =~ ^[oOyY]$ ]]; then
+            create_technical_user
+        fi
         return 1
     fi
 }
