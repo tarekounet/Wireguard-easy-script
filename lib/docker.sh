@@ -105,9 +105,6 @@ configure_values() {
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
 services:
   wg-easy:
-    environment:
-      - PORT=51821
-      - INSECURE=true
     image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION}
     container_name: wg-easy
     networks:

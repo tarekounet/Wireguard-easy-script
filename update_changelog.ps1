@@ -3,6 +3,9 @@
 # 📦 WireGuard Easy – Changelog Generator
 # ===============================
 
+# Définir le répertoire racine du script pour forcer tous les accès aux fichiers
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
+
 function Convert-ToLF {
     param (
         [string]$FilePath
@@ -24,12 +27,12 @@ function Convert-ToLF {
 }
 
 function Get-LastVersion {
-    $changelogPath = "CHANGELOG.md"
+    $changelogPath = Join-Path $ScriptRoot "CHANGELOG.md"
     if (-not (Test-Path $changelogPath)) {
         return "0.0.0"
     }
 
-    $content = Get-Content $changelogPath
+    $content = Get-Content -LiteralPath $changelogPath
     foreach ($line in $content) {
         if ($line -match '### \[(\d+\.\d+\.\d+)\]') {
             return $matches[1]
@@ -70,7 +73,7 @@ function Update-Version {
 }
 
 function Add-ChangelogSmart {
-    $changelogPath = "CHANGELOG.md"
+    $changelogPath = Join-Path $ScriptRoot "CHANGELOG.md"
     $date = Get-Date -Format "yyyy-MM-dd"
     $lastVersion = Get-LastVersion
 
@@ -136,11 +139,11 @@ function Add-ChangelogSmart {
     # Création du fichier si nécessaire
     if (-not (Test-Path $changelogPath)) {
         New-Item -Path $changelogPath -ItemType File -Force | Out-Null
-        Add-Content $changelogPath "# 📦 WireGuard Easy Script – Changelog`n"
+        Add-Content -LiteralPath $changelogPath "# 📦 WireGuard Easy Script – Changelog`n"
     }
 
     # Lecture du contenu existant
-    $existingContent = Get-Content $changelogPath
+    $existingContent = Get-Content -LiteralPath $changelogPath
 
     # Préparation du nouveau contenu
     $newEntry = @()
@@ -177,21 +180,22 @@ function Add-ChangelogSmart {
     $newContent += $existingContent[$insertIndex..($existingContent.Length-1)]
 
     # Écriture du nouveau contenu
-    $newContent | Set-Content $changelogPath
+    $newContent | Set-Content -LiteralPath $changelogPath
 
     # Conversion LF automatique
     Convert-ToLF $changelogPath
-    Convert-ToLF "version.txt"
-    Convert-ToLF "admin_menu.sh"
-    Convert-ToLF "config_wg.sh"
+    Convert-ToLF (Join-Path $ScriptRoot "version.txt")
+    Convert-ToLF (Join-Path $ScriptRoot "admin_menu.sh")
+    Convert-ToLF (Join-Path $ScriptRoot "config_wg.sh")
 
     # Mise à jour du fichier version.txt
-    $newVersion | Set-Content "version.txt"
-    Convert-ToLF "version.txt"
+    $newVersion | Set-Content -LiteralPath (Join-Path $ScriptRoot "version.txt")
+    Convert-ToLF (Join-Path $ScriptRoot "version.txt")
 
     # Mise à jour de admin_menu.sh
-    if (Test-Path "admin_menu.sh") {
-        $adminContent = Get-Content "admin_menu.sh"
+    $adminPath = Join-Path $ScriptRoot "admin_menu.sh"
+    if (Test-Path $adminPath) {
+        $adminContent = Get-Content -LiteralPath $adminPath
         $updated = $false
         
         for ($i = 0; $i -lt $adminContent.Length; $i++) {
@@ -208,15 +212,16 @@ function Add-ChangelogSmart {
         }
         
         if ($updated) {
-            $adminContent | Set-Content "admin_menu.sh"
-            Convert-ToLF "admin_menu.sh"
+            $adminContent | Set-Content -LiteralPath $adminPath
+            Convert-ToLF $adminPath
             Write-Host "📝 Fichier admin_menu.sh mis à jour" -ForegroundColor Green
         }
     }
 
     # Mise à jour de config_wg.sh
-    if (Test-Path "config_wg.sh") {
-        $configContent = Get-Content "config_wg.sh"
+    $configPath = Join-Path $ScriptRoot "config_wg.sh"
+    if (Test-Path $configPath) {
+        $configContent = Get-Content -LiteralPath $configPath
         $updated = $false
         
         for ($i = 0; $i -lt $configContent.Length; $i++) {
@@ -229,8 +234,8 @@ function Add-ChangelogSmart {
         }
         
         if ($updated) {
-            $configContent | Set-Content "config_wg.sh"
-            Convert-ToLF "config_wg.sh"
+            $configContent | Set-Content -LiteralPath $configPath
+            Convert-ToLF $configPath
             Write-Host "📝 Fichier config_wg.sh mis à jour" -ForegroundColor Green
         }
     }
@@ -265,27 +270,32 @@ function Start-GitWorkflow {
     Write-Host "`n🚀 Démarrage du workflow Git automatique..." -ForegroundColor Cyan
     
     # Conversion en LF (format Unix) pour tous les .sh avant le commit/push
+    # Conversion en LF (format Unix) pour tous les .sh avant le commit/push (dans le répertoire du script)
     if (Get-Command bash -ErrorAction SilentlyContinue) {
-        bash -c "find . -type f -name '*.sh' -exec dos2unix {} \;"
+        & bash -c "find '$ScriptRoot' -type f -name '*.sh' -exec dos2unix {} \;"
     } else {
-        foreach ($folder in @('.', 'lib_admin', 'lib')) {
-            Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
-                if (Get-Command dos2unix -ErrorAction SilentlyContinue) {
-                    dos2unix $_.FullName
-                } else {
-                    (Get-Content $_.FullName) | Set-Content $_.FullName
+        foreach ($folder in @(Join-Path $ScriptRoot '.', Join-Path $ScriptRoot 'lib_admin', Join-Path $ScriptRoot 'lib')) {
+            if (Test-Path $folder) {
+                Get-ChildItem -Path $folder -Recurse -Filter *.sh | ForEach-Object {
+                    if (Get-Command dos2unix -ErrorAction SilentlyContinue) {
+                        dos2unix $_.FullName
+                    } else {
+                        (Get-Content -LiteralPath $_.FullName) | Set-Content -LiteralPath $_.FullName
+                    }
                 }
             }
         }
     }
 
     # Vérification que nous sommes dans un repo Git
-    if (-not (Test-Path ".git")) {
-        Write-Host "❌ Erreur : Ce dossier n'est pas un repository Git." -ForegroundColor Red
-        return
-    }
-    
+    # Exécuter les commandes Git dans le dossier du script
+    Push-Location $ScriptRoot
     try {
+        if (-not (Test-Path ".git")) {
+            Write-Host "❌ Erreur : Ce dossier n'est pas un repository Git." -ForegroundColor Red
+            return
+        }
+
         # 1. Vérification du statut Git
         Write-Host "`n📋 Vérification du statut Git..." -ForegroundColor Yellow
         $gitStatus = git status --porcelain
@@ -342,8 +352,8 @@ function Start-GitWorkflow {
             throw "Erreur lors de la création du tag"
         }
         
-        # 5. Push vers le repository
-        Write-Host "`n📤 Push vers le repository..." -ForegroundColor Yellow
+    # 5. Push vers le repository
+    Write-Host "`n📤 Push vers le repository..." -ForegroundColor Yellow
         
         # Push des commits
         git push origin main
@@ -380,6 +390,8 @@ function Start-GitWorkflow {
         Write-Host "   git tag -a v$version -m `"Release v$version`"" -ForegroundColor Gray
         Write-Host "   git push origin main" -ForegroundColor Gray
         Write-Host "   git push origin v$version" -ForegroundColor Gray
+    } finally {
+        Pop-Location
     }
 }
 
@@ -388,9 +400,11 @@ function Show-Menu {
     
     # Récupération des informations
     $currentVersion = Get-LastVersion
-    $versionFile = if (Test-Path "version.txt") { Get-Content "version.txt" -First 1 } else { "Non trouvé" }
-    $changelogExists = Test-Path "CHANGELOG.md"
-    $lastModified = if ($changelogExists) { (Get-Item "CHANGELOG.md").LastWriteTime.ToString("dd/MM/yyyy HH:mm") } else { "N/A" }
+    $versionFilePath = Join-Path $ScriptRoot "version.txt"
+    $versionFile = if (Test-Path $versionFilePath) { Get-Content -LiteralPath $versionFilePath -First 1 } else { "Non trouvé" }
+    $changelogPath = Join-Path $ScriptRoot "CHANGELOG.md"
+    $changelogExists = Test-Path $changelogPath
+    $lastModified = if ($changelogExists) { (Get-Item $changelogPath).LastWriteTime.ToString("dd/MM/yyyy HH:mm") } else { "N/A" }
     
     Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║          📦 WireGuard Easy – Générateur de Changelog      ║" -ForegroundColor Cyan

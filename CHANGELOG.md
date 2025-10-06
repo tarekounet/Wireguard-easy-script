@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.25.0] - 2025-10-06
+
+
+#### 🔄 Modifié
+- modif du fichier docker compose
+
 ### [0.24.3] - 2025-08-19
 
 
