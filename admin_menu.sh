@@ -1,3 +1,4 @@
+#!/bin/bash
 # Fonction de comparaison et mise à jour automatique au lancement
 
 auto_update_if_needed() {
@@ -28,7 +29,6 @@ auto_update_if_needed() {
 
 # Appel de la fonction de mise à jour automatique au lancement
 auto_update_if_needed "$@"
-#!/bin/bash
 # Sourcing de tous les modules
 source "$(dirname "$0")/lib_admin/ssh.sh"
 source "$(dirname "$0")/lib_admin/user_management.sh"
@@ -41,6 +41,19 @@ source "$(dirname "$0")/lib_admin/utils.sh"
 # Fonction de mise à jour automatique du script principal
 
 # Gestion unifiée des paquets (APT)
+set -euo pipefail
+
+
+
+
+
+# ═══════════════════════════════════════════════════════════════
+echo -e "\e[1;33mVérification des prérequis système...\e[0m"
+if ! check_and_install_docker; then
+    echo -e "\n\e[1;31mErreur : Docker requis mais non disponible. Arrêt du script.\e[0m"
+    exit 1
+fi
+sleep 2
 execute_package_cmd() {
     local action="$1"
     shift

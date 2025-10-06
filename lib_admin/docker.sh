@@ -49,93 +49,93 @@ reset_user_docker_wireguard() {
         echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS  \e[0m"
         echo -e "\n    \e[90m👤 Utilisateur :\e[0m \e[1;36m$TARGET_USER\e[0m"
         echo -e "    \e[90m📁 Répertoire :\e[0m \e[1;33m$docker_wg_path\e[0m"
+        if [[ ! -d "$docker_wg_path" ]]; then
+            echo -e "\n\e[1;31m❌ Le dossier docker-wireguard n'existe pas pour cet utilisateur\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
+        local dir_count=$(find "$docker_wg_path" -mindepth 1 -type d 2>/dev/null | wc -l)
+        echo -e "    \e[90m📄 Fichiers :\e[0m \e[1;32m$file_count\e[0m"
+        echo -e "    \e[90m📂 Dossiers :\e[0m \e[1;32m$dir_count\e[0m"
+        if [[ $file_count -eq 0 && $dir_count -eq 0 ]]; then
+            echo -e "\n\e[1;33m⚠️  Le dossier est déjà vide\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
+        echo -e "    \e[97m• Le volume Docker 'docker-wireguard_etc_wireguard' sera supprimé\e[0m"
+        echo -e "    \e[97m• Le dossier local docker-wireguard NE SERA PAS supprimé\e[0m"
+        echo -e "    \e[97m• Cette action est irréversible et les configurations WireGuard stockées dans le volume seront perdues\e[0m"
+        echo -e "\n\e[1;33mTapez exactement 'RAZ WIREGUARD' pour confirmer :\e[0m"
+        echo -ne "\e[1;36m→ \e[0m"
+        read -r CONFIRMATION
         if [[ "$CONFIRMATION" == "RAZ WIREGUARD" ]]; then
-                # Vérifier la présence de Docker
-                if ! command -v docker &>/dev/null; then
-                    echo -e "\n\e[1;31m❌ Docker n'est pas disponible sur ce système. Impossible de gérer les conteneurs/volumes.\e[0m"
+            # Vérifier la présence de Docker
+            if ! command -v docker &>/dev/null; then
+                echo -e "\n\e[1;31m❌ Docker n'est pas disponible sur ce système. Impossible de gérer les conteneurs/volumes.\e[0m"
+            else
+                # 1) Si un fichier docker-compose existe, tenter docker compose down dans le répertoire
+                compose_file=""
+                for f in "$docker_wg_path/docker-compose.yml" "$docker_wg_path/docker-compose.yaml"; do
+                    if [[ -f "$f" ]]; then
+                        compose_file="$f"
+                        break
+                    fi
+                done
+
+                if [[ -n "$compose_file" ]]; then
+                    echo -e "\n\e[1;33mFichier compose détecté: $compose_file. Arrêt de la stack (docker compose down)...\e[0m"
+                    pushd "$docker_wg_path" >/dev/null 2>&1 || true
+                    if docker compose version >/dev/null 2>&1; then
+                        docker compose down || true
+                    else
+                        docker-compose down || true
+                    fi
+                    popd >/dev/null 2>&1 || true
                 else
-                    # 1) Si un fichier docker-compose existe, tenter docker compose down dans le répertoire
-                    compose_file=""
-                    for f in "$docker_wg_path/docker-compose.yml" "$docker_wg_path/docker-compose.yaml"; do
-                        if [[ -f "$f" ]]; then
-                            compose_file="$f"
-                            break
-                        fi
-                    done
-
-                    if [[ -n "$compose_file" ]]; then
-                        echo -e "\n\e[1;33mFichier compose détecté: $compose_file. Arrêt de la stack (docker compose down)...\e[0m"
-                        pushd "$docker_wg_path" >/dev/null 2>&1 || true
-                        if docker compose version >/dev/null 2>&1; then
-                            docker compose down || true
-                        else
-                            docker-compose down || true
-                        fi
-                        popd >/dev/null 2>&1 || true
-                    else
-                        # fallback: arrêter wg-easy si présent
-                        if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
-                            echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
-                            docker stop wg-easy >/dev/null 2>&1 || true
-                        fi
-                    fi
-
-                    # 2) Détecter et forcer la suppression des conteneurs qui montent le volume
-                    blockers=()
-                    for cid in $(docker ps -aq); do
-                        mounts=$(docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "$cid" 2>/dev/null || echo "")
-                        if echo "$mounts" | grep -qw 'docker-wireguard_etc_wireguard'; then
-                            blockers+=("$cid")
-                        fi
-                    done
-
-                    if [[ ${#blockers[@]} -gt 0 ]]; then
-                        echo -e "\n\e[1;33mSuppression forcée des conteneurs qui utilisent le volume...\e[0m"
-                        for cid in "${blockers[@]}"; do
-                            name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\\///')
-                            echo -e "  - Suppression $name ($cid)"
-                            docker rm -f "$cid" >/dev/null 2>&1 && echo -e "    \e[1;32m✓ $name supprimé\e[0m" || echo -e "    \e[1;31m⚠️  Échec suppression $name ($cid)\e[0m"
-                        done
-                    else
-                        echo -e "\n\e[1;33mAucun conteneur ne semble utiliser le volume (ou déjà arrêté).\e[0m"
-                    fi
-
-                    # 3) Supprimer le volume
-                    if docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
-                        echo -e "\n\e[1;33mSuppression du volume Docker 'docker-wireguard_etc_wireguard'...\e[0m"
-                        if docker volume rm docker-wireguard_etc_wireguard; then
-                            echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
-                        else
-                            echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume après tentative automatique. Supprimez manuellement : docker volume rm docker-wireguard_etc_wireguard\e[0m"
-                        fi
-                    else
-                        echo -e "\n\e[1;33mℹ️  Volume 'docker-wireguard_etc_wireguard' introuvable, rien à supprimer\e[0m"
+                    # fallback: arrêter wg-easy si présent
+                    if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
+                        echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
+                        docker stop wg-easy >/dev/null 2>&1 || true
                     fi
                 fi
-                echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué pour $TARGET_USER (opérations automatiques exécutées)\e[0m"
-            else
-                echo -e "\n\e[1;33mOpération annulée\e[0m"
-            fi
-                                    echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
-                                else
-                                    echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume après suppression des conteneurs. Supprimez manuellement avec : docker volume rm docker-wireguard_etc_wireguard\e[0m"
-                                fi
-                            else
-                                echo -e "\n\e[1;33mOpération annulée par l'utilisateur. Vous pouvez supprimer manuellement le(s) conteneur(s) ou le volume.\e[0m"
-                                echo -e "\e[1;33mCommandes utiles :\e[0m"
-                                echo -e "  docker ps -a --no-trunc | grep <container-id>" 
-                                echo -e "  docker rm -f <container-id>" 
-                                echo -e "  docker volume rm docker-wireguard_etc_wireguard"
-                            fi
-                        else
-                            echo -e "\n\e[1;31m⚠️  Aucune référence trouvée aux conteneurs, mais la suppression a échoué. Vous pouvez tenter manuellement : docker volume rm docker-wireguard_etc_wireguard\e[0m"
-                        fi
+
+                # 2) Détecter et forcer la suppression des conteneurs qui montent le volume
+                blockers=()
+                for cid in $(docker ps -aq); do
+                    mounts=$(docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "$cid" 2>/dev/null || echo "")
+                    if echo "$mounts" | grep -qw 'docker-wireguard_etc_wireguard'; then
+                        blockers+=("$cid")
+                    fi
+                done
+
+                if [[ ${#blockers[@]} -gt 0 ]]; then
+                    echo -e "\n\e[1;33mSuppression forcée des conteneurs qui utilisent le volume...\e[0m"
+                    for cid in "${blockers[@]}"; do
+                        name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\\///')
+                        echo -e "  - Suppression $name ($cid)"
+                        docker rm -f "$cid" >/dev/null 2>&1 && echo -e "    \e[1;32m✓ $name supprimé\e[0m" || echo -e "    \e[1;31m⚠️  Échec suppression $name ($cid)\e[0m"
+                    done
+                else
+                    echo -e "\n\e[1;33mAucun conteneur ne semble utiliser le volume (ou déjà arrêté).\e[0m"
+                fi
+
+                # 3) Supprimer le volume
+                if docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
+                    echo -e "\n\e[1;33mSuppression du volume Docker 'docker-wireguard_etc_wireguard'...\e[0m"
+                    if docker volume rm docker-wireguard_etc_wireguard; then
+                        echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
+                    else
+                        echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume après tentative automatique. Supprimez manuellement : docker volume rm docker-wireguard_etc_wireguard\e[0m"
                     fi
                 else
                     echo -e "\n\e[1;33mℹ️  Volume 'docker-wireguard_etc_wireguard' introuvable, rien à supprimer\e[0m"
                 fi
             fi
-            echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué pour $TARGET_USER (volume supprimé si présent)\e[0m"
+            echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué pour $TARGET_USER (opérations automatiques exécutées)\e[0m"
         else
             echo -e "\n\e[1;33mOpération annulée\e[0m"
         fi
