@@ -1,6 +1,6 @@
+#!/bin/bash
 # Valeur minimale pour la longueur du mot de passe
 MIN_PASSWORD_LENGTH=8
-#!/bin/bash
 # Fonctions de gestion des utilisateurs
 
 check_human_users() {
@@ -19,209 +19,148 @@ check_human_users() {
 }
 
 create_technical_user() {
+    # Réinitialisation des variables locales
+    local NEWUSER=""
+    local NEWPASS=""
+
     clear
     echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
-    
-    echo -e "\n\e[48;5;24m\e[97m  📝 INFORMATIONS UTILISATEUR  \e[0m"
-    
-    # Étape 1: Nom d'utilisateur
-    local NEWUSER=""
+
+    # --- Étape 1 : nom d'utilisateur ---
     while true; do
-        clear
-        echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
         echo -e "\n\e[48;5;24m\e[97m  📝 ÉTAPE 1/3 - NOM D'UTILISATEUR  \e[0m"
-        
-        echo -e "\n\e[1;33mNom d'utilisateur :\e[0m"
-        echo -e "\e[90m  • Format : lettres minuscules, chiffres, tiret, underscore\e[0m"
-        echo -e "\e[90m  • Longueur : 2-32 caractères\e[0m"
-        echo -e "\e[90m  • Tapez 'annuler' pour revenir au menu principal\e[0m"
-        echo -ne "\e[1;36m→ \e[0m"
+        echo -ne "\n\e[1;33mNom d'utilisateur (2-32, letters, digits, - _). Tapez 'annuler' pour quitter : \e[0m"
         read -r NEWUSER
-        
-        # Option d'annulation
-        if [[ "$NEWUSER" == "annuler" || "$NEWUSER" == "cancel" || "$NEWUSER" == "exit" ]]; then
-            echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
-            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+
+        if [[ "$NEWUSER" =~ ^(annuler|cancel|exit)$ ]]; then
+            echo -e "\n\e[1;33mOpération annulée\e[0m"
             read -n1 -s
             return
         fi
-        
+
         if [[ -z "$NEWUSER" ]]; then
-            echo -e "\e[1;31m✗ Le nom d'utilisateur ne peut pas être vide\e[0m"            continue
-        elif ! validate_input "username" "$NEWUSER"; then
-            echo -e "\e[1;31m✗ Format invalide\e[0m"            continue
-        elif id "$NEWUSER" &>/dev/null; then
-            echo -e "\e[1;31m✗ L'utilisateur '$NEWUSER' existe déjà\e[0m"            continue
-        elif [[ "$NEWUSER" =~ ^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|ftp|nobody|systemd.*|_.*|sshd|messagebus|uuidd)$ ]]; then
-            echo -e "\e[1;31m✗ Nom réservé au système\e[0m"            continue
+            echo -e "\e[1;31m✗ Le nom d'utilisateur ne peut pas être vide\e[0m"
+            continue
         fi
-        
-        echo -e "\e[1;32m✓ Nom d'utilisateur valide : $NEWUSER\e[0m"
-        while true; do
-            echo -e "\n\e[1;33mQue souhaitez-vous faire ?\e[0m"
-            echo -e "\e[90m[1]\e[0m Valider ce nom"
-            echo -e "\e[90m[2]\e[0m Modifier le nom d'utilisateur"
-            echo -e "\e[90m[0]\e[0m Annuler la création"
-            echo -ne "\n\e[1;33mVotre choix : \e[0m"
-            read -r CHOICE_USER
-            case "$CHOICE_USER" in
-                1)
-                    break 2
-                    ;;
-                2)
-                    continue 1
-                    ;;
-                0)
-                    echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
+
+        if [[ ${#NEWUSER} -lt 2 || ${#NEWUSER} -gt 32 ]]; then
+            echo -e "\e[1;31m✗ Longueur invalide (2-32 caractères)\e[0m"
+            continue
+        fi
+
+        if ! validate_input "username" "$NEWUSER" 2>/dev/null; then
+            echo -e "\e[1;31m✗ Format invalide (lettres minuscules, chiffres, - et _)\e[0m"
+            continue
+        fi
+
+        if id "$NEWUSER" &>/dev/null; then
+            echo -e "\e[1;31m✗ L'utilisateur '$NEWUSER' existe déjà\e[0m"
+            continue
+        fi
+
+        if [[ "$NEWUSER" =~ ^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|ftp|nobody|systemd.*|_.*|sshd|messagebus|uuidd)$ ]]; then
+            echo -e "\e[1;31m✗ Nom réservé au système\e[0m"
+            continue
+        fi
+
+        echo -e "\e[1;32m✓ Nom valide : $NEWUSER\e[0m"
+        break
+    done
+
+    # --- Étape 2 : mot de passe (possibilité auto) ---
+    while true; do
+        echo -e "\n\e[48;5;24m\e[97m  📝 ÉTAPE 2/3 - MOT DE PASSE  \e[0m"
+        echo -e "\n\e[90m Utilisateur : \e[1;36m$NEWUSER\e[0m"
+        echo -e "\n\e[1;33mEntrez un mot de passe (min ${MIN_PASSWORD_LENGTH}). Tapez 'auto' pour en générer un, ou laissez vide pour annuler : \e[0m"
+        read -rs NEWPASS
+        echo
+
+        if [[ -z "$NEWPASS" ]]; then
+            echo -e "\n\e[1;33mAnnulation de la création\e[0m"
+            read -n1 -s
+            return
+        fi
+
+        if [[ "$NEWPASS" == "auto" ]]; then
+            NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 16 || echo "P@ssw0rd1234!")
+            echo -e "\n\e[1;32mMot de passe généré : \e[0m$NEWPASS"
+        else
+            if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
+                echo -e "\e[1;31m✗ Mot de passe trop court (min ${MIN_PASSWORD_LENGTH})\e[0m"
+                continue
+            fi
+            echo -ne "\e[1;33mConfirmez le mot de passe : \e[0m"
+            read -rs NEWPASS2
+            echo
+            if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
+                echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
+                continue
+            fi
+        fi
+
+        echo -e "\n\e[1;32m✓ Mot de passe défini\e[0m"
+        break
+    done
+
+    # --- Étape 3 : récapitulatif et création ---
+    while true; do
+        clear
+        echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR - RÉCAPITULATIF \e[0m"
+        echo -e "\n\e[48;5;22m\e[97m  📋 RÉCAPITULATIF  \e[0m"
+        echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
+        echo -e "\e[90m│\e[0m \e[1;36mUtilisateur :\e[0m $NEWUSER"
+    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker"
+        echo -e "\e[90m│\e[0m \e[1;36mShell :\e[0m /bin/bash"
+        echo -e "\e[90m│\e[0m \e[1;36mHome :\e[0m /home/$NEWUSER"
+        echo -e "\e[90m│\e[0m \e[1;36mScript dir :\e[0m /home/$NEWUSER/wireguard-script-manager"
+        echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
+
+        echo -e "\n\e[1;33mValider la création ? [o/N] (N = annuler) : \e[0m"
+        read -r CONF
+        if [[ "$CONF" =~ ^[oOyY]$ ]]; then
+            echo -e "\n\e[1;33mCréation de l'utilisateur...\e[0m"
+
+            # Créer l'utilisateur avec groupe docker
+            if useradd -m -s /bin/bash -G docker "$NEWUSER" 2>/dev/null; then
+                if echo "$NEWUSER:$NEWPASS" | chpasswd 2>/dev/null; then
+                    USER_HOME="/home/$NEWUSER"
+                    USER_SCRIPT_DIR="$USER_HOME/wireguard-script-manager"
+                    mkdir -p "$USER_SCRIPT_DIR"
+                    chown -R "$NEWUSER:$NEWUSER" "$USER_SCRIPT_DIR"
+                    chmod 775 "$USER_SCRIPT_DIR"
+
+                    echo -e "\n\e[1;32m✅ UTILISATEUR CRÉÉ AVEC SUCCÈS\e[0m"
+                    echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
+                    echo -e "\e[90m│\e[0m \e[1;36mUtilisateur :\e[0m $NEWUSER"
+                    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker"
+                    echo -e "\e[90m│\e[0m \e[1;36mDossier :\e[0m $USER_SCRIPT_DIR"
+                    echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
+
+                    echo -ne "\n\e[1;33mConfigurer le lancement automatique du script pour cet utilisateur ? [o/N] : \e[0m"
+                    read -r AUTOSTART
+                    if [[ "$AUTOSTART" =~ ^[oOyY]$ ]]; then
+                        configure_user_autostart "$NEWUSER" "$USER_SCRIPT_DIR"
+                    fi
+
                     echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
                     read -n1 -s
                     return
-                    ;;
-                *)
-                    echo -e "\e[1;31mChoix invalide.\e[0m"
-                    ;;
-            esac
-        done
-    done
-    
-    # Étape 2: Mot de passe
-    local NEWPASS=""
-    while true; do
-        clear
-        echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
-        echo -e "\n\e[48;5;24m\e[97m  📝 ÉTAPE 2/3 - MOT DE PASSE  \e[0m"
-        
-        echo -e "\n\e[90m📊 Informations saisies :\e[0m"
-        echo -e "    \e[90m👤 Utilisateur :\e[0m \e[1;36m$NEWUSER\e[0m"
-        
-        echo -e "\n\e[1;33mMot de passe :\e[0m"
-        echo -e "\e[90m  • Minimum ${MIN_PASSWORD_LENGTH} caractères\e[0m"
-        echo -e "\e[90m  • Utilisez des majuscules, minuscules, chiffres et symboles\e[0m"
-        echo -e "\e[90m  • Laissez vide pour revenir à l'étape précédente\e[0m"
-        echo -ne "\e[1;36m→ \e[0m"
-        read -rs NEWPASS
-        echo
-        
-        # Option de retour en arrière
-        if [[ -z "$NEWPASS" ]]; then
-            echo -e "\e[1;33m⬅️  Retour à l'étape précédente\e[0m"            break  # Retourne à la boucle du nom d'utilisateur
-        fi
-        
-        if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
-            echo -e "\e[1;31m✗ Mot de passe trop court (minimum ${MIN_PASSWORD_LENGTH} caractères)\e[0m"
-            echo -e "\e[1;32mAppuyez sur une touche pour recommencer...\e[0m"
-            read -n1 -s
-            continue
-        fi
-        
-        echo -ne "\e[1;33mConfirmation du mot de passe : \e[0m\e[1;36m→ \e[0m"
-        read -rs NEWPASS2
-        echo
-        
-        if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
-            echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
-            echo -e "\e[1;32mAppuyez sur une touche pour recommencer...\e[0m"
-            read -n1 -s
-            continue
-        fi
-        
-        echo -e "\e[1;32m✓ Mot de passe valide\e[0m"
-        echo -e "\n\e[1;33mConfirmer ce mot de passe ? [o/N/retour] : \e[0m"
-        read -r CONFIRM_PASS
-        
-        case "$CONFIRM_PASS" in
-            [oOyY])
-                # Étape 3: Récapitulatif et confirmation finale
-                while true; do
-                    clear
-                    echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
-                    echo -e "\n\e[48;5;24m\e[97m  📝 ÉTAPE 3/3 - CONFIRMATION FINALE  \e[0m"
-                    
-                    echo -e "\n\e[48;5;22m\e[97m  📋 RÉCAPITULATIF  \e[0m"
-                    echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
-                    echo -e "\e[90m│\e[0m \e[1;36mUtilisateur :\e[0m $NEWUSER"
-                    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker, sudo"
-                    echo -e "\e[90m│\e[0m \e[1;36mShell :\e[0m /bin/bash"
-                    echo -e "\e[90m│\e[0m \e[1;36mDossier home :\e[0m /home/$NEWUSER"
-                    echo -e "\e[90m│\e[0m \e[1;36mDossier script :\e[0m /home/$NEWUSER/wireguard-script-manager"
-                    echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
-                    
-                    echo -e "\n\e[1;33mOptions disponibles :\e[0m"
-                    echo -e "\e[90m    ┌─────────────────────────────────────────────────┐\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;32m V\e[0m \e[97mValider\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;36m N\e[0m \e[97mModifier le nom d'utilisateur\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;33m R\e[0m \e[97mModifier le mot de passe\e[0m"
-                    echo -e "\e[90m    ├─ \e[0m\e[1;31m A\e[0m \e[97mAnnuler\e[0m"
-                    echo -e "\e[90m    └─────────────────────────────────────────────────┘\e[0m"
-                    
-                    echo -ne "\n\e[1;33mVotre choix [V/N/R/A] : \e[0m"
-                    read -r FINAL_CHOICE
-                    
-                    case "$FINAL_CHOICE" in
-                        [vV])
-                            # Validation de l'utilisateur
-                            echo -e "\n\e[1;33m🔄 Création de l'utilisateur en cours...\e[0m"
-                            
-                            if useradd -m -s /bin/bash -G docker "$NEWUSER" 2>/dev/null; then
-                                if echo "$NEWUSER:$NEWPASS" | chpasswd 2>/dev/null; then
-                                    USER_HOME="/home/$NEWUSER"
-                                    USER_SCRIPT_DIR="$USER_HOME/wireguard-script-manager"
-                                    mkdir -p "$USER_SCRIPT_DIR"
-                                    chown -R "$NEWUSER:$NEWUSER" "$USER_SCRIPT_DIR"
-                                    chmod 775 "$USER_SCRIPT_DIR"
-                                    
-                                    echo -e "\n\e[1;32m✅ UTILISATEUR CRÉÉ AVEC SUCCÈS\e[0m"
-                                    echo -e "\e[90m┌─────────────────────────────────────────────────┐\e[0m"
-                                    echo -e "\e[90m│\e[0m \e[1;36mUtilisateur :\e[0m $NEWUSER"
-                                    echo -e "\e[90m│\e[0m \e[1;36mGroupes :\e[0m docker"
-                                    echo -e "\e[90m│\e[0m \e[1;36mDossier :\e[0m $USER_SCRIPT_DIR"
-                                    echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
-                                    
-                                    echo -ne "\n\e[1;33mConfigurer le lancement automatique du script ? [o/N] : \e[0m"
-                                    read -r AUTOSTART
-                                    if [[ "$AUTOSTART" =~ ^[oOyY]$ ]]; then
-                                        configure_user_autostart "$NEWUSER" "$USER_SCRIPT_DIR"
-                                    fi
-                                    
-                                    echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-                                    read -n1 -s
-                                    return
-                                else
-                                    echo -e "\e[1;31m❌ Erreur lors de la définition du mot de passe\e[0m"
-                                    userdel -r "$NEWUSER" 2>/dev/null || true
-                                fi
-                            else
-                                echo -e "\e[1;31m❌ Erreur lors de la création de l'utilisateur\e[0m"
-                            fi
-                            
-                            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-                            read -n1 -s
-                            return
-                            ;;
-                        [rR])
-                            break 2  # Retourne à la saisie du mot de passe
-                            ;;
-                        [aA])
-                            echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
-                            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-                            read -n1 -s
-                            return
-                            ;;
-                        *)
-                            echo -e "\e[1;31m✗ Choix invalide. Utilisez C, R ou A\e[0m"                            ;;
-                    esac
-                done
-                ;;
-            [rR]|retour)
-                continue  # Recommence la saisie du mot de passe
-                ;;
-            *)
-                echo -e "\e[1;33m❌ Création d'utilisateur annulée\e[0m"
-                echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+                else
+                    echo -e "\e[1;31m❌ Erreur lors de la définition du mot de passe\e[0m"
+                    userdel -r "$NEWUSER" 2>/dev/null || true
+                    read -n1 -s
+                    return
+                fi
+            else
+                echo -e "\e[1;31m❌ Erreur lors de la création de l'utilisateur (vérifiez les droits)\e[0m"
                 read -n1 -s
                 return
-                ;;
-        esac
+            fi
+        else
+            echo -e "\n\e[1;33mCréation annulée\e[0m"
+            read -n1 -s
+            return
+        fi
     done
 }
 

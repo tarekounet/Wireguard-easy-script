@@ -5,7 +5,6 @@
 
 DOCKER_WG_DIR="$HOME/docker-wireguard"
 DOCKER_COMPOSE_FILE="$DOCKER_WG_DIR/docker-compose.yml"
-WG_CONF_DIR="$DOCKER_WG_DIR/config"
 
 # Fonction pour vérifier et créer le dossier avec les bonnes permissions
 ensure_docker_dir() {
@@ -31,15 +30,7 @@ ensure_docker_dir() {
         echo "   chmod -R 755 \"$DOCKER_WG_DIR\""
         return 1
     fi
-    
-    # Créer le sous-dossier config
-    if [[ ! -d "$WG_CONF_DIR" ]]; then
-        if ! mkdir -p "$WG_CONF_DIR" 2>/dev/null; then
-            log_error "Impossible de créer $WG_CONF_DIR" 2>/dev/null || echo "ERREUR: Impossible de créer $WG_CONF_DIR"
-            return 1
-        fi
-    fi
-    
+        
     return 0
 }
 
@@ -109,12 +100,10 @@ volumes:
 services:
   wg-easy:
     environment:
-    #  Optional:
       - PORT=51821
-    #  - HOST=0.0.0.0
-      - INSECURE=false
+      - INSECURE=true
 
-    image: ghcr.io/wg-easy/wg-easy:15
+    image: ghcr.io/wg-easy/wg-easy:15.1.0
     container_name: wg-easy
     networks:
       wg:
@@ -182,7 +171,7 @@ EOF
             msg_success "Service Wireguard démarré avec succès !"
             # Récupérer l'IP de la machine
             LOCAL_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || ip route get 1 | awk '{print $NF;exit}' 2>/dev/null || echo "localhost")
-            echo -e "\e[36m🌐 Interface web accessible sur : https://$LOCAL_IP:$CURRENT_PORT\e[0m"
+            echo -e "\e[36m🌐 Interface web accessible sur : http://$LOCAL_IP:$CURRENT_PORT\e[0m"
         else
             msg_error "Erreur lors du démarrage du service"
         fi

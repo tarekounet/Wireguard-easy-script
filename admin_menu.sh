@@ -68,7 +68,10 @@ set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════
 echo -e "\e[1;33mVérification des prérequis système...\e[0m"
-check_and_install_docker
+if ! check_and_install_docker; then
+    echo -e "\n\e[1;31mErreur : Docker requis mais non disponible. Arrêt du script.\e[0m"
+    exit 1
+fi
 sleep 2
 technical_admin_menu() {
     while true; do

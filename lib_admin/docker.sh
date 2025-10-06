@@ -66,21 +66,59 @@ reset_user_docker_wireguard() {
             return
         fi
         echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
-        echo -e "    \e[97m• Tout le contenu du dossier docker-wireguard sera supprimé\e[0m"
-        echo -e "    \e[97m• Cette action est irréversible\e[0m"
-        echo -e "    \e[97m• Les configurations WireGuard seront perdues\e[0m"
+    echo -e "    \e[97m• Le volume Docker 'docker-wireguard_etc_wireguard' sera supprimé\e[0m"
+    echo -e "    \e[97m• Le dossier local docker-wireguard NE SERA PAS supprimé\e[0m"
+    echo -e "    \e[97m• Cette action est irréversible et les configurations WireGuard stockées dans le volume seront perdues\e[0m"
     echo -e "\n\e[1;33mTapez exactement 'RAZ WIREGUARD' pour confirmer :\e[0m"
     echo -ne "\e[1;36m→ \e[0m"
     read -r CONFIRMATION
     if [[ "$CONFIRMATION" == "RAZ WIREGUARD" ]]; then
-            # Détection et arrêt du conteneur wg-easy si actif
-            if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
-                echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
-                docker stop wg-easy
-                echo -e "\e[1;32m✓ Conteneur wg-easy arrêté\e[0m"
+            # Détection et arrêt des conteneurs utilisant le volume docker-wireguard_etc_wireguard
+            if ! command -v docker &>/dev/null; then
+                echo -e "\n\e[1;31m❌ Docker n'est pas disponible sur ce système. Impossible de gérer les conteneurs/volumes.\e[0m"
+            else
+                # Liste des conteneurs (tous) et vérification des mounts
+                containers_using_volume=()
+                for cid in $(docker ps -aq); do
+                    mounts=$(docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "$cid" 2>/dev/null || echo "")
+                    if echo "$mounts" | grep -qw 'docker-wireguard_etc_wireguard'; then
+                        containers_using_volume+=("$cid")
+                    fi
+                done
+
+                if [[ ${#containers_using_volume[@]} -gt 0 ]]; then
+                    echo -e "\n\e[1;33mConteneurs utilisant le volume détectés :\e[0m"
+                    for cid in "${containers_using_volume[@]}"; do
+                        name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
+                        running=$(docker ps --filter "id=$cid" --format '{{.ID}}')
+                        if [[ -n "$running" ]]; then
+                            echo -e "  - Arrêt du conteneur : $name ($cid)"
+                            docker stop "$cid" >/dev/null 2>&1 && echo -e "    \e[1;32m✓ $name arrêté\e[0m" || echo -e "    \e[1;31m⚠️  Échec arrêt $name\e[0m"
+                        else
+                            echo -e "  - Conteneur trouvé (non démarré) : $name ($cid)" 
+                        fi
+                    done
+                else
+                    # Fallback: arrêter wg-easy si présent (compatibilité ancienne)
+                    if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
+                        echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
+                        docker stop wg-easy >/dev/null 2>&1 && echo -e "\e[1;32m✓ Conteneur wg-easy arrêté\e[0m"
+                    fi
+                fi
+
+                # Suppression du volume Docker docker-wireguard_etc_wireguard
+                if docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
+                    echo -e "\n\e[1;33mSuppression du volume Docker 'docker-wireguard_etc_wireguard'...\e[0m"
+                    if docker volume rm docker-wireguard_etc_wireguard; then
+                        echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
+                    else
+                        echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume. Vous pouvez le supprimer manuellement avec : docker volume rm docker-wireguard_etc_wireguard\e[0m"
+                    fi
+                else
+                    echo -e "\n\e[1;33mℹ️  Volume 'docker-wireguard_etc_wireguard' introuvable, rien à supprimer\e[0m"
+                fi
             fi
-            rm -rf "$docker_wg_path"/* "$docker_wg_path"/.??* 2>/dev/null
-            echo -e "\n\e[1;32m✓ Dossier docker-wireguard réinitialisé pour $TARGET_USER\e[0m"
+            echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué pour $TARGET_USER (volume supprimé si présent)\e[0m"
         else
             echo -e "\n\e[1;33mOpération annulée\e[0m"
         fi
@@ -94,57 +132,24 @@ reset_user_docker_wireguard() {
 }
 check_and_install_docker() {
     clear
-    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DES PRÉREQUIS SYSTÈME           \e[0m"
+    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DE DOCKER (INSTALLÉ + DÉMON)           \e[0m"
 
-    echo -e "\n\e[1;33m🔍 Vérification de l'installation Docker, zip et unzip...\e[0m"
-
-    # Vérifier zip
-    if ! command -v zip &>/dev/null; then
-        echo -e "\e[1;31m❌ zip n'est pas installé\e[0m"
-        echo -e "\e[1;33mInstallation de zip...\e[0m"
-        apt-get update && apt-get install -y zip
-    else
-        echo -e "\e[1;32m✓ zip est déjà installé\e[0m"
+    # Vérifier si la commande docker est présente
+    if ! command -v docker &>/dev/null; then
+        echo -e "\n\e[1;31m❌ Docker n'est pas installé sur ce système.\e[0m"
+        echo -e "\e[1;33m➡️  Installez Docker manuellement puis relancez le script.\e[0m"
+        return 1
     fi
 
-    # Vérifier unzip
-    if ! command -v unzip &>/dev/null; then
-        echo -e "\e[1;31m❌ unzip n'est pas installé\e[0m"
-        echo -e "\e[1;33mInstallation de unzip...\e[0m"
-        apt-get update && apt-get install -y unzip
-    else
-        echo -e "\e[1;32m✓ unzip est déjà installé\e[0m"
+    # Vérifier que le démon Docker répond
+    if ! docker info >/dev/null 2>&1; then
+        echo -e "\n\e[1;31m❌ Docker est installé mais le démon ne répond pas (le service Docker n'est pas démarré).\e[0m"
+        echo -e "\e[1;33m➡️  Démarrez le service Docker (par ex. 'systemctl start docker' ou redémarrez la machine) puis relancez le script.\e[0m"
+        return 2
     fi
 
-    # Vérifier si Docker est installé
-    if command -v docker &>/dev/null; then
-        echo -e "\e[1;32m✓ Docker est déjà installé\e[0m"
-
-        # Vérifier si Docker Compose est installé
-        if command -v docker-compose &>/dev/null || docker compose version &>/dev/null; then
-            echo -e "\e[1;32m✓ Docker Compose est déjà installé\e[0m"
-
-            # Vérifier si le service Docker est actif
-            if systemctl is-active docker &>/dev/null; then
-                echo -e "\e[1;32m✓ Service Docker est actif\e[0m"
-                echo -e "\n\e[1;32m🎉 Docker est prêt à être utilisé !\e[0m"
-                return 0
-            else
-                echo -e "\e[1;33m⚠️  Service Docker inactif, démarrage...\e[0m"
-                systemctl start docker
-                systemctl enable docker
-                echo -e "\e[1;32m✓ Service Docker démarré\e[0m"
-                return 0
-            fi
-        else
-            echo -e "\e[1;33m⚠️  Docker Compose manquant, installation...\e[0m"
-            # Docker Compose legacy supprimé
-        fi
-    else
-        echo -e "\e[1;31m❌ Docker n'est pas installé\e[0m"
-        echo -e "\n\e[1;33m🚀 Lancement de l'installation Docker...\e[0m"
-        check_and_install_docker
-    fi
+    echo -e "\n\e[1;32m✓ Docker est installé et le démon répond.\e[0m"
+    return 0
 }
 
 # Install Docker

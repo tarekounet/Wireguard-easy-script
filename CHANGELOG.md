@@ -1,5 +1,15 @@
 # 📦 Wireguard Easy Script
 
+### [0.26.0] - 2025-10-06
+
+
+#### 🔄 Modifié
+- modification de la création d'un utilisateur
+- changement du RAZ de wireguard
+
+#### 🐛 Corrigé
+- insescure en true dans le tamplate
+
 ### [0.25.2] - 2025-10-06
 
 
