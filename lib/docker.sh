@@ -103,9 +103,18 @@ configure_values() {
         
         mkdir -p ${DOCKER_WG_DIR}/config
         cat <<EOF > "$DOCKER_COMPOSE_FILE"
+volumes:
+  etc_wireguard:
+
 services:
   wg-easy:
-    image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION}
+    environment:
+    #  Optional:
+      - PORT=51821
+    #  - HOST=0.0.0.0
+      - INSECURE=false
+
+    image: ghcr.io/wg-easy/wg-easy:15
     container_name: wg-easy
     networks:
       wg:
@@ -121,6 +130,7 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+      # - NET_RAW # ⚠️ Uncomment if using Podman
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
@@ -137,13 +147,6 @@ networks:
       config:
         - subnet: 10.42.42.0/24
         - subnet: fdcc:ad94:bacf:61a3::/64
-volumes:
-  etc_wireguard:
-    driver: local
-    driver_opts:
-      type: none
-      device: ${WG_CONF_DIR}
-      o: bind
 
 EOF
         echo "Fichier docker-compose.yml créé avec succès."

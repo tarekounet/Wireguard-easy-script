@@ -277,7 +277,8 @@ Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de 
 
 ## 📊 Statistiques du projet
 
-![Version](https://img.shields.io/badge/version-0.16.0-blue)
+<!-- Badge dynamique : affiche la dernière release (ou tag) publiée sur GitHub -->
+![Version](https://img.shields.io/github/v/release/tarekounet/Wireguard-easy-script?label=version&color=blue&sort=semver)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-Bash-yellow)
