@@ -3,95 +3,48 @@
 
 reset_user_docker_wireguard() {
     clear
-    echo -e "\e[48;5;236m\e[97m           🔄 RAZ DOCKER-WIREGUARD UTILISATEUR     \e[0m"
-    # Filtrer uniquement les utilisateurs avec un dossier docker-wireguard non vide
+    echo -e "\e[48;5;236m\e[97m           🔄 RAZ DOCKER-WIREGUARD (GLOBAL)        \e[0m"
+    # Détecter s'il existe au moins une configuration docker-wireguard utilisateur
     local FILTERED_USERS=()
-    local USER_DISPLAY=()
-    local idx=1
+    local FILTERED_PATHS=()
     for user in $(awk -F: '($3>=1000)&&($1!="nobody")&&($7!="/usr/sbin/nologin")&&($7!="/bin/false")&&($7!="/sbin/nologin")&&($7!="")&&($1!~"^_")&&($1!~"^systemd")&&($1!~"^daemon")&&($1!~"^mail")&&($1!~"^ftp")&&($1!~"^www-data")&&($1!~"^backup")&&($1!~"^list")&&($1!~"^proxy")&&($1!~"^uucp")&&($1!~"^news")&&($1!~"^gnats"){print $1}' /etc/passwd); do
-        local home=$(getent passwd "$user" | cut -d: -f6)
+        local home
+        home=$(getent passwd "$user" | cut -d: -f6)
         local docker_wg_path="$home/docker-wireguard"
         if [[ -d "$docker_wg_path" ]] && [[ $(find "$docker_wg_path" -type f 2>/dev/null | wc -l) -gt 0 ]]; then
-            local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
             FILTERED_USERS+=("$user")
-            USER_DISPLAY+=("\e[90m│\e[0m [\e[1;36m$idx\e[0m] \e[97m$user\e[0m  \e[1;32m✓ docker-wireguard ($file_count fichiers)\e[0m")
-            idx=$((idx+1))
+            FILTERED_PATHS+=("$docker_wg_path")
         fi
     done
+
     if [[ ${#FILTERED_USERS[@]} -eq 0 ]]; then
-        echo -e "\n\e[1;31m❌ Aucun utilisateur avec docker-wireguard configuré\e[0m"
+        echo -e "\n\e[1;31m❌ Aucune configuration 'docker-wireguard' détectée pour les utilisateurs.\e[0m"
         echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
         read -n1 -s
         return
     fi
-    echo -e "\n\e[48;5;24m\e[97m  👥 SÉLECTION UTILISATEUR  \e[0m"
-    echo -e "\e[90m┌─────────────────────────────────────────────────────────────┐\e[0m"
-    for line in "${USER_DISPLAY[@]}"; do
-        echo -e "$line"
-    done
-    echo -e "\e[90m└─────────────────────────────────────────────────────────────┘\e[0m"
-    echo -e "\n\e[48;5;22m\e[97m  🔧 ACTIONS DISPONIBLES  \e[0m"
-    echo -e "\e[90m┌─────────────────────────────────────────────────────────────┐\e[0m"
-    echo -e "\e[90m│\e[0m \e[1;31m0\e[0m Retour au menu principal"
-    echo -e "\e[90m└─────────────────────────────────────────────────────────────┘\e[0m"
-    echo -ne "\n\e[1;33mNuméro de l'utilisateur [1-${#FILTERED_USERS[@]}] ou 0 pour annuler : \e[0m"
-    read -r IDX
-    if [[ "$IDX" == "0" ]]; then
-        return
-    fi
-    IDX=$((IDX-1))
-    if [[ $IDX -ge 0 && $IDX -lt ${#FILTERED_USERS[@]} ]]; then
-        local TARGET_USER="${FILTERED_USERS[$IDX]}"
-        local user_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
-        local docker_wg_path="$user_home/docker-wireguard"
-        clear
-        echo -e "\e[48;5;236m\e[97m           🔄 CONFIRMATION RAZ DOCKER-WIREGUARD   \e[0m"
-        echo -e "\n\e[48;5;24m\e[97m  📊 INFORMATIONS  \e[0m"
-        echo -e "\n    \e[90m👤 Utilisateur :\e[0m \e[1;36m$TARGET_USER\e[0m"
-        echo -e "    \e[90m📁 Répertoire :\e[0m \e[1;33m$docker_wg_path\e[0m"
-        if [[ ! -d "$docker_wg_path" ]]; then
-            echo -e "\n\e[1;31m❌ Le dossier docker-wireguard n'existe pas pour cet utilisateur\e[0m"
-            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-            read -n1 -s
-            return
-        fi
-        local file_count=$(find "$docker_wg_path" -type f 2>/dev/null | wc -l)
-        local dir_count=$(find "$docker_wg_path" -mindepth 1 -type d 2>/dev/null | wc -l)
-        echo -e "    \e[90m📄 Fichiers :\e[0m \e[1;32m$file_count\e[0m"
-        echo -e "    \e[90m📂 Dossiers :\e[0m \e[1;32m$dir_count\e[0m"
-        if [[ $file_count -eq 0 && $dir_count -eq 0 ]]; then
-            echo -e "\n\e[1;33m⚠️  Le dossier est déjà vide\e[0m"
-            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-            read -n1 -s
-            return
-        fi
-        # Vérifier si le volume existe ; n'afficher la confirmation que si présent
+
+    echo -e "\n\e[1;33mℹ️  Configurations docker-wireguard détectées pour ${#FILTERED_USERS[@]} utilisateur(s).\e[0m"
+    echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
+    echo -e "    \e[97m• Le volume Docker 'docker-wireguard_etc_wireguard' sera supprimé (si présent)\e[0m"
+    echo -e "    \e[97m• Les fichiers docker-compose présents dans chaque répertoire docker-wireguard seront arrêtés et supprimés\e[0m"
+    echo -e "    \e[97m• Cette action est irréversible et les configurations WireGuard stockées dans le volume seront perdues\e[0m"
+    echo -e "\n\e[1;33mTapez exactement 'RAZ WIREGUARD' pour confirmer :\e[0m"
+    echo -ne "\e[1;36m→ \e[0m"
+    read -r CONFIRMATION
+
+    if [[ "$CONFIRMATION" == "RAZ WIREGUARD" ]]; then
         if ! command -v docker &>/dev/null; then
-            echo -e "\n\e[1;31m❌ Docker non disponible : impossible de vérifier l'existence du volume. Abandon du RAZ.\e[0m"
-            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-            read -n1 -s
-            return
-        fi
-        if ! docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
-            echo -e "\n\e[1;33mℹ️  Le volume 'docker-wireguard_etc_wireguard' est introuvable. Rien à faire pour le RAZ.\e[0m"
+            echo -e "\n\e[1;31m❌ Docker n'est pas disponible sur ce système. Impossible de gérer les conteneurs/volumes.\e[0m"
             echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
             read -n1 -s
             return
         fi
 
-        echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
-        echo -e "    \e[97m• Le volume Docker 'docker-wireguard_etc_wireguard' sera supprimé\e[0m"
-        echo -e "    \e[97m• Le dossier local docker-wireguard NE SERA PAS supprimé\e[0m"
-        echo -e "    \e[97m• Cette action est irréversible et les configurations WireGuard stockées dans le volume seront perdues\e[0m"
-        echo -e "\n\e[1;33mTapez exactement 'RAZ WIREGUARD' pour confirmer :\e[0m"
-        echo -ne "\e[1;36m→ \e[0m"
-        read -r CONFIRMATION
-        if [[ "$CONFIRMATION" == "RAZ WIREGUARD" ]]; then
-            # Vérifier la présence de Docker
-            if ! command -v docker &>/dev/null; then
-                echo -e "\n\e[1;31m❌ Docker n'est pas disponible sur ce système. Impossible de gérer les conteneurs/volumes.\e[0m"
-            else
-                # 1) Si un fichier docker-compose existe, tenter docker compose down dans le répertoire
+        # 1) Pour chaque utilisateur détecté, tenter docker compose down et supprimer les fichiers compose
+        for docker_wg_path in "${FILTERED_PATHS[@]}"; do
+            if [[ -d "$docker_wg_path" ]]; then
+                echo -e "\n\e[1;33mTraitement du répertoire : $docker_wg_path\e[0m"
                 compose_file=""
                 for f in "$docker_wg_path/docker-compose.yml" "$docker_wg_path/docker-compose.yaml"; do
                     if [[ -f "$f" ]]; then
@@ -108,85 +61,56 @@ reset_user_docker_wireguard() {
                     else
                         docker-compose down || true
                     fi
-                    # Supprimer les fichiers docker-compose présents dans le répertoire
                     for cf in docker-compose.yml docker-compose.yaml; do
                         if [[ -f "$cf" ]]; then
-                            rm -f "$cf" && echo -e "\e[1;32m✓ $cf supprimé\e[0m" || echo -e "\e[1;31m⚠️  Échec suppression $cf\e[0m"
+                            rm -f "$cf" && echo -e "\e[1;32m✓ $docker_wg_path/$cf supprimé\e[0m" || echo -e "\e[1;31m⚠️  Échec suppression $docker_wg_path/$cf\e[0m"
                         fi
                     done
                     popd >/dev/null 2>&1 || true
                 else
-                    # fallback: arrêter wg-easy si présent
-                    if docker ps --format '{{.Names}}' | grep -q "^wg-easy$"; then
-                        echo -e "\n\e[1;33mArrêt du conteneur Docker wg-easy...\e[0m"
-                        docker stop wg-easy >/dev/null 2>&1 || true
-                    fi
-                fi
-
-                # 2) Détecter et forcer la suppression des conteneurs qui montent le volume
-                blockers=()
-                for cid in $(docker ps -aq); do
-                    mounts=$(docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "$cid" 2>/dev/null || echo "")
-                    if echo "$mounts" | grep -qw 'docker-wireguard_etc_wireguard'; then
-                        blockers+=("$cid")
-                    fi
-                done
-
-                if [[ ${#blockers[@]} -gt 0 ]]; then
-                    echo -e "\n\e[1;33mSuppression forcée des conteneurs qui utilisent le volume...\e[0m"
-                    for cid in "${blockers[@]}"; do
-                        name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\\///')
-                        echo -e "  - Suppression $name ($cid)"
-                        docker rm -f "$cid" >/dev/null 2>&1 && echo -e "    \e[1;32m✓ $name supprimé\e[0m" || echo -e "    \e[1;31m⚠️  Échec suppression $name ($cid)\e[0m"
-                    done
-                else
-                    echo -e "\n\e[1;33mAucun conteneur ne semble utiliser le volume (ou déjà arrêté).\e[0m"
-                fi
-
-                # 3) Supprimer le volume
-                if docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
-                    echo -e "\n\e[1;33mSuppression du volume Docker 'docker-wireguard_etc_wireguard'...\e[0m"
-                    if docker volume rm docker-wireguard_etc_wireguard; then
-                        echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
-                    else
-                        echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume après tentative automatique. Supprimez manuellement : docker volume rm docker-wireguard_etc_wireguard\e[0m"
-                    fi
-                else
-                    echo -e "\n\e[1;33mℹ️  Volume 'docker-wireguard_etc_wireguard' introuvable, rien à supprimer\e[0m"
+                    echo -e "\n\e[1;33mAucun docker-compose dans $docker_wg_path\e[0m"
                 fi
             fi
-            echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué pour $TARGET_USER (opérations automatiques exécutées)\e[0m"
+        done
+
+        # 2) Détecter et forcer la suppression des conteneurs qui montent le volume
+        blockers=()
+        for cid in $(docker ps -aq); do
+            mounts=$(docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "$cid" 2>/dev/null || echo "")
+            if echo "$mounts" | grep -qw 'docker-wireguard_etc_wireguard'; then
+                blockers+=("$cid")
+            fi
+        done
+
+        if [[ ${#blockers[@]} -gt 0 ]]; then
+            echo -e "\n\e[1;33mSuppression forcée des conteneurs qui utilisent le volume...\e[0m"
+            for cid in "${blockers[@]}"; do
+                name=$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\\///')
+                echo -e "  - Suppression $name ($cid)"
+                docker rm -f "$cid" >/dev/null 2>&1 && echo -e "    \e[1;32m✓ $name supprimé\e[0m" || echo -e "    \e[1;31m⚠️  Échec suppression $name ($cid)\e[0m"
+            done
         else
-            echo -e "\n\e[1;33mOpération annulée\e[0m"
+            echo -e "\n\e[1;33mAucun conteneur ne semble utiliser le volume (ou déjà arrêté).\e[0m"
         fi
-        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
+
+        # 3) Supprimer le volume si présent
+        if docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
+            echo -e "\n\e[1;33mSuppression du volume Docker 'docker-wireguard_etc_wireguard'...\e[0m"
+            if docker volume rm docker-wireguard_etc_wireguard; then
+                echo -e "\e[1;32m✓ Volume 'docker-wireguard_etc_wireguard' supprimé\e[0m"
+            else
+                echo -e "\e[1;31m⚠️  Échec lors de la suppression du volume après tentative automatique. Supprimez manuellement : docker volume rm docker-wireguard_etc_wireguard\e[0m"
+            fi
+        else
+            echo -e "\n\e[1;33mℹ️  Volume 'docker-wireguard_etc_wireguard' introuvable, rien à supprimer\e[0m"
+        fi
+
+        echo -e "\n\e[1;32m✓ RAZ Docker-WireGuard effectué (opérations automatiques exécutées)\e[0m"
     else
-        echo -e "\n\e[1;31mSélection invalide\e[0m"
-        echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
-        read -n1 -s
+        echo -e "\n\e[1;33mOpération annulée\e[0m"
     fi
-}
-check_and_install_docker() {
-    clear
-    echo -e "\e[48;5;236m\e[97m           🐳 VÉRIFICATION DE DOCKER (INSTALLÉ + DÉMON)           \e[0m"
-
-    # Vérifier si la commande docker est présente
-    if ! command -v docker &>/dev/null; then
-        echo -e "\n\e[1;31m❌ Docker n'est pas installé sur ce système.\e[0m"
-        echo -e "\e[1;33m➡️  Installez Docker manuellement puis relancez le script.\e[0m"
-        return 1
-    fi
-
-    # Vérifier que le démon Docker répond
-    if ! docker info >/dev/null 2>&1; then
-        echo -e "\n\e[1;31m❌ Docker est installé mais le démon ne répond pas (le service Docker n'est pas démarré).\e[0m"
-        echo -e "\e[1;33m➡️  Démarrez le service Docker (par ex. 'systemctl start docker' ou redémarrez la machine) puis relancez le script.\e[0m"
-        return 2
-    fi
-
-    echo -e "\n\e[1;32m✓ Docker est installé et le démon répond.\e[0m"
-    return 0
+    echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+    read -n1 -s
 }
 
 # Install Docker
