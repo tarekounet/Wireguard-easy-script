@@ -42,18 +42,6 @@ source "$(dirname "$0")/lib_admin/utils.sh"
 
 # Gestion unifiée des paquets (APT)
 set -euo pipefail
-
-
-
-
-
-# ═══════════════════════════════════════════════════════════════
-echo -e "\e[1;33mVérification des prérequis système...\e[0m"
-if ! check_and_install_docker; then
-    echo -e "\n\e[1;31mErreur : Docker requis mais non disponible. Arrêt du script.\e[0m"
-    exit 1
-fi
-sleep 2
 execute_package_cmd() {
     local action="$1"
     shift
