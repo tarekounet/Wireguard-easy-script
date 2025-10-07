@@ -65,6 +65,20 @@ reset_user_docker_wireguard() {
             read -n1 -s
             return
         fi
+        # Vérifier si le volume existe ; n'afficher la confirmation que si présent
+        if ! command -v docker &>/dev/null; then
+            echo -e "\n\e[1;31m❌ Docker non disponible : impossible de vérifier l'existence du volume. Abandon du RAZ.\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+        if ! docker volume ls --format '{{.Name}}' | grep -q '^docker-wireguard_etc_wireguard$'; then
+            echo -e "\n\e[1;33mℹ️  Le volume 'docker-wireguard_etc_wireguard' est introuvable. Rien à faire pour le RAZ.\e[0m"
+            echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
+            read -n1 -s
+            return
+        fi
+
         echo -e "\n\e[1;31m⚠️  ATTENTION :\e[0m"
         echo -e "    \e[97m• Le volume Docker 'docker-wireguard_etc_wireguard' sera supprimé\e[0m"
         echo -e "    \e[97m• Le dossier local docker-wireguard NE SERA PAS supprimé\e[0m"
@@ -94,6 +108,12 @@ reset_user_docker_wireguard() {
                     else
                         docker-compose down || true
                     fi
+                    # Supprimer les fichiers docker-compose présents dans le répertoire
+                    for cf in docker-compose.yml docker-compose.yaml; do
+                        if [[ -f "$cf" ]]; then
+                            rm -f "$cf" && echo -e "\e[1;32m✓ $cf supprimé\e[0m" || echo -e "\e[1;31m⚠️  Échec suppression $cf\e[0m"
+                        fi
+                    done
                     popd >/dev/null 2>&1 || true
                 else
                     # fallback: arrêter wg-easy si présent

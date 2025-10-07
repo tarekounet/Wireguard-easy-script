@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.27.0] - 2025-10-07
+
+
+#### 🔄 Modifié
+- modification du raz avec volume + docker-compose
+
 ### [0.26.3] - 2025-10-07
 
 
