@@ -187,3 +187,25 @@ install_docker() {
         return 1
     fi
 }
+
+# Vérifier si Docker est installé et si le démon répond. Retourne:
+# 0 = docker présent et démon OK
+# 1 = docker absent
+# 2 = docker présent mais démon indisponible
+check_and_install_docker() {
+    # Vérifier la commande docker
+    if ! command -v docker &>/dev/null; then
+        echo -e "\n\e[1;31m❌ Docker n'est pas installé sur ce système.\e[0m"
+        echo -e "\e[1;33m➡️  Installez Docker manuellement puis relancez le script.\e[0m"
+        return 1
+    fi
+
+    # Vérifier que le démon Docker répond
+    if ! docker info >/dev/null 2>&1; then
+        echo -e "\n\e[1;31m❌ Docker est installé mais le démon ne répond pas (service arrêté).\e[0m"
+        echo -e "\e[1;33m➡️  Démarrez le service Docker (ex: 'systemctl start docker') puis relancez le script.\e[0m"
+        return 2
+    fi
+
+    return 0
+}

@@ -1,5 +1,11 @@
 # 📦 Wireguard Easy Script
 
+### [0.28.2] - 2025-10-08
+
+
+#### 🐛 Corrigé
+- corection lancement
+
 ### [0.28.1] - 2025-10-07
 
 
