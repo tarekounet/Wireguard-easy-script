@@ -70,37 +70,55 @@ create_technical_user() {
         break
     done
 
-    # --- Étape 2 : mot de passe (possibilité auto) ---
+    # --- Étape 2 : mot de passe (choix manuel ou auto) ---
     while true; do
         echo -e "\n\e[48;5;24m\e[97m  📝 ÉTAPE 2/3 - MOT DE PASSE  \e[0m"
         echo -e "\n\e[90m Utilisateur : \e[1;36m$NEWUSER\e[0m"
-        echo -e "\n\e[1;33mEntrez un mot de passe (min ${MIN_PASSWORD_LENGTH}). Tapez 'auto' pour en générer un, ou laissez vide pour annuler : \e[0m"
-        read -rs NEWPASS
-        echo
+        echo -e "\n\e[1;33mOptions :\e[0m"
+        echo -e "  [1] Saisir un mot de passe manuellement"
+        echo -e "  [2] Générer un mot de passe aléatoire (auto)"
+        echo -e "  [0] Annuler la création"
+        echo -ne "\n\e[1;33mVotre choix [0-2] : \e[0m"
+        read -r PW_CHOICE
 
-        if [[ -z "$NEWPASS" ]]; then
-            echo -e "\n\e[1;33mAnnulation de la création\e[0m"
-            read -n1 -s
-            return 1
-        fi
-
-        if [[ "$NEWPASS" == "auto" ]]; then
-            NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 16 || echo "P@ssw0rd1234!")
-            IS_AUTOGEN=1
-            echo -e "\n\e[1;32mMot de passe généré : \e[0m$NEWPASS"
-        else
-            if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
-                echo -e "\e[1;31m✗ Mot de passe trop court (min ${MIN_PASSWORD_LENGTH})\e[0m"
+        case "$PW_CHOICE" in
+            0)
+                echo -e "\n\e[1;33mAnnulation de la création\e[0m"
+                read -n1 -s
+                return 1
+                ;;
+            1)
+                echo -ne "\n\e[1;33mEntrez un mot de passe (min ${MIN_PASSWORD_LENGTH}) : \e[0m"
+                read -rs NEWPASS
+                echo
+                if [[ -z "$NEWPASS" ]]; then
+                    echo -e "\n\e[1;33mAnnulation de la création\e[0m"
+                    read -n1 -s
+                    return 1
+                fi
+                if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
+                    echo -e "\e[1;31m✗ Mot de passe trop court (min ${MIN_PASSWORD_LENGTH})\e[0m"
+                    continue
+                fi
+                echo -ne "\e[1;33mConfirmez le mot de passe : \e[0m"
+                read -rs NEWPASS2
+                echo
+                if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
+                    echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
+                    continue
+                fi
+                IS_AUTOGEN=0
+                ;;
+            2)
+                NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 12 || echo "P@ssw0rd12!")
+                IS_AUTOGEN=1
+                echo -e "\n\e[1;32mMot de passe généré : \e[0m$NEWPASS"
+                ;;
+            *)
+                echo -e "\e[1;31mChoix invalide, réessayez\e[0m"
                 continue
-            fi
-            echo -ne "\e[1;33mConfirmez le mot de passe : \e[0m"
-            read -rs NEWPASS2
-            echo
-            if [[ "$NEWPASS" != "$NEWPASS2" ]]; then
-                echo -e "\e[1;31m✗ Les mots de passe ne correspondent pas\e[0m"
-                continue
-            fi
-        fi
+                ;;
+        esac
 
         echo -e "\n\e[1;32m✓ Mot de passe défini\e[0m"
         break

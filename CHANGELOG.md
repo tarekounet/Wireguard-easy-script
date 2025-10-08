@@ -1,5 +1,12 @@
 # 📦 Wireguard Easy Script
 
+### [0.30.0] - 2025-10-08
+
+
+#### 🔄 Modifié
+- limitation du mot de passe généré a 12 caractères
+- choix entre mot de passe manuel ou auto
+
 ### [0.29.0] - 2025-10-08
 
 
