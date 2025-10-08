@@ -13,6 +13,8 @@ check_human_users() {
         read -r REP
         if [[ "$REP" =~ ^[oOyY]$ ]]; then
             create_technical_user
+            # Après tentative de création (réussie ou annulée), revenir au menu de gestion des utilisateurs
+            return 0
         fi
         return 1
     fi
@@ -22,6 +24,7 @@ create_technical_user() {
     # Réinitialisation des variables locales
     local NEWUSER=""
     local NEWPASS=""
+    local IS_AUTOGEN=0
 
     clear
     echo -e "\e[48;5;236m\e[97m           👤 CRÉATION D'UTILISATEUR              \e[0m"
@@ -35,7 +38,7 @@ create_technical_user() {
         if [[ "$NEWUSER" =~ ^(annuler|cancel|exit)$ ]]; then
             echo -e "\n\e[1;33mOpération annulée\e[0m"
             read -n1 -s
-            return
+            return 1
         fi
 
         if [[ -z "$NEWUSER" ]]; then
@@ -78,11 +81,12 @@ create_technical_user() {
         if [[ -z "$NEWPASS" ]]; then
             echo -e "\n\e[1;33mAnnulation de la création\e[0m"
             read -n1 -s
-            return
+            return 1
         fi
 
         if [[ "$NEWPASS" == "auto" ]]; then
             NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 16 || echo "P@ssw0rd1234!")
+            IS_AUTOGEN=1
             echo -e "\n\e[1;32mMot de passe généré : \e[0m$NEWPASS"
         else
             if [[ ${#NEWPASS} -lt $MIN_PASSWORD_LENGTH ]]; then
@@ -113,6 +117,9 @@ create_technical_user() {
         echo -e "\e[90m│\e[0m \e[1;36mShell :\e[0m /bin/bash"
         echo -e "\e[90m│\e[0m \e[1;36mHome :\e[0m /home/$NEWUSER"
         echo -e "\e[90m│\e[0m \e[1;36mScript dir :\e[0m /home/$NEWUSER/wireguard-script-manager"
+        if [[ "$IS_AUTOGEN" -eq 1 ]]; then
+            echo -e "\e[90m│\e[0m \e[1;36mMot de passe :\e[0m $NEWPASS"
+        fi
         echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
 
         echo -e "\n\e[1;33mValider la création ? [o/N] (N = annuler) : \e[0m"
@@ -136,6 +143,12 @@ create_technical_user() {
                     echo -e "\e[90m│\e[0m \e[1;36mDossier :\e[0m $USER_SCRIPT_DIR"
                     echo -e "\e[90m└─────────────────────────────────────────────────┘\e[0m"
 
+                    # Afficher le mot de passe généré automatiquement UNE SEULE FOIS après la création
+                    if [[ "$IS_AUTOGEN" -eq 1 ]]; then
+                        echo -e "\n\e[1;33m⚠️  Mot de passe auto-généré (affiché une seule fois) :\e[0m"
+                        echo -e "\n\e[1;32mMot de passe pour $NEWUSER : \e[0m$NEWPASS\n"
+                    fi
+
                     echo -ne "\n\e[1;33mConfigurer le lancement automatique du script pour cet utilisateur ? [o/N] : \e[0m"
                     read -r AUTOSTART
                     if [[ "$AUTOSTART" =~ ^[oOyY]$ ]]; then
@@ -144,17 +157,17 @@ create_technical_user() {
 
                     echo -e "\n\e[1;32mAppuyez sur une touche pour continuer...\e[0m"
                     read -n1 -s
-                    return
+                    return 0
                 else
                     echo -e "\e[1;31m❌ Erreur lors de la définition du mot de passe\e[0m"
                     userdel -r "$NEWUSER" 2>/dev/null || true
                     read -n1 -s
-                    return
+                    return 2
                 fi
             else
                 echo -e "\e[1;31m❌ Erreur lors de la création de l'utilisateur (vérifiez les droits)\e[0m"
                 read -n1 -s
-                return
+                return 2
             fi
         else
             echo -e "\n\e[1;33mCréation annulée\e[0m"

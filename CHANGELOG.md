@@ -1,5 +1,12 @@
 # 📦 Wireguard Easy Script
 
+### [0.29.0] - 2025-10-08
+
+
+#### 🔄 Modifié
+- retour menu si annulation de la création d'un utilisateur
+- affichage du mot de passe aléatoire généré
+
 ### [0.28.2] - 2025-10-08
 
 
