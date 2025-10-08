@@ -110,7 +110,25 @@ create_technical_user() {
                 IS_AUTOGEN=0
                 ;;
             2)
-                NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 12 || echo "P@ssw0rd12!")
+                # Génération automatique sans fallback : réessayer quelques fois,
+                # si toujours impossible, revenir au menu de choix sans créer d'utilisateur.
+                ATTEMPTS=0
+                MAX_ATTEMPTS=5
+                NEWPASS=""
+                while [[ $ATTEMPTS -lt $MAX_ATTEMPTS ]]; do
+                    NEWPASS=$(tr -dc 'A-Za-z0-9!@#$%&*()-_=+' </dev/urandom | head -c 12)
+                    if [[ ${#NEWPASS} -eq 12 ]]; then
+                        break
+                    fi
+                    ATTEMPTS=$((ATTEMPTS+1))
+                done
+
+                if [[ ${#NEWPASS} -ne 12 ]]; then
+                    echo -e "\n\e[1;31m✗ Échec de la génération aléatoire après $MAX_ATTEMPTS tentatives. Retour au menu de mot de passe.\e[0m"
+                    read -n1 -s
+                    continue
+                fi
+
                 IS_AUTOGEN=1
                 echo -e "\n\e[1;32mMot de passe généré : \e[0m$NEWPASS"
                 ;;
